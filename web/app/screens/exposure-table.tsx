@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ExposureEvent, ExposureResponse, Holding, HoldingLink } from '../../../shared/types';
 import { money, percent, dateText, href, Empty, TrustBadge } from '../common';
 
@@ -54,7 +54,27 @@ export function eventHoldings(event: ExposureEvent, holdings: Holding[], filter:
 
 function HoldingTiles({ event, holdings, linkFilter }: { event: ExposureEvent; holdings: Holding[]; linkFilter: ExposureFilters['link'] }) {
     const ordered = eventHoldings(event, holdings, linkFilter);
-    return <ul className="holding-tiles" tabIndex={0} aria-label={`Holdings for ${event.title}, strongest links first; scroll horizontally for more`}>
+    const strip = useRef<HTMLUListElement>(null);
+    useEffect(() => {
+        const element = strip.current;
+        if (!element) return;
+        const scrollWithWheel = (event: WheelEvent) => {
+            // Preserve pinch zoom and native horizontal trackpad/Shift-wheel gestures.
+            if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+            const remaining = element.scrollWidth - element.clientWidth;
+            const direction = Math.sign(event.deltaY);
+            // At either edge (or in a short row), let the page keep scrolling normally.
+            if (remaining <= 1 || (direction > 0 && element.scrollLeft >= remaining - 1)
+                || (direction < 0 && element.scrollLeft <= 1)) return;
+            const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientWidth : 1;
+            event.preventDefault();
+            element.scrollLeft += event.deltaY * unit;
+        };
+        // React delegates wheel events passively; this listener must be able to prevent page scrolling.
+        element.addEventListener('wheel', scrollWithWheel, { passive: false });
+        return () => element.removeEventListener('wheel', scrollWithWheel);
+    }, []);
+    return <ul ref={strip} className="holding-tiles" tabIndex={0} aria-label={`Holdings for ${event.title}, strongest links first; use the mouse wheel or scroll horizontally for more`}>
             {ordered.map(({ holding, link }) => <li key={holding.symbol}>
                 <a href={href('event', event.ticker)} className={`cell ${link.type}`} title={`${linkLabel(link.type)}: ${link.evidence}`} aria-label={`${holding.symbol}: ${event.title}, ${linkLabel(link.type)}, ${money(holding.valueUsd)}`}>
                     <strong>{holding.symbol}</strong><span className="holding-value">{money(holding.valueUsd)}</span>

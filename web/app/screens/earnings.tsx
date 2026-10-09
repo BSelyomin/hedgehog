@@ -1,10 +1,23 @@
 'use client';
-import { useEffect, useState } from 'react';
-import type { ReactNode, FormEvent } from 'react';
-import type { Holding, HoldingsResponse, ExposureResponse, ExposureEvent, Market, CalendarResponse, EventResponse, MovesResponse, EarningsResponse, TrackRecordResponse, BriefingResponse, CategoryRecord, OddsPoint } from '../../../shared/types';
-import { money, percent, number, dateText, href, api, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, EventList } from '../common';
+import { useState } from 'react';
+import type { ExposureResponse, EarningsResponse } from '../../../shared/types';
+import { percent, href, useData, Card, Fresh, Status, Empty, TrustBadge, Progress } from '../common';
 
-export function Earnings() { const exposureData = useData<ExposureResponse>('/exposure'); const [symbol, setSymbol] = useState(''); const symbols = exposureData.data?.holdings.filter(h => exposureData.data!.events.some(e => e.links.some(l => l.symbol === h.symbol && l.type === 'Direct'))).map(h => h.symbol) ?? []; const selected = symbols.includes(symbol) ? symbol : symbols[0]; return <><h1>Earnings preview</h1><p>Company markets linked directly to your holdings. Only companies with reviewed links appear here; not every company event is an earnings report.</p><Status error={exposureData.error} loading={!exposureData.data && !exposureData.error}/><div className="toolbar">{symbols.map(s => <button key={s} className={selected === s ? 'primary' : ''} onClick={() => setSymbol(s)}>{s}</button>)}</div>{selected ? <EarningsDetail symbol={selected}/> : <Card><Empty>No reviewed Kalshi company markets are linked to your holdings yet.</Empty><Fresh asOf={exposureData.data?.asOf ?? null}/></Card>}</>; }
+export function Earnings() {
+    const { data, error } = useData<ExposureResponse>('/exposure');
+    const [symbol, setSymbol] = useState('');
+    const symbols = data?.holdings.filter(h => data.events.some(e => e.links.some(l => l.symbol === h.symbol && l.type === 'Direct'))).map(h => h.symbol).sort() ?? [];
+    const uncovered = data?.holdings.filter(h => !symbols.includes(h.symbol)).map(h => h.symbol) ?? [];
+    const selected = symbols.includes(symbol) ? symbol : symbols[0];
+    return <><h1>Earnings preview</h1><p>Company markets linked directly to your holdings. These include earnings-call topics, business metrics and company-specific events.</p>
+        <Status error={error} loading={!data && !error}/>
+        {data && <p className="note" role="status">{symbols.length} of {data.holdings.length} holdings have active, reviewed company markets.
+            {uncovered.length > 0 && <> No active reviewed company links for: {uncovered.join(', ')}.</>}
+        </p>}
+        <div className="toolbar" aria-label="Companies with markets">{symbols.map(s => <button key={s} aria-pressed={selected === s} className={selected === s ? 'primary' : ''} onClick={() => setSymbol(s)}>{s}</button>)}</div>
+        {selected ? <EarningsDetail symbol={selected}/> : <Card><Empty>No reviewed Kalshi company markets are linked to your holdings yet.</Empty><Fresh asOf={data?.asOf ?? null}/></Card>}
+    </>;
+}
 
 export function EarningsDetail({ symbol }: {
     symbol: string;
