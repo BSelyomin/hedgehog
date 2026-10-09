@@ -1,0 +1,119 @@
+# Codex prompts for Hedgehog
+
+Before the first prompt, put these in the repo root: `AGENTS.md`, `hedgehog_math.py`, and a
+`/design` folder with screenshots of the 7 canvas screens. Fill in `.env` yourself.
+
+Paste one prompt at a time. Review the result and commit before the next one.
+
+---
+
+## Phase 1 — Foundation
+
+Read AGENTS.md fully before writing code. Then build phase 1:
+
+1. Scaffold the npm-workspaces monorepo (`/web`, `/server`, `/shared`) with TypeScript, vitest,
+   lint, and a `.env.example`.
+2. Write SQL migrations for every table in AGENTS.md. Make `odds_snapshots` and `prices`
+   TimescaleDB hypertables. Add a script that runs the migrations against `DATABASE_URL`.
+3. Build the Kalshi poller: fetch all open events with nested markets (paginate with the cursor),
+   upsert `markets`, insert one `odds_snapshots` row per market with the midpoint. Run it every
+   5 minutes with node-cron and once on startup. Check field names against docs.kalshi.com.
+4. Build the price loader: 10 years of daily closes from yahoo-finance2 for the symbols in
+   `server/seed/demo_symbols.json` plus SPY and CL=F, and `DGS2` from FRED. Idempotent upserts.
+5. Add `npm run dev` that starts the server with the scheduler.
+
+Done when: rows land in `odds_snapshots` every 5 minutes and `prices` holds 10 years for each
+symbol. Show me 3 sample markets with their midpoints so I can compare them to kalshi.com.
+
+---
+
+## Phase 2 — Matching and exposure map
+
+Build phase 2 from AGENTS.md:
+
+1. Write every response type in `/shared/types.ts` first, starting with `ExposureResponse`.
+2. Gemini tagging job: tag each open series from `server/seed/tags.json` only, validate the JSON,
+   store with `reviewed = false`. Add a script that prints the tags for series linked to the demo
+   portfolio, so I can review them.
+3. Load `server/seed/sector_tags.json` and build `stock_tags` (use yahoo-finance2 for each
+   symbol's sector). Company tickers get a `direct` tag for their own company markets.
+4. `POST /holdings` and `GET /exposure`: link types Direct / Measured / Related, linked value,
+   share of portfolio, current odds, sorted as AGENTS.md says. Until phase 4 exists, treat every
+   non-direct link as Related.
+5. In `/web`: the Add holdings and Exposure map screens from `/design`, including the
+   "By holding" toggle. Read from the API; show `asOf`.
+
+Done when: entering 5 tickers shows real Kalshi events with correct link labels.
+
+---
+
+## Phase 3 — Calendar, event page, trust score
+
+Build phase 3 from AGENTS.md:
+
+1. Trust score in `server/src/config/trust.ts` with the starting weights and thresholds. Return
+   all parts. Unit-test the edges (1¢ spread, 10¢ spread, zero volume, missing track record).
+2. `GET /calendar?days=14` from market close times, each item with linked value, share and trust.
+3. `GET /event/:ticker`: outcome distribution for the event, 1-week odds history from
+   `odds_snapshots`, trust breakdown, linked holdings with link type and evidence text.
+4. "Why the odds moved" with Gemini + Google Search grounding; hide it when there are no sources;
+   run the number check.
+5. Calendar and Event screens from `/design`.
+
+---
+
+## Phase 4 — Track record and measured links
+
+Build phase 4 from AGENTS.md:
+
+1. Port `hedgehog_math.py` to `server/src/math/` with the functions listed in AGENTS.md. Port its
+   tests and add the required known-answer tests. All must pass before step 2.
+2. Backfill `settled_markets` for the categories our tags cover: odds 24 hours before close from
+   candlesticks, outcome from the settled result. Make it resumable.
+3. `GET /track-record`: per category count, average miss, Brier score, calibration buckets.
+4. Nightly measured-links job: for each holding and driver (oil, rates, S&P), regress returns with
+   the SPY control, run `checkSensitivity`, upsert `measured_links`. Exposure now marks a link
+   Measured only when it is reliable.
+5. Track record screen from `/design`.
+
+Done when: print one reliable and one unreliable link with their numbers so I can recompute
+them by hand.
+
+---
+
+## Phase 5 — Move explainer and earnings preview
+
+Build phase 5 from AGENTS.md:
+
+1. `GET /moves?date=`: per-holding dollar move, beta, from-market and beyond-market parts that
+   add up exactly to the total; linked markets that moved 3+ points in 24 hours. Test that the
+   parts sum to the total.
+2. Moves screen from `/design`.
+3. `GET /earnings/:symbol` and the Earnings screen, only for holdings that have Kalshi company
+   markets. Normalize bracket ladders and show the raw sum. If there's no free source for past
+   report dates, skip that card and tell me.
+
+---
+
+## Phase 6 — Voice briefing and deploy
+
+1. Briefing: template text from database numbers → optional Gemini smoothing → number check →
+   ElevenLabs → cached MP3 per day at `GET /briefing`. Add a play button to the Exposure map.
+2. Deploy: the web app and the server, with environment variables set on the hosts, not in code.
+   Write the steps you took into `DEPLOY.md`.
+
+---
+
+## Phase 7 — Accuracy pass
+
+Go through every screen and endpoint and check each item in the "accuracy" section of AGENTS.md.
+Add tests for anything not yet tested. Remove any "sample data" labels and placeholder numbers.
+List every number shown on screen and the table or API it comes from, in `NUMBERS.md`.
+
+---
+
+## Phase 8 — Submission
+
+Write `README.md`: what Hedgehog does, setup steps, data sources, the accuracy rules, and one
+paragraph each on how we use Tiger Data, Gemini and ElevenLabs. Then draft the submission text
+for the hackathon page. I'll edit both.

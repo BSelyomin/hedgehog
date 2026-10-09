@@ -1,0 +1,20 @@
+import { describe, it, expect } from 'vitest';
+import { midpoint, estimateSensitivity, checkSensitivity, beta, brier, calibration } from './index.ts';
+import { alignedChanges } from './series.ts';
+import { trustScore } from '../config/trust.ts';
+import { numbersSupported, validTags } from '../services/ai-guard.ts';
+import { matchHolding } from '../services/matching.ts';
+let state = 17;
+const random = () => { state = (1664525 * state + 1013904223) >>> 0; return state / 4294967296 - .5; };
+describe('accuracy', () => {
+    it('uses midpoint and rejects invalid quotes', () => { expect(midpoint(.37, .39).p).toBe(.38); expect(() => midpoint(.6, .5)).toThrow(); });
+    it('recovers a synthetic sensitivity with an intercept and SPY control', () => { state = 17; const x = Array.from({ length: 250 }, random), control = Array.from({ length: 250 }, random), y = x.map((v, i) => .03 - .1 * v + .7 * control[i] + random() * .005); const fit = estimateSensitivity(y, x, control); expect(Math.abs(fit.b + .1)).toBeLessThan(.02); expect(checkSensitivity(fit.b, fit.se, 250).reliable).toBe(true); });
+    it('does not classify orthogonal pure noise as reliable', () => { const x = Array.from({ length: 250 }, (_, i) => Math.sin(2 * Math.PI * i / 250)), y = x.map((_, i) => Math.cos(2 * Math.PI * i / 250)); const fit = estimateSensitivity(y, x); expect(checkSensitivity(fit.b, fit.se, 250).reliable).toBe(false); });
+    it('requires enough data and a range excluding zero', () => { expect(checkSensitivity(.2, .01, 59).reliable).toBe(false); expect(checkSensitivity(.0196, .01, 60).reliable).toBe(false); expect(checkSensitivity(-.1, .01, 60).reliable).toBe(true); expect(checkSensitivity(1, -1, 90).reliable).toBe(false); });
+    it('calculates known beta and Brier', () => { expect(beta([.02, .04, -.02, .08], [.01, .02, -.01, .04])).toBeCloseTo(2); expect(brier([.5, .5], [0, 1])).toBe(.25); });
+    it('includes 100% in the last bucket and weights misses by count', () => { const result = calibration([0, .5, .5, 1], [0, 1, 0, 1]); expect(result.avgMiss).toBe(0); expect(result.buckets[9].count).toBe(1); expect(() => brier([], [])).toThrow(); });
+    it('aligns endpoints before return calculation', () => { const a = [{ date: '1', close: 100 }, { date: '2', close: 105 }, { date: '3', close: 110 }], b = [{ date: '1', close: 10 }, { date: '3', close: 12 }]; expect(alignedChanges([a, b]).columns[0][0]).toBeCloseTo(.1); });
+    it('scores trust edges and rescales without track record', () => { expect(trustScore(1, 100000, 1000000, null, 0).total).toBe(100); expect(trustScore(10, 0, 0, null, 0).total).toBe(0); expect(trustScore(1, 0, 0, 2, 29).trackRecord).toBeNull(); expect(trustScore(1, 0, 0, 2, 30).trackRecord).toBe(25); expect(trustScore(1, null, 0, null, 0).total).toBeNull(); });
+    it('rejects unsupported AI numbers and unknown tags', () => { expect(numbersSupported('Odds are 38%', { odds: '38%' })).toBe(true); expect(numbersSupported('Up 16 points', { odds: '38%' })).toBe(false); expect(validTags(['oil', 'made-up'], ['oil'])).toEqual(['oil']); });
+    it('downgrades unreliable measurements without exposing numbers', () => { const link = matchHolding({ symbol: 'DAL', valueUsd: 100 }, ['oil'], ['oil'], [{ symbol: 'DAL', driver: 'CL=F', b: 0, se: 1, low: -1.96, high: 1.96, days: 250, reliable: false, computed_at: new Date() }]); expect(link?.type).toBe('Related'); expect(link?.sensitivity).toBeNull(); });
+});

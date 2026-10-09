@@ -1,0 +1,161 @@
+export type LinkType = 'Direct' | 'Measured' | 'Related';
+export interface Freshness {
+    asOf: string | null;
+}
+export interface Holding {
+    symbol: string;
+    valueUsd: number;
+}
+export interface HoldingsResponse extends Freshness {
+    holdings: Holding[];
+}
+export interface HoldingsRequest {
+    holdings: Holding[];
+}
+export interface Sensitivity {
+    b: number;
+    low: number;
+    high: number;
+    days: number;
+    driver: string;
+    computedAt: string;
+}
+export interface HoldingLink extends Holding {
+    type: LinkType;
+    evidence: string;
+    sensitivity: Sensitivity | null;
+}
+export interface Trust {
+    total: number | null;
+    band: 'High' | 'Medium' | 'Low' | null;
+    spread: number | null;
+    activity: number | null;
+    depth: number | null;
+    trackRecord: number | null;
+    categoryCount: number;
+    spreadCents: number | null;
+}
+export interface Market {
+    ticker: string;
+    title: string;
+    subtitle: string;
+    probability: number | null;
+    spread: number | null;
+    trust: Trust;
+    asOf: string | null;
+    kind: 'bracket' | 'kpi' | 'mention';
+}
+export interface ExposureEvent {
+    ticker: string;
+    title: string;
+    category: string;
+    closeTime: string;
+    linkedValue: number;
+    share: number;
+    links: HoldingLink[];
+    markets: Market[];
+    mutuallyExclusive: boolean;
+}
+export interface ExposureResponse extends Freshness {
+    holdings: Holding[];
+    totalValue: number;
+    byHolding: {
+        symbol: string;
+        events: {
+            ticker: string;
+            title: string;
+            type: LinkType;
+        }[];
+    }[];
+    events: ExposureEvent[];
+}
+export interface CalendarResponse extends Freshness {
+    days: number;
+    events: ExposureEvent[];
+}
+export interface OddsPoint {
+    ts: string;
+    ticker: string;
+    probability: number;
+}
+export interface Summary {
+    text: string;
+    sources: {
+        title: string;
+        url: string;
+    }[];
+}
+export interface EventResponse extends Freshness {
+    event: ExposureEvent;
+    history: OddsPoint[];
+    summary: Summary | null;
+}
+export interface CalibrationBucket {
+    low: number;
+    high: number;
+    count: number;
+    meanProb: number | null;
+    observedRate: number | null;
+}
+export interface CategoryRecord {
+    category: string;
+    count: number;
+    avgMiss: number;
+    brier: number;
+    buckets: CalibrationBucket[];
+    headline70: {
+        count: number;
+        observedRate: number;
+    } | null;
+}
+export interface TrackRecordResponse extends Freshness {
+    categories: CategoryRecord[];
+}
+export interface HoldingMove extends Holding {
+    actual: number | null;
+    beta: number | null;
+    fromMarket: number | null;
+    beyondMarket: number | null;
+    sourceDate: string | null;
+}
+export interface OddsMove {
+    ticker: string;
+    title: string;
+    changePoints: number;
+    links: HoldingLink[];
+}
+export interface MovesResponse extends Freshness {
+    date: string;
+    spyReturn: number | null;
+    holdings: HoldingMove[];
+    total: number | null;
+    fromMarket: number | null;
+    beyondMarket: number | null;
+    oddsMoves: OddsMove[];
+}
+export interface EarningsResponse extends Freshness {
+    symbol: string;
+    events: ExposureEvent[];
+    ladders: {
+        eventTicker: string;
+        rawSum: number;
+        outcomes: {
+            ticker: string;
+            title: string;
+            probability: number;
+        }[];
+    }[];
+    history: null;
+    historyNote: string;
+}
+export interface BriefingResponse extends Freshness {
+    date: string;
+    text: string | null;
+    audioUrl: string | null;
+}
+export interface ErrorResponse extends Freshness {
+    error: string;
+}
+export interface HealthResponse extends Freshness {
+    status: 'ok';
+}

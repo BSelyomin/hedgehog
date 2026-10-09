@@ -1,0 +1,14 @@
+Hedgehog clarification and verification log
+
+1. Confirm the demo portfolio and finalize server/seed/sector_tags.json. The sector table is human-owned: this build ships an empty table rather than inventing finance judgments. Proposed demo symbols come from the design only.
+2. Supply DATABASE_URL (or use the local Docker database), FRED_API_KEY, GEMINI_API_KEY, ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID privately in .env.
+3. Review Gemini series tags before they become portfolio links. Use the review-tags job, then the approve-tag job for each reviewed pair.
+4. The workspace's .git is not a valid writable Git repository. Phase commits cannot be created here without a functioning repository.
+5. Shell DNS for registry.npmjs.org fails with EAI_AGAIN. Dependency installation, full TypeScript checks, Vitest and Next builds require a networked environment. No runtime success is claimed until those checks run.
+6. Kalshi's current docs list https://external-api.kalshi.com/trade-api/v2; AGENTS.md asks us to confirm the older elections host. This implementation follows the current docs. Volume and open interest use documented *_fp fields.
+7. Past eight earnings report dates are not supplied. The report-history card is omitted pending a verified free historical source.
+8. Confirm hackathon coding eligibility, judging time, eligible track count and deployment/domain ownership. No accounts, domain purchase or public deployment have been performed.
+9. The PDF calls the moves parameter day, while AGENTS.md/message.txt use date. Both aliases are supported.
+10. Docker CLI reports that Docker Desktop WSL integration is not enabled. Enable it on the host before container validation.
+11. Automatic SEC 10-K discovery is not implemented. The cached risk-factors job accepts a manually downloaded filing risk-factor section and its source URL; confirm whether automatic acquisition is required.
+12. The initial Docker dependency stage uses npm install because no lockfile could be resolved offline. Generate and commit package-lock.json on a networked machine, then use npm ci and pin the database image digest for exact reproducibility.

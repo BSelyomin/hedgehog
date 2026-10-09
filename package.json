@@ -1,0 +1,26 @@
+{
+  "name": "hedgehog",
+  "private": true,
+  "workspaces": [
+    "web",
+    "server",
+    "shared"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build -w server && npm run build -w web",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "vitest run",
+    "migrate": "npm run migrate -w server",
+    "job": "npm run job -w server",
+    "check:core": "node --experimental-strip-types scripts/check-core.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "@types/node": "^22.18.0"
+  }
+}

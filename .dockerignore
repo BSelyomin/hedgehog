@@ -1,0 +1,16 @@
+.git
+.agents
+.aws
+.codex
+node_modules
+**/node_modules
+**/.next
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.cache
+coverage
+design
+*.pdf
+hedgehog_math.py
