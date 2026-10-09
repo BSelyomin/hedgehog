@@ -26,8 +26,8 @@ export async function runJob(name: string, job: () => Promise<void>) {
     }
 }
 export function scheduler() {
-    const tasks = [cron.schedule('*/5 * * * *', () => runJob('poll', poll)), cron.schedule('30 22 * * *', () => runJob('nightly', async () => { await prices(); await stockTags(); await tagSeries(); await measure(); await backfill(); await summaries(); await briefings(); }), { timezone: 'America/New_York' }), cron.schedule('0 8 * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), cron.schedule('0 * * * *', () => runJob('enrich', async () => { await stockTags(); await tagSeries(); await summaries(); await briefings(); }))];
+    const tasks = [cron.schedule('*/5 * * * *', () => runJob('poll', poll)), cron.schedule('30 22 * * *', () => runJob('nightly', async () => { await prices(); await stockTags(); await tagSeries(); await measure(); await backfill(); await summaries(); }), { timezone: 'America/New_York' }), cron.schedule('0 8 * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), cron.schedule('15 * * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), cron.schedule('0 * * * *', () => runJob('enrich', async () => { await stockTags(); await tagSeries(); await summaries(); }))];
     void runJob('poll', poll);
-    void runJob('bootstrap', async () => { await prices(); await stockTags(); await tagSeries(); await measure(); });
+    void runJob('bootstrap', async () => { await prices(); await measure(); await runJob('briefings', briefings); await stockTags(); await tagSeries(); });
     return tasks;
 }

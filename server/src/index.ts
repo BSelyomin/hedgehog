@@ -8,6 +8,7 @@ import { moves } from './services/moves.ts';
 import { earnings } from './services/earnings.ts';
 import { trackRecord } from './services/track-record.ts';
 import { scheduler } from './jobs/scheduler.ts';
+import { briefingDay } from './services/briefing-content.ts';
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '32kb' }));
@@ -45,7 +46,7 @@ app.get('/moves', async (req, res) => { const date = String(req.query.date ?? re
 } res.json(await moves(res.locals.session, date)); });
 app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase())); });
 app.get('/track-record', async (_req, res) => { res.json(await trackRecord()); });
-app.get('/briefing', async (_req, res) => { const date = new Date().toISOString().slice(0, 10); const rows = await query<{
+app.get('/briefing', async (_req, res) => { const date = briefingDay(); const rows = await query<{
     text: string;
     audio: Buffer | null;
     as_of: Date | null;
@@ -53,7 +54,7 @@ app.get('/briefing', async (_req, res) => { const date = new Date().toISOString(
 app.get('/briefing/audio', async (_req, res) => { const rows = await query<{
     audio: Buffer;
     as_of: Date;
-}>('SELECT audio,as_of FROM briefings WHERE session_id=$1 AND day=CURRENT_DATE AND audio IS NOT NULL', [res.locals.session]); if (!rows.length) {
+}>('SELECT audio,as_of FROM briefings WHERE session_id=$1 AND day=$2 AND audio IS NOT NULL', [res.locals.session, briefingDay()]); if (!rows.length) {
     res.status(404).json({ error: 'Briefing audio not ready', asOf: null });
     return;
 } res.set('Cache-Control', 'private, max-age=3600'); res.set('X-Data-As-Of', iso(rows[0].as_of)!); res.type('audio/mpeg').send(rows[0].audio); });

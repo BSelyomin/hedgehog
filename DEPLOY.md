@@ -105,3 +105,11 @@ docker compose exec -T database pg_dump -U hedgehog -Fc hedgehog > hedgehog.dump
 Restore into a compatible TimescaleDB installation using Timescale's documented pre/post restore procedures. Copying the repository alone does not copy price history, holdings or audio. Protect database dumps as user data. `docker compose down` keeps the volume; `down -v` deletes it.
 
 For public hosting, configure your chosen host, HTTPS reverse proxy and secret store. Set COOKIE_SECURE=true behind HTTPS. No domain registration, cloud resources, public publication or external account creation has occurred. Cloud provider details remain in questions.txt.
+
+## Morning briefing
+
+The briefing runs at 8 a.m. America/New_York, with independent hourly retries at :15 after that time and catch-up after startup price loading. Generation never runs before 8 a.m. A per-session/day database advisory lock prevents concurrent voice requests, and an existing daily MP3 is reused. Failures remain eligible for retry. The API and audio lookup use the same New York date, including across UTC midnight and daylight saving changes.
+
+The move uses the latest stored SPY trading date before today; it never treats an intraday candle as a completed session. Its date is spoken explicitly, and missing holding prices or beta estimates remain unavailable. The top three linked events closing this week are ordered by portfolio reach. If none close this week, the nearest upcoming events are included instead. Single-outcome bid–ask midpoint probabilities are spoken only with quotes at most 15 minutes old. Multi-outcome events keep their distributions on the event page. Historical odds changes are explicitly dated and do not imply causation.
+
+To generate after 8 a.m.: `docker compose exec backend npm run job -- briefings`. Open the overview to play audio or read the transcript. An existing MP3 for that date is retained after a code update; the new wording starts with the next uncached day. Docker and the host must remain running. No email delivery or notification is implemented.
