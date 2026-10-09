@@ -1,5 +1,28 @@
 # Validation and phase status
 
+## Base merge for morning briefing (2026-10-09)
+
+Merged origin/main at dee8f81 into feature/morning-briefing. Briefing routes now live in createApp alongside account middleware; authenticated and guest portfolio ownership and write protections are preserved. Session cleanup remains scheduled alongside independent morning briefing retries. All 116 tests, TypeScript checks and the production build pass, including briefing-specific account isolation and cross-site/stale-session write rejection.
+
+
+## Focused briefing and refresh (2026-10-09)
+
+The spoken script prioritizes the completed-session takeaway and one event. A session-scoped refresh endpoint and overview button regenerate the current day while retaining cached audio after failures. Audio browser caching is disabled. All 80 tests, TypeScript checks and the production build pass, including explicit refresh before the scheduled time and bypassing the daily cache.
+
+
+## Conversational briefing update (2026-10-09)
+
+The script now uses an opening takeaway, explanatory transitions, holding-specific watchlist context, spoken dates/times and directional dollar amounts. Existing tests verify the completed-session amounts, omission of stale quotes, missing data and numeric validation with the new wording. All 79 tests, TypeScript checks and the production build pass.
+
+## Morning briefing feature (2026-10-09)
+
+The morning briefing uses the latest stored SPY session before today's New York date, explicitly dates the move, selects this week's top linked events with a nearest-upcoming fallback, and omits stale single-outcome odds. Generation begins at 8 a.m. New York with independent hourly retries and startup catch-up. Per-session/day advisory locks prevent overlapping voice requests. Existing daily audio remains cached. Text and audio endpoints share the New York date.
+
+Validation: 79 Vitest tests pass, including six content/timezone tests and four job tests for prior-session selection, the morning cutoff, cached audio, concurrent generation and retry after a voice failure. Strict TypeScript checks and the Next.js production build pass in an isolated Node 24 container using the project's installed dependencies. No new dependencies or migrations are required.
+
+Snowflake tagging, expanded company/sector coverage, continuous hosting and historical earnings-report moves are outside this feature. Current briefings honestly report unavailable prices or market associations; this change does not certify those separate integrations.
+
+
 ## Current migration: Snowflake Cortex (2026-10-09)
 
 Gemini has been replaced with Snowflake Cortex REST completions for series tagging and supplied
