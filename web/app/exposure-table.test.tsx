@@ -13,9 +13,9 @@ const holdings = [{ symbol: 'DAL', valueUsd: 600 }, { symbol: 'AAPL', valueUsd: 
 it('searches by holding, event and outcome and combines link and holding filters', () => {
     expect(filterExposure(events, { ...defaultExposureFilters, search: 'aapl' }).map(e => e.title)).toEqual(['Apple']);
     expect(filterExposure(events, { ...defaultExposureFilters, search: 'oil', link: 'Measured' }).map(e => e.title)).toEqual(['Oil']);
-    expect(filterExposure(events, { ...defaultExposureFilters, search: 'below' })).toHaveLength(3);
+    expect(filterExposure(events, { ...defaultExposureFilters, search: 'below' })).toHaveLength(2);
     expect(filterExposure(events, { ...defaultExposureFilters, holding: 'AAPL', link: 'Measured' })).toEqual([]);
-    expect(filterExposure(events, { ...defaultExposureFilters, link: 'Related' }).map(e => e.title)).toEqual(['Jobs']);
+    expect(filterExposure(events, { ...defaultExposureFilters, search: 'Jobs' })).toEqual([]);
 });
 it('keeps only Direct or Measured events and holdings when filtering affected holdings', () => {
     const mixed = { ...events[0], links: [...events[0].links, events[2].links[0]] };
@@ -35,16 +35,17 @@ it('orders holdings separately per event and applies affected-only to each row',
     const mixed = { ...events[0], links: events.flatMap(event => event.links) };
     const portfolio = [...holdings, { symbol: 'MSFT', valueUsd: 10000 }];
     const symbols = (rows: ReturnType<typeof eventHoldings>) => rows.map(row => row.holding.symbol);
-    expect(symbols(eventHoldings(mixed, portfolio, 'All'))).toEqual(['AAPL', 'DAL', 'JPM', 'MSFT']);
+    expect(symbols(eventHoldings(mixed, portfolio, 'All'))).toEqual(['AAPL', 'DAL', 'MSFT']);
     expect(symbols(eventHoldings(events[0], portfolio, 'All'))).toEqual(['DAL', 'MSFT', 'AAPL', 'JPM']);
     expect(symbols(eventHoldings(mixed, portfolio, 'Affected'))).toEqual(['AAPL', 'DAL']);
     expect(symbols(eventHoldings(events[0], portfolio, 'Affected'))).toEqual(['DAL']);
-    expect(symbols(eventHoldings(mixed, portfolio, 'Related'))).toEqual(['JPM']);
+    expect(symbols(eventHoldings(mixed, portfolio, 'Measured'))).toEqual(['DAL']);
+    expect(eventHoldings(mixed, portfolio, 'All').some(row => row.link?.type === 'Related')).toBe(false);
     expect(portfolio.map(h => h.symbol)).toEqual(['DAL', 'AAPL', 'JPM', 'MSFT']);
 });
 it('sorts by full-portfolio reach without mutating or recalculating source data', () => {
     const sorted = filterExposure(events, { ...defaultExposureFilters, sort: 'reach-asc' });
-    expect(sorted.map(e => e.share)).toEqual([.1, .3, .6]);
+    expect(sorted.map(e => e.share)).toEqual([.3, .6]);
     expect(events.map(e => e.share)).toEqual([.6, .3, .1]);
     expect(filterExposure(events, { ...defaultExposureFilters, days: 14 }, Date.parse('2026-10-01'))).toEqual([]);
 });
@@ -55,13 +56,15 @@ it('renders event rows with ticker and value tiles instead of fixed holding colu
     expect(html).toContain('Outcome for Oil');
     expect(html).toContain('cell Measured');
     expect(html).toContain('cell Direct');
-    expect(html).toContain('cell Related');
+    expect(html).not.toContain('cell Related');
+    expect(html).not.toContain('Not measured');
+    expect(html).toContain('<option value="Measured">Related</option>');
     expect(html).toContain('60.0%');
     expect(html.match(/scope="col"/g)).toHaveLength(4);
     expect(html.split('<thead>')[1].split('</thead>')[0]).not.toContain('AAPL');
-    expect(html).toContain('aria-label="DAL: Oil, Measured, $600.00"');
+    expect(html).toContain('aria-label="DAL: Oil, Related, $600.00"');
     expect(html).toContain('aria-label="AAPL: Apple, Direct, $300.00"');
-    expect(html).toContain('aria-label="JPM: Jobs, Related, $100.00"');
+    expect(html).not.toContain('aria-label="JPM: Jobs, Related, $100.00"');
     expect(html).toContain('aria-label="JPM: no supported link, $100.00"');
     expect(html).toContain('<strong>DAL</strong><span class="holding-value">$600.00</span>');
     expect(html).toContain('<strong>AAPL</strong><span class="holding-value">$300.00</span>');
