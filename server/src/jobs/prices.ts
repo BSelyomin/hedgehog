@@ -1,6 +1,7 @@
 import YahooFinance from 'yahoo-finance2';
 import { query } from '../db.ts';
 import { seedFile } from '../seed.ts';
+import { storePrices } from './price-storage.ts';
 export const yahoo = new YahooFinance();
 export async function prices() {
     const symbols = new Set([...(await seedFile<string[]>('demo_symbols')), ...(await query<{
@@ -11,9 +12,10 @@ export async function prices() {
     for (const symbol of symbols) {
         try {
             const history = await yahoo.chart(symbol, { period1: start, interval: '1d' });
-            for (const row of history.quotes)
-                if (typeof row.close === 'number' && Number.isFinite(row.close))
-                    await query(`INSERT INTO prices(ts,symbol,close) VALUES($1,$2,$3) ON CONFLICT(ts,symbol) DO UPDATE SET close=excluded.close,loaded_at=now()`, [row.date.toISOString().slice(0, 10), symbol, row.close]);
+            const rows = history.quotes.flatMap(row => typeof row.close === 'number' && Number.isFinite(row.close)
+                ? [{ date: row.date.toISOString().slice(0, 10), close: row.close }] : []);
+            await storePrices(symbol, rows);
+            console.log('Price history loaded', symbol, rows.length);
         }
         catch {
             console.warn('Price load failed for symbol', symbol);
@@ -34,7 +36,6 @@ export async function prices() {
             value: string;
         }[];
     };
-    for (const row of data.observations)
-        if (row.value !== '.' && Number.isFinite(Number(row.value)))
-            await query(`INSERT INTO prices(ts,symbol,close) VALUES($1,'DGS2',$2) ON CONFLICT(ts,symbol) DO UPDATE SET close=excluded.close,loaded_at=now()`, [row.date, Number(row.value)]);
+    await storePrices('DGS2', data.observations.flatMap(row => row.value !== '.' && Number.isFinite(Number(row.value))
+        ? [{ date: row.date, close: Number(row.value) }] : []));
 }
