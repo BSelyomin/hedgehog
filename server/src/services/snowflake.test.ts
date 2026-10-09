@@ -107,7 +107,16 @@ describe('Snowflake Cortex', () => {
         ] }));
         expect(await searchSources('Oil event')).toEqual([{ id: 'source-0', title: 'Reporting', url: 'https://news.example/report', text: 'Oil prices moved.' }]);
         expect(request.mock.calls[0][0]).toBe('https://example-org.snowflakecomputing.com/api/v2/databases/REPORTING/schemas/PUBLIC/cortex-search-services/NEWS:query');
-        expect(JSON.parse(request.mock.calls[0][1]!.body as string)).toEqual({ query: 'Oil event', columns: ['TITLE', 'URL', 'TEXT'], limit: 5 });
+        const body = JSON.parse(request.mock.calls[0][1]!.body as string);
+        expect(body).toEqual({ query: 'Oil event', columns: ['TITLE', 'URL', 'TEXT'], limit: 5,
+            filter: { '@and': [
+                { '@gte': { PUBLISHED_AT: expect.any(String) } },
+                { '@lte': { PUBLISHED_AT: expect.any(String) } }
+            ] } });
+        const lower = Date.parse(body.filter['@and'][0]['@gte'].PUBLISHED_AT);
+        const upper = Date.parse(body.filter['@and'][1]['@lte'].PUBLISHED_AT);
+        expect(upper - lower).toBe(90 * 86400000);
+        expect(Math.abs(Date.now() - upper)).toBeLessThan(1000);
     });
 
     it('leaves grounding unavailable without a configured search service', async () => {

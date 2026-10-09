@@ -101,8 +101,13 @@ export async function searchSources(query: string): Promise<SourcePassage[]> {
         return [];
     const [database, schema, service] = ['SNOWFLAKE_SEARCH_DATABASE', 'SNOWFLAKE_SEARCH_SCHEMA', 'SNOWFLAKE_SEARCH_SERVICE']
         .map(name => encodeURIComponent(process.env[name]!.trim()));
+    const now = Date.now();
     const response = await post(`/api/v2/databases/${database}/schemas/${schema}/cortex-search-services/${service}:query`, {
-        query, columns: ['TITLE', 'URL', 'TEXT'], limit: 5
+        query, columns: ['TITLE', 'URL', 'TEXT'], limit: 5,
+        filter: { '@and': [
+            { '@gte': { PUBLISHED_AT: new Date(now - 90 * 86400000).toISOString().replace('Z', '+00:00') } },
+            { '@lte': { PUBLISHED_AT: new Date(now).toISOString().replace('Z', '+00:00') } }
+        ] }
     });
     if (!isObject(response) || !Array.isArray(response.results))
         throw new Error('Snowflake returned invalid search results');
