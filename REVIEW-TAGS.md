@@ -42,10 +42,17 @@ sp500. All other new topics are qualitative unless a separately validated measur
 
 ## Company coverage review — October 9, 2026
 
-Pending human approval. These 20 mappings were checked against active event titles in the
-local Kalshi catalog. They cover 20 companies in the large test portfolio, including the
-two companies already shown in Earnings. Each series below concerns the named company;
-general sports sponsorships, competitors and an executive's unrelated activities are excluded.
+The user explicitly approved these 20 mappings on October 9, 2026. All 20 were applied
+to the database in one transaction, preserving their Snowflake provenance. Live service
+verification found 20 companies with direct links and 41 total linked events for the
+25-holding test portfolio. NVIDIA's earnings-call event returned 19 outcome markets.
+Other unreviewed proposals remain pending, including the incorrect NASCAR/BAC and
+American Airlines or Alaska Air/DAL suggestions.
+
+These mappings were checked against active event titles in the local Kalshi catalog.
+They cover 20 companies, including the two previously shown in Earnings. Each series
+below concerns the named company; general sports sponsorships, competitors and an
+executive's unrelated activities are excluded.
 
 | Series | Observed subject | Company tag |
 | --- | --- | --- |
