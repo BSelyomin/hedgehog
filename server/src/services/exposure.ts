@@ -30,9 +30,13 @@ interface MarketRow {
 export async function exposure(session: string): Promise<ExposureResponse> {
     const { holdings } = await getHoldings(session);
     const totalValue = holdings.reduce((s, h) => s + h.valueUsd, 0);
+    if (!holdings.length) return { holdings, totalValue, events: [], byHolding: [], asOf: null };
+    const symbols = holdings.map(h => h.symbol);
+    const linkedSeries = `SELECT t.series_ticker FROM series_tags t WHERE t.reviewed=true AND
+        (t.tag=ANY($1) OR t.tag IN(SELECT tag FROM stock_tags WHERE symbol=ANY($1)))`;
     const [events, markets, seriesTags, stockTags, measurements, record] = await Promise.all([
-        query<EventRow>(`SELECT e.* FROM events e WHERE EXISTS(SELECT 1 FROM markets m WHERE m.event_ticker=e.ticker AND m.status='active' AND m.close_time>now())`),
-        query<MarketRow>(`SELECT m.*,s.ts,s.yes_bid,s.yes_ask,s.mid,s.volume_24h,s.open_interest FROM markets m LEFT JOIN LATERAL(SELECT * FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON true WHERE m.status='active' AND m.close_time>now()`),
+        query<EventRow>(`SELECT e.* FROM events e WHERE e.series_ticker IN(${linkedSeries}) AND EXISTS(SELECT 1 FROM markets m WHERE m.event_ticker=e.ticker AND m.status='active' AND m.close_time>now())`, [symbols]),
+        query<MarketRow>(`SELECT m.*,s.ts,s.yes_bid,s.yes_ask,s.mid,s.volume_24h,s.open_interest FROM markets m LEFT JOIN LATERAL(SELECT * FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON true WHERE m.series_ticker IN(${linkedSeries}) AND m.status='active' AND m.close_time>now()`, [symbols]),
         query<{
             series_ticker: string;
             tag: string;

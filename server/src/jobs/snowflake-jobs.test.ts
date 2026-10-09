@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 
 const mocks = vi.hoisted(() => ({
     query: vi.fn(), seedFile: vi.fn(), cortexJson: vi.fn(), searchSources: vi.fn(),
@@ -32,6 +33,27 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('Snowflake jobs', () => {
+    it('caches valid empty classifications and does not repeatedly pay to classify unchanged series', async () => {
+        const series = { series_ticker: 'SPORTS', title: 'Unrelated event', description: '' };
+        mocks.query.mockResolvedValueOnce([series]);
+        mocks.cortexJson.mockResolvedValue({ series: [{ series_ticker: 'SPORTS', tags: [] }] });
+        await tagSeries();
+        expect(mocks.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO series_tags'), expect.anything());
+        const hash = createHash('sha256').update(JSON.stringify([['oil', 'AAPL'], series.title, series.description])).digest('hex');
+        expect(mocks.query).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO job_state'), ['tag-series:SPORTS', hash]);
+        mocks.cortexJson.mockClear();
+        mocks.query.mockResolvedValueOnce([{ ...series, previous_hash: hash }]);
+        await tagSeries();
+        expect(mocks.cortexJson).not.toHaveBeenCalled();
+    });
+
+    it('does not mark a malformed classification as successfully processed', async () => {
+        mocks.query.mockResolvedValueOnce([{ series_ticker: 'OIL', title: 'Oil', description: '' }]);
+        mocks.cortexJson.mockResolvedValue({ series: [{ series_ticker: 'OIL', tags: 'oil' }] });
+        await tagSeries();
+        expect(mocks.query).toHaveBeenCalledTimes(1);
+    });
+
     it('does not contact the database or AI provider when disabled', async () => {
         mocks.configured.mockReturnValue(false);
         mocks.searchConfigured.mockReturnValue(false);
@@ -48,7 +70,7 @@ describe('Snowflake jobs', () => {
             { series_ticker: 'NOT-REQUESTED', tags: ['AAPL'] }, null, 5
         ] });
         await tagSeries();
-        expect(mocks.query).toHaveBeenCalledTimes(2);
+        expect(mocks.query).toHaveBeenCalledTimes(3);
         expect(mocks.query.mock.calls[1]).toEqual([
             expect.stringContaining("'snowflake',false"), ['OIL', 'oil']
         ]);
@@ -60,7 +82,7 @@ describe('Snowflake jobs', () => {
             .mockResolvedValueOnce({ series: [{ series_ticker: 'S20', tags: ['oil'] }] });
         await tagSeries();
         expect(mocks.cortexJson).toHaveBeenCalledTimes(2);
-        expect(mocks.query).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO series_tags'), ['S20', 'oil']);
+        expect(mocks.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO series_tags'), ['S20', 'oil']);
     });
 
     it('filters filing tags and caches successfully processed filings', async () => {
