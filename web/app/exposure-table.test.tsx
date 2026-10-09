@@ -30,13 +30,14 @@ it('keeps only Direct or Measured events and holdings when filtering affected ho
     expect(filterExposureHoldings(holdings, apple, filters).map(h => h.symbol)).toEqual(['AAPL']);
     expect(filtered[0].share).toBe(mixed.share);
     expect(mixed.links).toHaveLength(2);
+    expect(filterExposureHoldings(holdings, filtered, defaultExposureFilters).map(h => h.symbol)).toEqual(['DAL', 'AAPL']);
 });
 it('orders holdings separately per event and applies affected-only to each row', () => {
     const mixed = { ...events[0], links: events.flatMap(event => event.links) };
     const portfolio = [...holdings, { symbol: 'MSFT', valueUsd: 10000 }];
     const symbols = (rows: ReturnType<typeof eventHoldings>) => rows.map(row => row.holding.symbol);
-    expect(symbols(eventHoldings(mixed, portfolio, 'All'))).toEqual(['AAPL', 'DAL', 'MSFT']);
-    expect(symbols(eventHoldings(events[0], portfolio, 'All'))).toEqual(['DAL', 'MSFT', 'AAPL', 'JPM']);
+    expect(symbols(eventHoldings(mixed, portfolio, 'All'))).toEqual(['AAPL', 'DAL']);
+    expect(symbols(eventHoldings(events[0], portfolio, 'All'))).toEqual(['DAL']);
     expect(symbols(eventHoldings(mixed, portfolio, 'Affected'))).toEqual(['AAPL', 'DAL']);
     expect(symbols(eventHoldings(events[0], portfolio, 'Affected'))).toEqual(['DAL']);
     expect(symbols(eventHoldings(mixed, portfolio, 'Measured'))).toEqual(['DAL']);
@@ -65,7 +66,10 @@ it('renders event rows with ticker and value tiles instead of fixed holding colu
     expect(html).toContain('aria-label="DAL: Oil, Related, $600.00"');
     expect(html).toContain('aria-label="AAPL: Apple, Direct, $300.00"');
     expect(html).not.toContain('aria-label="JPM: Jobs, Related, $100.00"');
-    expect(html).toContain('aria-label="JPM: no supported link, $100.00"');
+    expect(html).not.toContain('no supported link');
+    expect(html).not.toContain('cell blank');
+    expect(html).not.toContain('holding-expander');
+    expect(html).toContain('scroll horizontally for more');
     expect(html).toContain('<strong>DAL</strong><span class="holding-value">$600.00</span>');
     expect(html).toContain('<strong>AAPL</strong><span class="holding-value">$300.00</span>');
 });

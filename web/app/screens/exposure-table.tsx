@@ -40,33 +40,27 @@ export function filterExposure(events: ExposureEvent[], filters: ExposureFilters
 
 export function filterExposureHoldings(holdings: Holding[], events: ExposureEvent[], filters: ExposureFilters) {
     return holdings.filter(holding => (!filters.holding || holding.symbol === filters.holding)
-        && (filters.link === 'All' || events.some(event => event.links.some(link => link.symbol === holding.symbol && matchesLink(link, filters.link)))));
+        && events.some(event => event.links.some(link => link.symbol === holding.symbol && matchesLink(link, filters.link))));
 }
 
 export function eventHoldings(event: ExposureEvent, holdings: Holding[], filter: ExposureFilters['link']) {
     const rank = { Direct: 0, Measured: 1, Related: 2 };
-    return holdings.map(holding => ({ holding, link: event.links.find(link => link.symbol === holding.symbol) }))
-        .filter(({ link }) => link ? matchesLink(link, filter) : filter === 'All')
-        .sort((a, b) => (a.link ? rank[a.link.type] : 3) - (b.link ? rank[b.link.type] : 3)
+    return holdings.flatMap(holding => {
+        const link = event.links.find(link => link.symbol === holding.symbol);
+        return link && matchesLink(link, filter) ? [{ holding, link }] : [];
+    }).sort((a, b) => rank[a.link.type] - rank[b.link.type]
             || b.holding.valueUsd - a.holding.valueUsd || a.holding.symbol.localeCompare(b.holding.symbol));
 }
 
 function HoldingTiles({ event, holdings, linkFilter }: { event: ExposureEvent; holdings: Holding[]; linkFilter: ExposureFilters['link'] }) {
-    const [expanded, setExpanded] = useState(false);
     const ordered = eventHoldings(event, holdings, linkFilter);
-    const visible = expanded ? ordered : ordered.slice(0, 6);
-    return <>
-        <ul className="holding-tiles" aria-label={`Holdings for ${event.title}, strongest links first`}>
-            {visible.map(({ holding, link }) => <li key={holding.symbol}>
-                {link ? <a href={href('event', event.ticker)} className={`cell ${link.type}`} title={`${linkLabel(link.type)}: ${link.evidence}`} aria-label={`${holding.symbol}: ${event.title}, ${linkLabel(link.type)}, ${money(holding.valueUsd)}`}>
+    return <ul className="holding-tiles" tabIndex={0} aria-label={`Holdings for ${event.title}, strongest links first; scroll horizontally for more`}>
+            {ordered.map(({ holding, link }) => <li key={holding.symbol}>
+                <a href={href('event', event.ticker)} className={`cell ${link.type}`} title={`${linkLabel(link.type)}: ${link.evidence}`} aria-label={`${holding.symbol}: ${event.title}, ${linkLabel(link.type)}, ${money(holding.valueUsd)}`}>
                     <strong>{holding.symbol}</strong><span className="holding-value">{money(holding.valueUsd)}</span>
-                </a> : <span className="cell blank" title="No supported link" aria-label={`${holding.symbol}: no supported link, ${money(holding.valueUsd)}`}>
-                    <strong>{holding.symbol}</strong><span className="holding-value">{money(holding.valueUsd)}</span>
-                </span>}
+                </a>
             </li>)}
-        </ul>
-        {ordered.length > 6 && <button className="holding-expander" aria-expanded={expanded} aria-label={`${expanded ? 'Show fewer' : `Show all ${ordered.length}`} holdings for ${event.title}`} onClick={() => setExpanded(previous => !previous)}>{expanded ? 'Show fewer holdings' : `Show all ${ordered.length} holdings`}</button>}
-    </>;
+        </ul>;
 }
 
 function ExposureRow({ event, holdings, linkFilter }: { event: ExposureEvent; holdings: Holding[]; linkFilter: ExposureFilters['link'] }) {
@@ -101,7 +95,7 @@ export function ExposureTable({ data }: { data: ExposureResponse }) {
             <button onClick={() => setFilters(defaultExposureFilters)}>Reset filters</button>
         </div>
         <p className="note" role="status">Showing {events.length} of {data.events.length} linked events and {holdings.length} of {data.holdings.length} holdings. {filters.link === 'Affected' ? 'Affected only shows Direct or Related holdings within each event.' : 'Related links are backed by historical measurements. Direct holdings come first.'} Portfolio share always uses your full portfolio.</p>
-        {events.length ? view === 'holding' ? <ByHolding events={events} holdings={holdings} linkFilter={filters.link}/> : <div className="scroll exposure-scroll" tabIndex={0} role="region" aria-label="Exposure table"><table className="exposure-table"><caption className="sr-only">Events with portfolio reach, selected outcome odds and holdings ordered by connection</caption><thead><tr><th scope="col" className="event-column">Event</th><th scope="col">Share of portfolio</th><th scope="col">Outcome</th><th scope="col">Holdings · strongest links first</th></tr></thead><tbody>{events.map(event => <ExposureRow key={event.ticker} event={event} holdings={holdings} linkFilter={filters.link}/>)}</tbody></table></div> : <Empty>{data.events.length ? 'No events match these filters. Try another search or reset filters.' : 'No reviewed market links available. Holdings need supported company tags, measured driver links or a reviewed sector mapping.'}</Empty>}
+        {events.length ? view === 'holding' ? <ByHolding events={events} holdings={holdings} linkFilter={filters.link}/> : <div className="scroll exposure-scroll" tabIndex={0} role="region" aria-label="Exposure table"><table className="exposure-table"><caption className="sr-only">Events with portfolio reach, selected outcome odds and holdings ordered by connection</caption><thead><tr><th scope="col" className="event-column">Event</th><th scope="col" className="reach-column">Share of portfolio</th><th scope="col" className="outcome-column">Outcome</th><th scope="col" className="holdings-column">Holdings · strongest links first</th></tr></thead><tbody>{events.map(event => <ExposureRow key={event.ticker} event={event} holdings={holdings} linkFilter={filters.link}/>)}</tbody></table></div> : <Empty>{data.events.length ? 'No events match these filters. Try another search or reset filters.' : 'No reviewed market links available. Holdings need supported company tags, measured driver links or a reviewed sector mapping.'}</Empty>}
     </>;
 }
 

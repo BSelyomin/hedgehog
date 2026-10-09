@@ -1,9 +1,55 @@
 'use client';
 import { ExposureTable } from './exposure-table';
-import type { ReactNode, FormEvent } from 'react';
-import type { Holding, HoldingsResponse, ExposureResponse, ExposureEvent, Market, CalendarResponse, EventResponse, MovesResponse, EarningsResponse, TrackRecordResponse, BriefingResponse, CategoryRecord, OddsPoint } from '../../../shared/types';
-import { money, percent, number, dateText, href, api, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, EventList } from '../common';
+import type { ExposureResponse, CalendarResponse, BriefingResponse } from '../../../shared/types';
+import { money, percent, dateText, href, useData, Card, Fresh, Status } from '../common';
 
-export function Overview() { const { data, error } = useData<ExposureResponse>('/exposure'); return <><div className="row"><div><h1>Your exposure map</h1><p>Your holdings and the events linked to them</p></div><a href="#holdings">Edit holdings →</a></div><Status error={error} loading={!data && !error}/>{data && <><Fresh asOf={data.asOf}/><div className="stats"><Card><span className="muted">Portfolio value · entered by you</span><strong className="number">{money(data.totalValue)}</strong><span className="muted">{data.holdings.length} holdings</span></Card><Card><span className="muted">Widest-reaching event</span><h3>{data.events[0]?.title ?? 'No links yet'}</h3><p>{data.events[0] ? `${percent(data.events[0].share)} of your value linked` : 'Add holdings and review market tags.'}</p></Card><Card><span className="muted">Linked events (all future dates)</span><strong className="number">{data.events.length}</strong><p className="note">Calendar defaults to the next 14 days.</p><a href="#calendar">Open calendar →</a></Card><Card><span className="muted">Daily price changes</span><h3>Understand your move</h3><a href="#moves">Open move explainer →</a></Card></div><Card className="exposure-map"><div className="row"><div><h2>Which events touch which holdings</h2><p className="note">Each holding tile shows its ticker and portfolio value; the strongest links come first in each event. Red = Direct; blue = Related, backed by historical measurements; transparent = no supported link. Color describes the link, not the direction of a price move.</p></div><div className="toolbar">{(['Direct', 'Measured'] as const).map(type => <span key={type} className={`chip ${type}`}>{type === 'Measured' ? 'Related' : type}</span>)}</div></div><ExposureTable data={data}/><p className="note">Share and linked-holding counts use all source links, including those hidden by the display filters. They show portfolio reach, not how much holdings would move.</p></Card><Briefing /></>}</>; }
+export function Overview() {
+    const { data, error } = useData<ExposureResponse>('/exposure');
+    const widest = data?.events[0];
+    return <>
+        <div className="row"><div><h1>Your exposure map</h1><p>Your holdings and the events linked to them</p></div><a href="#holdings">Edit holdings →</a></div>
+        <Status error={error} loading={!data && !error}/>
+        {data && <>
+            <Fresh asOf={data.asOf}/>
+            <div className="stats overview-stats">
+                <Card><span className="muted">Portfolio value · entered by you</span><strong className="number">{money(data.totalValue)}</strong><span className="muted">{data.holdings.length} holdings</span></Card>
+                <Card className="widest-event"><span className="muted">Widest-reaching event</span><h3>{widest?.title ?? 'No links yet'}</h3>
+                    <p>{widest ? `${percent(widest.share)} of your value linked` : 'Add holdings and review market tags.'}</p>
+                    {widest && <p className="note">Ends <time dateTime={widest.closeTime}>{dateText(widest.closeTime, true)}</time> · Kalshi market close</p>}
+                </Card>
+                <EndingSoon/>
+                <Card><span className="muted">Linked events (all future dates)</span><strong className="number">{data.events.length}</strong><p className="note">Calendar defaults to the next 14 days.</p><a href="#calendar">Open calendar →</a></Card>
+                <Card><span className="muted">Daily price changes</span><h3>Understand your move</h3><a href="#moves">Open move explainer →</a></Card>
+            </div>
+            <Card className="exposure-map">
+                <div className="row"><div><h2>Which events touch which holdings</h2><p className="note">Only connected holdings appear, strongest links first. Scroll each row horizontally for more. Red = Direct; blue = Related, backed by historical measurements. Color describes the link, not the direction of a price move.</p></div>
+                    <div className="toolbar">{(['Direct', 'Measured'] as const).map(type => <span key={type} className={`chip ${type}`}>{type === 'Measured' ? 'Related' : type}</span>)}</div>
+                </div>
+                <ExposureTable data={data}/>
+                <p className="note">Share and linked-holding counts use all source links, including those hidden by the display filters. They show portfolio reach, not how much holdings would move.</p>
+            </Card>
+            <Briefing/>
+        </>}
+    </>;
+}
 
-export function Briefing() { const { data, error } = useData<BriefingResponse>('/briefing'); return <Card><h2>Your daily briefing</h2>{data?.audioUrl ? <audio controls preload="none" src={data.audioUrl}/> : <p className="note">Audio is not ready yet. The daily briefing appears when source data and the voice service are available.</p>}{data?.text && <details><summary>Read briefing</summary><p>{data.text}</p></details>}{error && <p className="note">Briefing unavailable.</p>}<Fresh asOf={data?.asOf ?? null}/></Card>; }
+function EndingSoon() {
+    const { data, error } = useData<CalendarResponse>('/calendar?days=14');
+    const next = data?.events[0];
+    return <Card className="ending-soon"><span className="muted">Events ending soon</span>
+        {error ? <p className="note">Upcoming events unavailable.</p> : !data ? <p className="note" role="status">Loading upcoming events…</p> : <>
+            <strong className="number">{data.events.length}</strong><p className="note">In the next 14 days</p>
+            {next ? <><a href={href('event', next.ticker)}>{next.title}</a><p className="note">Next close: <time dateTime={next.closeTime}>{dateText(next.closeTime, true)}</time></p></> : <p className="note">No linked events close in this window.</p>}
+        </>}
+        <a href="#calendar">View upcoming events →</a>
+    </Card>;
+}
+
+export function Briefing() {
+    const { data, error } = useData<BriefingResponse>('/briefing');
+    return <Card><h2>Your daily briefing</h2>
+        {data?.audioUrl ? <audio controls preload="none" src={data.audioUrl}/> : <p className="note">Audio is not ready yet. The daily briefing appears when source data and the voice service are available.</p>}
+        {data?.text && <details><summary>Read briefing</summary><p>{data.text}</p></details>}
+        {error && <p className="note">Briefing unavailable.</p>}<Fresh asOf={data?.asOf ?? null}/>
+    </Card>;
+}
