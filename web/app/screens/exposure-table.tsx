@@ -37,10 +37,36 @@ export function filterExposure(events: ExposureEvent[], filters: ExposureFilters
 
 export function filterExposureHoldings(holdings: Holding[], events: ExposureEvent[], filters: ExposureFilters) {
     return holdings.filter(holding => (!filters.holding || holding.symbol === filters.holding)
-        && (filters.link !== 'Affected' || events.some(event => event.links.some(link => link.symbol === holding.symbol && matchesLink(link, 'Affected')))));
+        && (filters.link === 'All' || events.some(event => event.links.some(link => link.symbol === holding.symbol && matchesLink(link, filters.link)))));
 }
 
-function ExposureRow({ event, holdings }: { event: ExposureEvent; holdings: Holding[] }) {
+export function eventHoldings(event: ExposureEvent, holdings: Holding[], filter: ExposureFilters['link']) {
+    const rank = { Direct: 0, Measured: 1, Related: 2 };
+    return holdings.map(holding => ({ holding, link: event.links.find(link => link.symbol === holding.symbol) }))
+        .filter(({ link }) => filter === 'All' || (link && matchesLink(link, filter)))
+        .sort((a, b) => (a.link ? rank[a.link.type] : 3) - (b.link ? rank[b.link.type] : 3)
+            || b.holding.valueUsd - a.holding.valueUsd || a.holding.symbol.localeCompare(b.holding.symbol));
+}
+
+function HoldingTiles({ event, holdings, linkFilter }: { event: ExposureEvent; holdings: Holding[]; linkFilter: ExposureFilters['link'] }) {
+    const [expanded, setExpanded] = useState(false);
+    const ordered = eventHoldings(event, holdings, linkFilter);
+    const visible = expanded ? ordered : ordered.slice(0, 6);
+    return <>
+        <ul className="holding-tiles" aria-label={`Holdings for ${event.title}, strongest links first`}>
+            {visible.map(({ holding, link }) => <li key={holding.symbol}>
+                {link ? <a href={href('event', event.ticker)} className={`cell ${link.type}`} title={`${link.type}: ${link.evidence}`} aria-label={`${holding.symbol}: ${event.title}, ${link.type}, ${money(holding.valueUsd)}`}>
+                    <strong>{holding.symbol}</strong><span className="holding-value">{money(holding.valueUsd)}</span>
+                </a> : <span className="cell blank" title="No supported link" aria-label={`${holding.symbol}: no supported link, ${money(holding.valueUsd)}`}>
+                    <strong>{holding.symbol}</strong><span className="holding-value">{money(holding.valueUsd)}</span>
+                </span>}
+            </li>)}
+        </ul>
+        {ordered.length > 6 && <button className="holding-expander" aria-expanded={expanded} aria-label={`${expanded ? 'Show fewer' : `Show all ${ordered.length}`} holdings for ${event.title}`} onClick={() => setExpanded(previous => !previous)}>{expanded ? 'Show fewer holdings' : `Show all ${ordered.length} holdings`}</button>}
+    </>;
+}
+
+function ExposureRow({ event, holdings, linkFilter }: { event: ExposureEvent; holdings: Holding[]; linkFilter: ExposureFilters['link'] }) {
     const [outcome, setOutcome] = useState('');
     const market = event.markets.find(m => m.ticker === outcome) ?? event.markets[0];
     return <tr>
@@ -50,10 +76,7 @@ function ExposureRow({ event, holdings }: { event: ExposureEvent; holdings: Hold
             {event.markets.length > 1 ? <label>Outcome<select aria-label={`Outcome for ${event.title}`} value={market?.ticker ?? ''} onChange={e => setOutcome(e.target.value)}>{event.markets.map(m => <option key={m.ticker} value={m.ticker}>{m.subtitle || m.title}</option>)}</select></label> : <p>{market?.subtitle || market?.title || 'No outcome available'}</p>}
             {market && <><p className="mono">{percent(market.probability)} yes</p><TrustBadge market={market}/><p className="note">Bid–ask midpoint{market.trust.trackRecord === null ? ' · No track record yet' : ''}</p></>}
         </td>
-        {holdings.map(h => {
-            const link = event.links.find(l => l.symbol === h.symbol);
-            return <td key={h.symbol} className="link-column">{link ? <a href={href('event', event.ticker)} className={`cell ${link.type}`} title={`${link.type}: ${link.evidence}`} aria-label={`${h.symbol}: ${event.title}, ${link.type}`}>{h.symbol}</a> : <span className="cell blank" title="No supported link" aria-label={`${h.symbol}: no supported link`}>{h.symbol}</span>}</td>;
-        })}
+        <td className="holdings-column"><HoldingTiles event={event} holdings={holdings} linkFilter={linkFilter}/></td>
     </tr>;
 }
 
@@ -74,8 +97,8 @@ export function ExposureTable({ data }: { data: ExposureResponse }) {
             <label className="sort-control">Sort events<select aria-label="Sort events" value={filters.sort} onChange={e => update('sort', e.target.value as ExposureFilters['sort'])}><option value="reach-desc">Most portfolio reach</option><option value="reach-asc">Least portfolio reach</option><option value="date">Soonest close</option><option value="holdings">Most linked holdings</option><option value="name">Event name: A–Z</option></select></label>
             <button onClick={() => setFilters(defaultExposureFilters)}>Reset filters</button>
         </div>
-        <p className="note" role="status">Showing {events.length} of {data.events.length} linked events and {holdings.length} of {data.holdings.length} holdings. {filters.link === 'Affected' ? 'Affected only keeps events and holdings with Direct or Measured links; transparent cells can remain where a particular pair has neither.' : 'Link filters match at least one visible holding.'} Portfolio share always uses your full portfolio.</p>
-        {events.length ? view === 'holding' ? <ByHolding events={events} holdings={holdings} linkFilter={filters.link}/> : <div className="scroll exposure-scroll" tabIndex={0} role="region" aria-label="Exposure table; scroll horizontally for more holdings"><table className="exposure-table"><caption className="sr-only">Events by holding, with portfolio reach and selected outcome odds</caption><thead><tr><th scope="col" className="event-column">Event</th><th scope="col">Share of portfolio</th><th scope="col">Outcome</th>{holdings.map(h => <th scope="col" key={h.symbol}><strong>{h.symbol}</strong><p className="mono">{money(h.valueUsd)}</p></th>)}</tr></thead><tbody>{events.map(event => <ExposureRow key={event.ticker} event={event} holdings={holdings}/>)}</tbody></table></div> : <Empty>{data.events.length ? 'No events match these filters. Try another search or reset filters.' : 'No reviewed market links available. Holdings need supported company tags, measured driver links or a reviewed sector mapping.'}</Empty>}
+        <p className="note" role="status">Showing {events.length} of {data.events.length} linked events and {holdings.length} of {data.holdings.length} holdings. {filters.link === 'Affected' ? 'Affected only shows Direct or Measured holdings within each event.' : 'Holdings are ordered Direct, Measured, Related, then no supported link within each event.'} Portfolio share always uses your full portfolio.</p>
+        {events.length ? view === 'holding' ? <ByHolding events={events} holdings={holdings} linkFilter={filters.link}/> : <div className="scroll exposure-scroll" tabIndex={0} role="region" aria-label="Exposure table"><table className="exposure-table"><caption className="sr-only">Events with portfolio reach, selected outcome odds and holdings ordered by connection</caption><thead><tr><th scope="col" className="event-column">Event</th><th scope="col">Share of portfolio</th><th scope="col">Outcome</th><th scope="col">Holdings · strongest links first</th></tr></thead><tbody>{events.map(event => <ExposureRow key={event.ticker} event={event} holdings={holdings} linkFilter={filters.link}/>)}</tbody></table></div> : <Empty>{data.events.length ? 'No events match these filters. Try another search or reset filters.' : 'No reviewed market links available. Holdings need supported company tags, measured driver links or a reviewed sector mapping.'}</Empty>}
     </>;
 }
 
