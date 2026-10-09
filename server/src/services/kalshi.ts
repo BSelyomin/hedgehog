@@ -32,6 +32,12 @@ export interface Candle {
         close_dollars: string | null;
     };
 }
+// The archive uses dollar strings named `close`, unlike live `close_dollars`.
+export interface HistoricalCandle {
+    end_period_ts: number;
+    yes_bid: { close: string | null };
+    yes_ask: { close: string | null };
+}
 export const numberField = (value: unknown): number | null => { if ((typeof value !== 'string' && typeof value !== 'number') || (typeof value === 'string' && value.trim() === ''))
     return null; const n = Number(value); return Number.isFinite(n) ? n : null; };
 export async function kalshi<T>(path: string, params: Record<string, string> = {}): Promise<T> {

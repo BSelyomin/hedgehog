@@ -2,6 +2,32 @@ export type LinkType = 'Direct' | 'Measured' | 'Related';
 export interface Freshness {
     asOf: string | null;
 }
+export interface AccountUser {
+    id: string;
+    email: string;
+    name: string;
+    createdAt: string;
+}
+export interface SessionResponse extends Freshness {
+    user: AccountUser | null;
+    /** Non-secret identifier used to reject writes from an outdated browser tab. */
+    sessionKey: string;
+    expiresAt: string | null;
+}
+export interface SignUpRequest {
+    name: string;
+    email: string;
+    password: string;
+    saveGuestHoldings: boolean;
+}
+export interface SignInRequest {
+    email: string;
+    password: string;
+}
+export interface ChangePasswordRequest {
+    currentPassword: string;
+    newPassword: string;
+}
 export interface Holding {
     symbol: string;
     valueUsd: number;
