@@ -8,7 +8,7 @@ export const percent = (n: number | null) => n === null ? 'Unavailable' : `${(n 
 
 export const number = (n: number | null, digits = 1) => n === null ? 'Unavailable' : n.toFixed(digits);
 
-export const dateText = (s: string) => new Date(s).toLocaleString(undefined, { month: 'short', day: 'numeric', weekday: 'short', hour: 'numeric', minute: '2-digit' });
+export const dateText = (s: string, showYear = false) => new Date(s).toLocaleString(undefined, { year: showYear ? 'numeric' : undefined, month: 'short', day: 'numeric', weekday: 'short', hour: 'numeric', minute: '2-digit' });
 
 export const href = (screen: string, id?: string) => `#${screen}${id ? `/${encodeURIComponent(id)}` : ''}`;
 
@@ -58,6 +58,7 @@ export function Progress({ value }: {
     value: number;
 }) { return <div className="bar"><span style={{ width: `${Math.min(1, Math.max(0, value)) * 100}%` }}/></div>; }
 
-export function EventList({ events }: {
+export function EventList({ events, showYear = false }: {
     events: ExposureEvent[];
-}) { return <>{events.map(e => <div className="event-row" key={e.ticker}><div className="row"><div><span className="chip Related">{e.links.some(l => l.type === 'Direct') ? 'Company' : e.category}</span><p className="note">{dateText(e.closeTime)} · Kalshi close time</p><a className="event-title" href={href('event', e.ticker)}>{e.title}</a><p>{e.links.map(l => l.symbol).join(' · ')}</p></div><div><strong className="mono">{money(e.linkedValue)}</strong><p className="note">{percent(e.share)} of portfolio</p><a href={href('event', e.ticker)}>View event →</a></div></div>{e.markets.length === 1 && <><span className="mono">{percent(e.markets[0].probability)} yes · bid–ask midpoint</span> <TrustBadge market={e.markets[0]}/></>}</div>)}</>; }
+    showYear?: boolean;
+}) { return <>{events.map(e => <div className="event-row" key={e.ticker}><div className="row"><div><span className="chip Related">{e.links.some(l => l.type === 'Direct') ? 'Company' : e.category}</span><p className="note">{dateText(e.closeTime, showYear)} · Kalshi close time</p><a className="event-title" href={href('event', e.ticker)}>{e.title}</a><p>{e.links.map(l => l.symbol).join(' · ')}</p></div><div><strong className="mono">{money(e.linkedValue)}</strong><p className="note">{percent(e.share)} of portfolio</p><a href={href('event', e.ticker)}>View event →</a></div></div>{e.markets.length === 1 && <><span className="mono">{percent(e.markets[0].probability)} yes · bid–ask midpoint</span> <TrustBadge market={e.markets[0]}/></>}</div>)}</>; }

@@ -8,3 +8,8 @@
 @media(max-width:950px){.account-layout{grid-template-columns:1fr;gap:20px}.account-nav{width:100%}}
 .exposure-controls{display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin:24px 0}.exposure-controls label{min-width:160px;flex:1}.exposure-controls .search-control{min-width:240px;flex:2}.exposure-controls select,.outcome-column select{display:block;width:100%;margin-top:8px;max-width:100%}.exposure-table{border-spacing:0;min-width:100%;width:max-content}.exposure-table th,.exposure-table td{border-bottom:1px solid var(--border);padding:18px 14px}.exposure-table .event-column{position:sticky;left:0;z-index:1;background:var(--card);min-width:240px;max-width:320px;width:280px;text-align:left;color:var(--text)}.exposure-table thead .event-column{z-index:2}.exposure-table .event-title{font-size:17px}.exposure-table .reach-column{min-width:170px}.exposure-table .outcome-column{min-width:240px;max-width:300px;width:260px}.exposure-table .link-column{min-width:150px;vertical-align:middle}.exposure-table .cell{min-width:120px}.exposure-table .Related{background:#1b2028}.exposure-table p{margin:10px 0}.exposure-scroll{max-height:720px}.move-search{max-width:380px;margin-bottom:16px}@media(max-width:600px){.exposure-table .event-column{position:static;min-width:210px;width:210px}.exposure-controls label,.exposure-controls .search-control{min-width:100%}}
 .exposure-controls .sort-control{min-width:210px}
+.exposure-map .Direct{background:#f87171;color:#210b0b}
+.exposure-map .Measured{background:#facc15;color:#211b03}
+.exposure-map .Related,.exposure-map .blank{background:transparent}
+.exposure-map .blank{color:var(--muted)}
+.exposure-map .cell{font-family:'IBM Plex Mono',monospace;font-weight:500}
