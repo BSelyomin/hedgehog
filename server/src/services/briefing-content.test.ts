@@ -25,7 +25,7 @@ describe('morning briefing', () => {
     });
     it('includes events beyond seven days, earliest first, and omits closed events', () => {
         const text = buildBriefing(portfolio([event('Later','2026-12-01T00:00:00Z'),event('Sooner','2026-11-01T00:00:00Z'),event('Closed','2026-10-01T00:00:00Z')]),null,now);
-        expect(text.indexOf('Sooner')).toBeLessThan(text.indexOf('Later')); expect(text).not.toContain('Closed');expect(text).toContain('yes at 70 percent');
+        expect(text).toContain('Sooner'); expect(text).not.toContain('Later'); expect(text).not.toContain('Closed');expect(text).toContain('yes at 70 percent');
     });
     it('omits stale or future quotes and never combines multiple outcomes into one probability', () => {
         const stale=event('Stale','2026-11-01T00:00:00Z','2026-10-11T12:00:00Z');
@@ -35,6 +35,6 @@ describe('morning briefing', () => {
     });
     it('gives an honest briefing when prices and events are missing', () => {
         const text=buildBriefing(portfolio([],null),null,now);
-        expect(text).toContain('not available yet');expect(text).toContain('no reviewed upcoming events');expect(text).toContain('stale or unavailable');
+        expect(text).toContain('waiting for a complete view');expect(text).toContain('watchlist is still incomplete');expect(text).toContain('current odds are unavailable');
     });
 });

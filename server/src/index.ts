@@ -8,6 +8,8 @@ import { moves } from './services/moves.ts';
 import { earnings } from './services/earnings.ts';
 import { trackRecord } from './services/track-record.ts';
 import { scheduler } from './jobs/scheduler.ts';
+import { briefing } from './jobs/briefing.ts';
+import type { BriefingResponse } from '../../shared/types.ts';
 import { briefingDay } from './services/briefing-content.ts';
 const app = express();
 app.disable('x-powered-by');
@@ -46,18 +48,27 @@ app.get('/moves', async (req, res) => { const date = String(req.query.date ?? re
 } res.json(await moves(res.locals.session, date)); });
 app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase())); });
 app.get('/track-record', async (_req, res) => { res.json(await trackRecord()); });
-app.get('/briefing', async (_req, res) => { const date = briefingDay(); const rows = await query<{
-    text: string;
-    audio: Buffer | null;
-    as_of: Date | null;
-}>('SELECT * FROM briefings WHERE session_id=$1 AND day=$2', [res.locals.session, date]); const row = rows[0]; res.json({ date, text: row?.text ?? null, audioUrl: row?.audio ? '/api/briefing/audio' : null, asOf: iso(row?.as_of) }); });
+async function readBriefing(session: string): Promise<BriefingResponse> {
+    const date = briefingDay();
+    const rows = await query<{text: string; audio: Buffer | null; as_of: Date | null}>(
+        'SELECT * FROM briefings WHERE session_id=$1 AND day=$2', [session, date]);
+    const row = rows[0];
+    return {date, text: row?.text ?? null, audioUrl: row?.audio ? '/api/briefing/audio' : null, asOf: iso(row?.as_of)};
+}
+app.get('/briefing', async (_req, res) => { res.json(await readBriefing(res.locals.session)); });
+app.post('/briefing/refresh', async (req, res) => {
+    if (!req.is('application/json')) { res.status(415).json({error: 'Use application/json', asOf: null}); return; }
+    try { await briefing(res.locals.session, true); }
+    catch { res.status(503).json({error: 'Could not refresh briefing. Your saved briefing is still available; try again shortly.', asOf: null}); return; }
+    res.json(await readBriefing(res.locals.session));
+});
 app.get('/briefing/audio', async (_req, res) => { const rows = await query<{
     audio: Buffer;
     as_of: Date;
 }>('SELECT audio,as_of FROM briefings WHERE session_id=$1 AND day=$2 AND audio IS NOT NULL', [res.locals.session, briefingDay()]); if (!rows.length) {
     res.status(404).json({ error: 'Briefing audio not ready', asOf: null });
     return;
-} res.set('Cache-Control', 'private, max-age=3600'); res.set('X-Data-As-Of', iso(rows[0].as_of)!); res.type('audio/mpeg').send(rows[0].audio); });
+} res.set('Cache-Control', 'private, no-store'); res.set('X-Data-As-Of', iso(rows[0].as_of)!); res.type('audio/mpeg').send(rows[0].audio); });
 app.use((_req, res) => { res.status(404).json({ error: 'Endpoint not found', asOf: null }); });
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => { const bad = error instanceof SyntaxError; res.status(bad ? 400 : 503).json({ error: bad ? 'Invalid JSON' : 'Data unavailable; check backend configuration', asOf: null }); });
 try {

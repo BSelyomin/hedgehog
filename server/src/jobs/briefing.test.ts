@@ -36,3 +36,10 @@ it('releases the lock after a voice failure and leaves the cache eligible for re
     expect(mocks.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO briefings'))).toBe(false);
     expect(mocks.clientQuery).toHaveBeenCalledWith(expect.stringContaining('pg_advisory_unlock'),expect.any(Array));expect(mocks.release).toHaveBeenCalled();
 });
+
+it('refresh bypasses cached audio and the morning cutoff without deleting saved audio first', async () => {
+    vi.setSystemTime(new Date('2026-10-12T11:00:00Z'));
+    mocks.query.mockImplementation(async (sql: string) => sql.includes('SELECT audio') ? [{audio:Buffer.from('old'),text:'old'}] : sql.includes('max(ts)') ? [{date:'2026-10-09'}] : []);
+    await briefing('session',true);expect(mocks.convert).toHaveBeenCalled();
+    expect(mocks.query.mock.calls.some(([sql]) => sql.includes('DELETE'))).toBe(false);
+});

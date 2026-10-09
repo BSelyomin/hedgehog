@@ -3,17 +3,17 @@ import { query, pool } from '../db.ts';
 import { exposure } from '../services/exposure.ts';
 import { moves } from '../services/moves.ts';
 import { briefingDay, buildBriefing, morningReady } from '../services/briefing-content.ts';
-export async function briefing(session: string) {
+export async function briefing(session: string, refresh = false) {
     const now = new Date();
-    if (!morningReady(now)) return;
+    if (!refresh && !morningReady(now)) return;
     const date = briefingDay(now);
     const client = await pool.connect();
     const lock = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) locked', [`briefing:${session}:${date}`])).rows[0].locked;
-    if (!lock) { client.release(); return; }
+    if (!lock) { client.release(); if (refresh) throw new Error('Briefing already generating'); return; }
     try {
         const cached = await query<{ audio: Buffer | null; text: string }>(
             'SELECT audio,text FROM briefings WHERE session_id=$1 AND day=$2', [session, date]);
-        if (cached[0]?.audio) return;
+        if (cached[0]?.audio && !refresh) return;
         const portfolio = await exposure(session);
         if (!portfolio.holdings.length) return;
         // Yahoo daily candles can include the current, still-open session. Only use
