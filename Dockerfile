@@ -1,10 +1,10 @@
 FROM node:24-bookworm-slim AS dependencies
 WORKDIR /app
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY web/package.json web/package.json
 COPY server/package.json server/package.json
 COPY shared/package.json shared/package.json
-RUN npm install
+RUN npm ci
 
 FROM dependencies AS server
 COPY tsconfig.json ./

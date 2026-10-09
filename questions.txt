@@ -1,5 +1,11 @@
 Hedgehog clarification and verification log
 
+Current update (2026-10-09): Docker and Git are working locally. Snowflake Cortex replaces Gemini;
+see DEPLOY.md for SNOWFLAKE_ACCOUNT_URL, SNOWFLAKE_PAT, SNOWFLAKE_CORTEX_MODEL and optional
+Cortex Search settings. Tiger Data uses DATABASE_URL, not a management API key. Snowflake live
+validation still needs credentials; Kalshi currently resets connections. The entries below are
+the original build log and retain historical blockers and provider choices for context.
+
 1. Confirm the demo portfolio and finalize server/seed/sector_tags.json. The sector table is human-owned: this build ships an empty table rather than inventing finance judgments. Proposed demo symbols come from the design only.
 2. Supply DATABASE_URL (or use the local Docker database), FRED_API_KEY, GEMINI_API_KEY, ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID privately in .env.
 3. Review Gemini series tags before they become portfolio links. Use the review-tags job, then the approve-tag job for each reviewed pair.

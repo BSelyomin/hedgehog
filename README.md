@@ -13,7 +13,7 @@ docker compose up --build -d
 
 Open http://localhost:3000, enter tickers and dollar values, and map your exposure. Docker starts a private local TimescaleDB database when DATABASE_URL is empty. For Tiger Data, set DATABASE_URL to your service connection string. See [DEPLOY.md](DEPLOY.md) for tag approval, data loading, validation, portability and deployment.
 
-For local development, use Node 24, `npm install`, configure DATABASE_URL, then `npm run dev`. The server applies migrations on startup; `npm run migrate` also applies them explicitly. `npm run check:core` runs dependency-free core accuracy checks. `npm test` runs Vitest known-answer and accuracy tests. `npm run lint` runs strict TypeScript checks; `npm run build` checks the backend and builds Next.js.
+For local development, use Node 24 and `npm ci`, then configure DATABASE_URL. Start `npm run dev -w server` and `npm run dev -w web` in separate terminals (the combined launcher is not Windows-compatible). The server applies migrations on startup; `npm run migrate` also applies them explicitly on Linux. `npm run check:core` runs dependency-free core accuracy checks. `npm test` runs Vitest known-answer and accuracy tests. `npm run lint` runs strict TypeScript checks; `npm run build` checks the backend and builds Next.js.
 
 ## Data and accuracy
 
@@ -29,12 +29,14 @@ Move components reconcile mathematically, with unavailable values when aligned c
 
 **Tiger Data:** Postgres via pg stores markets, holdings, tags and measured links; TimescaleDB hypertables store five-minute odds and daily prices. Screens read our database through the backend. Docker's local TimescaleDB provides the same schema for transfer and development.
 
-**Gemini:** Google's official JavaScript SDK assigns only fixed-list tags, caches a supplied 10-K risk-factor section once per ticker, and writes Google Search-grounded event context in a scheduled job. Market series tags remain unreviewed until a person approves them. Every visible summary must have safe source links and all numeric tokens supported by its input. Unsupported text is hidden. The `risk-factors` job accepts a symbol, local filing-text path and HTTPS filing URL; automatic SEC filing discovery is not implemented.
+**Snowflake Cortex AI:** REST calls assign only fixed-list tags and analyze a supplied 10-K risk-factor section once per ticker. Configure `SNOWFLAKE_ACCOUNT_URL`, `SNOWFLAKE_PAT` and `SNOWFLAKE_CORTEX_MODEL`; no additional SDK is needed. New series tags have `source = 'snowflake'` and remain unreviewed until a person approves them. The migration preserves historical Gemini/manual provenance and approvals. The `risk-factors` job accepts a symbol, local filing-text path and HTTPS filing URL; automatic SEC filing discovery is not implemented.
 
-**ElevenLabs:** The official SDK converts a database-backed template briefing into MP3, cached per anonymous portfolio session and UTC date. Playback appears on the overview when audio is available. Pages only read the cache; scheduled jobs create it. Templates go through the same number guard. Optional Gemini wording smoothing is omitted to preserve exact template facts.
+**Event context:** Optional Cortex Search retrieves reporting from your own index with `TITLE`, `URL` and `TEXT` columns. This replaces Google Search grounding; automatic open-web search is not implemented. Summaries cite only retrieved HTTPS sources and may use only numbers in the supplied market data. Missing configuration, sources or supported numbers means no new summary. See [DEPLOY.md](DEPLOY.md) for setup. Application storage remains in Tiger Data/PostgreSQL, independently of Snowflake.
+
+**ElevenLabs:** The official SDK converts a database-backed template briefing into MP3, cached per anonymous portfolio session and UTC date. Playback appears on the overview when audio is available. Pages only read the cache; scheduled jobs create it. Templates go through the same number guard. Optional AI wording smoothing is omitted to preserve exact template facts.
 
 ## Status
 
-All context files and seven design exports were checked before code creation. Code and documentation address all eight planned phases, but their live-data finish lines and production readiness are **not certified**. npm DNS and missing Docker integration prevent full installation, Vitest, lint/build and container execution here. No API credentials or populated database are present, so sample markets and regression links cannot be printed honestly. The supplied `.git` directory is not a functioning repository; phase commits could not be made. See [questions.txt](questions.txt) and [VALIDATION.md](VALIDATION.md) for the remaining work.
+Docker setup and Yahoo price loading have been verified locally. Kalshi connections currently reset from both the Windows host and Docker, so market data remains unavailable in this environment. Snowflake needs user-supplied credentials and an optional reporting index before live AI validation. Human sector mappings and series-tag approval are still required. See [VALIDATION.md](VALIDATION.md) for current checks and the historical phase log; production readiness is not certified.
 
 [NUMBERS.md](NUMBERS.md) maps displayed numbers to sources. [SUBMISSION.md](SUBMISSION.md) is a draft for human review; it avoids unverified completion claims.

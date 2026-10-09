@@ -15,8 +15,8 @@ and the UI says which. When the data can't support a number, show no number.
   `measured_links`, computed from historical data.
 - A link that fails `checkSensitivity` is shown as **Related** with no number.
 - Probabilities are the bid–ask midpoint, never the last trade.
-- AI-written text (Gemini) never introduces a number that isn't in the data passed to it. Code
-  checks this (see "Gemini").
+- AI-written text (Snowflake Cortex) never introduces a number that isn't in the data passed to it.
+  Code checks this (see "Snowflake Cortex").
 - An AI summary without source links is hidden, not shown.
 - If you are unsure what an external API returns, read its docs or call it and inspect the
   response. Do not guess field names.
@@ -38,7 +38,7 @@ npm workspaces monorepo, Node 20+, TypeScript everywhere.
 | Stock and oil prices | `yahoo-finance2` (daily closes) |
 | 2-year Treasury yield | FRED API, series `DGS2` |
 | Regression | `ml-matrix` (least squares) |
-| AI | Gemini API, Google's official JavaScript SDK |
+| AI | Snowflake Cortex REST APIs via Node's built-in fetch |
 | Voice | ElevenLabs API, official JavaScript SDK |
 | Tests | `vitest` |
 
@@ -48,7 +48,12 @@ Ask before adding any dependency not in this table.
 
 ```
 DATABASE_URL=
-GEMINI_API_KEY=
+SNOWFLAKE_ACCOUNT_URL=
+SNOWFLAKE_PAT=
+SNOWFLAKE_CORTEX_MODEL=
+SNOWFLAKE_SEARCH_DATABASE=
+SNOWFLAKE_SEARCH_SCHEMA=
+SNOWFLAKE_SEARCH_SERVICE=
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
 FRED_API_KEY=
@@ -81,7 +86,7 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result | poller |
 | `odds_snapshots` | ts, ticker, yes_bid, yes_ask, mid, volume_24h, open_interest | poller, every 5 min |
 | `prices` | ts (date), symbol, close | price loader, daily |
-| `series_tags` | series_ticker, tag, source ('gemini' or 'manual'), reviewed boolean | tagging job |
+| `series_tags` | series_ticker, tag, source ('snowflake', legacy 'gemini', or 'manual'), reviewed boolean | tagging job |
 | `stock_tags` | symbol, tag, link_type ('direct', 'measured', 'related') | sector table + 10-K job |
 | `measured_links` | symbol, driver, b, se, low, high, days, reliable, computed_at | nightly job |
 | `settled_markets` | ticker, category, prob_24h_before, outcome (0/1), close_time | backfill |
@@ -164,21 +169,25 @@ in a note), other KPI markets with their trust score, mention markets, and the s
 each of the last 8 reports (close before → close after). If you can't find a free source for past
 report dates, skip that card and say so in the PR.
 
-## Gemini
+## Snowflake Cortex
 
 - **Tagging:** batch the open series, send title + description, ask for JSON with tags from the
   fixed list only. Validate the response; drop unknown tags. Store with `reviewed = false`. A
   human reviews tags for series that touch the demo portfolio.
 - **10-K risk factors:** per ticker, once, cached; map to the fixed tags only.
-- **"Why the odds moved":** use Google Search grounding so the answer carries source URLs. If there
-  are none, hide the summary.
-- **Number check:** before showing or speaking any Gemini text, extract every number in it and
+- **"Why the odds moved":** retrieve reporting from an optional Cortex Search index exposing
+  `TITLE`, `URL`, and `TEXT`. Only cite retrieved source IDs; never accept model-invented URLs.
+  If the index or valid sources are absent, generate no summary. This does not search the open web.
+- **Number check:** before showing or speaking any AI text, extract every number in it and
   confirm each appears in the input data. Fail closed: fall back to the plain template text.
+- **Provenance:** new AI tags use `source = 'snowflake'`; keep legacy Gemini rows and review states.
+- **Storage:** application data stays in Tiger Data/PostgreSQL; Snowflake handles AI and optional
+  source retrieval. PAT credentials stay server-side. No new SDK dependency is needed.
 
 ## Voice briefing (ElevenLabs)
 
 Build the briefing text from a template filled with database numbers (top events this week by
-share, today's move split, biggest odds move). Gemini may only smooth the wording, then the
+share, today's move split, biggest odds move). AI may only smooth the wording, then the
 number check runs. Send to ElevenLabs, cache one MP3 per day, serve at `GET /briefing`.
 
 ## API

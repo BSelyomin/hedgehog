@@ -1,5 +1,31 @@
 # Validation and phase status
 
+## Current migration: Snowflake Cortex (2026-10-09)
+
+Gemini has been replaced with Snowflake Cortex REST completions for series tagging and supplied
+filing risk factors. Optional Cortex Search supplies source passages for summaries. No Snowflake
+account credentials have been supplied, so live AI authentication, model availability and index
+queries remain unverified. Tiger Data/PostgreSQL remains the application database.
+
+The 45-test Vitest suite passes, including provider request/response contracts, configuration,
+sanitized failures, malformed output, fixed tags, batch isolation, filing caching, retrieved
+citations and the existing numeric guard. Tests use mocked Snowflake responses, not live calls.
+The rebuilt images pass backend/frontend TypeScript checks, the core accuracy checks and the
+Next.js production build. Migration `002_snowflake_tags.sql` applied successfully; a rolled-back
+temporary-table check verified that legacy Gemini/manual tags retain their review flags and new
+Snowflake tags are accepted. The rebuilt frontend and proxied database health endpoint return HTTP
+200. The private `.env` stays ignored by Git. Docker now installs the committed lockfile with `npm ci`.
+
+Yahoo history loading worked locally before this change. Kalshi connections reset from both Windows
+and Docker. `npm ci` reports five dependency vulnerabilities in the current lockfile; this migration
+does not upgrade unrelated dependencies or certify production security.
+
+The original phase log below describes the earlier offline build environment. Its npm, Docker
+and Git blockers are historical, not the current local setup. References to Gemini describe
+the superseded provider; `DEPLOY.md` contains current credentials and integration instructions.
+
+## Original phase log
+
 Checked before creating app files: AGENTS.md, message.txt, hedgehog_math.py, the eleven-page Hack Knight build-plan PDF, and all seven design PNGs. Read the full text and inspected every design. Original inputs are preserved.
 
 ## Checks that passed
