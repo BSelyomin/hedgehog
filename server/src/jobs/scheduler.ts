@@ -32,6 +32,6 @@ export function scheduler() {
         await query('DELETE FROM auth_rate_limits WHERE resets_at<=now()');
     })));
     void runJob('poll', poll);
-    void runJob('bootstrap', async () => { await prices(); await stockTags(); await tagSeries(); await measure(); });
+    void runJob('bootstrap', async () => { await prices(); await stockTags(); await measure(); await tagSeries(); });
     return tasks;
 }

@@ -105,3 +105,42 @@ docker compose exec -T database pg_dump -U hedgehog -Fc hedgehog > hedgehog.dump
 Restore into a compatible TimescaleDB installation using Timescale's documented pre/post restore procedures. Copying the repository alone does not copy price history, holdings or audio. Protect database dumps as user data. `docker compose down` keeps the volume; `down -v` deletes it.
 
 For public hosting, configure your chosen host, HTTPS reverse proxy and secret store. Set COOKIE_SECURE=true behind HTTPS. No domain registration, cloud resources, public publication or external account creation has occurred. Cloud provider details remain in questions.txt.
+# Coverage and portfolio review
+
+Overview includes linked events at all future dates. Calendar includes only those closing in
+the next 14 days, using Kalshi close times. Company tabs in Earnings require reviewed direct
+links; they are not a list of every stock in the portfolio or a complete earnings calendar.
+
+The fixed company catalog includes all 25 tickers in `examples/fake-portfolio-large.csv`.
+Other symbols can be imported and measured when Yahoo has sufficient history, but company
+tags must be explicitly added to `server/seed/tags.json` and seeded before classification.
+No finite catalog or AI tagging pass guarantees a relevant Kalshi market for every holding.
+
+Market polling writes validated pages in batches so long-dated events do not prevent later
+pages of near-term events from loading. `tag-series` classifies the loaded open series in
+bounded batches, including empty classifications. Successful results are cached by input
+and tag-list hash in `job_state`; changed inputs or an expanded catalog are classified again.
+New AI tags always remain unreviewed, and existing approvals are preserved.
+
+`measure` derives stock driver tags only from regressions that pass the reliability check.
+It removes its own tags when measurements fail and preserves independent sector/filing tags.
+This supplies Measured links without inventing a human-authored sector mapping. Market series
+still require review. DGS2 measurements describe historical Treasury yield associations;
+they do not estimate the effect of a particular event outcome.
+
+For newly saved holdings, refresh their data and review proposed tags from the repository root:
+
+```powershell
+docker compose exec backend npm run job -- prices
+docker compose exec backend npm run job -- stock-tags
+docker compose exec backend npm run job -- measure
+docker compose exec backend npm run job -- tag-series
+docker compose exec backend npm run job -- review-tags
+```
+
+`review-tags` covers all saved symbols, including their macro tags. See `REVIEW-TAGS.md` for
+the six macro series approved during setup. Run `approve-tag SERIES_TICKER TAG` only after
+reviewing the specific proposed pair, then run `backfill` to build category track records.
+Backfill reads both live and archived markets, normalizes their distinct candlestick fields,
+and accepts only bid/ask observations at the 24-hour cutoff (within one minute before it).
+Unavailable or unsupported history is omitted rather than replaced with last-trade prices.
