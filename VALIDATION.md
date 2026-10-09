@@ -1,5 +1,9 @@
 # Validation and phase status
 
+## Conversational briefing update (2026-10-09)
+
+The script now uses an opening takeaway, explanatory transitions, holding-specific watchlist context, spoken dates/times and directional dollar amounts. Existing tests verify the completed-session amounts, omission of stale quotes, missing data and numeric validation with the new wording. All 79 tests, TypeScript checks and the production build pass.
+
 ## Morning briefing feature (2026-10-09)
 
 The morning briefing uses the latest stored SPY session before today's New York date, explicitly dates the move, selects this week's top linked events with a nearest-upcoming fallback, and omits stale single-outcome odds. Generation begins at 8 a.m. New York with independent hourly retries and startup catch-up. Per-session/day advisory locks prevent overlapping voice requests. Existing daily audio remains cached. Text and audio endpoints share the New York date.

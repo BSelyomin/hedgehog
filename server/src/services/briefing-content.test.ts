@@ -21,20 +21,20 @@ describe('morning briefing', () => {
     });
     it('reports the supplied completed session and reconciled move components', () => {
         const text = buildBriefing(portfolio([]), {date:'2026-10-09',total:-12.5,fromMarket:-10,beyondMarket:-2.5,oddsMoves:[],spyReturn:0,holdings:[],asOf:now.toISOString()} as MovesResponse, now);
-        expect(text).toContain('2026-10-09'); expect(text).toContain('-12.50'); expect(text).toContain('-2.50');
+        expect(text).toContain('October 9, 2026'); expect(text).toContain('down 12.50 dollars'); expect(text).toContain('down 2.50 dollars');
     });
     it('includes events beyond seven days, earliest first, and omits closed events', () => {
         const text = buildBriefing(portfolio([event('Later','2026-12-01T00:00:00Z'),event('Sooner','2026-11-01T00:00:00Z'),event('Closed','2026-10-01T00:00:00Z')]),null,now);
-        expect(text.indexOf('Sooner')).toBeLessThan(text.indexOf('Later')); expect(text).not.toContain('Closed');expect(text).toContain('70 percent yes');
+        expect(text.indexOf('Sooner')).toBeLessThan(text.indexOf('Later')); expect(text).not.toContain('Closed');expect(text).toContain('yes at 70 percent');
     });
     it('omits stale or future quotes and never combines multiple outcomes into one probability', () => {
         const stale=event('Stale','2026-11-01T00:00:00Z','2026-10-11T12:00:00Z');
         const future=event('Future','2026-11-02T00:00:00Z','2026-10-12T13:00:00Z');
         const multiple=event('Multiple','2026-11-03T00:00:00Z'); multiple.markets.push({...multiple.markets[0]});
-        expect(buildBriefing(portfolio([stale,future,multiple],'2026-10-11T12:00:00Z'),null,now)).not.toContain('70 percent yes');
+        expect(buildBriefing(portfolio([stale,future,multiple],'2026-10-11T12:00:00Z'),null,now)).not.toContain('yes at 70 percent');
     });
     it('gives an honest briefing when prices and events are missing', () => {
         const text=buildBriefing(portfolio([],null),null,now);
-        expect(text).toContain('not available yet');expect(text).toContain('No reviewed upcoming events');expect(text).toContain('stale or unavailable');
+        expect(text).toContain('not available yet');expect(text).toContain('no reviewed upcoming events');expect(text).toContain('stale or unavailable');
     });
 });
