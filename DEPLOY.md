@@ -156,3 +156,9 @@ reviewing the specific proposed pair, then run `backfill` to build category trac
 Backfill reads both live and archived markets, normalizes their distinct candlestick fields,
 and accepts only bid/ask observations at the 24-hour cutoff (within one minute before it).
 Unavailable or unsupported history is omitted rather than replaced with last-trade prices.
+
+## Track-record evidence and portfolio CSV
+
+Track record reads verified settled Kalshi observations, not holdings CSV rows. It shows category sample sizes, close-date coverage, calibration groups, trust eligibility and up to twelve recent market observations with the exact stored quote/close times. Portfolio relevance uses reviewed series tags shared with the current guest or account holdings. This filter selects whole categories; it does not restrict the historical sample to individual stocks. The overview's global category trust calculations are unchanged.
+
+`examples/fake-portfolio-large.csv` supplies 25 allowed demo tickers at $10,000 each ($250,000 total). Import it to exercise broader portfolio matching. It replaces the current holdings when saved and contains invented portfolio allocations only; it does not populate historical market outcomes. Reviewed tags and verified historical bid–ask quotes are still required.

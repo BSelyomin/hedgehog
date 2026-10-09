@@ -1,5 +1,12 @@
 # Validation and phase status
 
+## Track-record evidence feature (2026-10-09)
+
+The page now explains forecasting history separately from portfolio returns, exposes category sample sizes and date ranges, renders calibration-group counts and recent settled observations, and filters categories using session-scoped reviewed portfolio tags. Added known-answer aggregation and rendering tests cover absent history, portfolio relevance, a two-market Brier score of 0.29, the 30-market eligibility threshold, twelve-example limits and evidence timestamps. The expanded CSV reuses the repository’s 25-symbol demo allocation.
+
+Live database initially contains no settled observations. A backfill of the three approved company series returned no usable exact 24-hour quotes for the settled ExxonMobil sample. No synthetic history was inserted.
+
+
 ## Base merge for morning briefing (2026-10-09)
 
 Merged origin/main at dee8f81 into feature/morning-briefing. Briefing routes now live in createApp alongside account middleware; authenticated and guest portfolio ownership and write protections are preserved. Session cleanup remains scheduled alongside independent morning briefing retries. All 116 tests, TypeScript checks and the production build pass, including briefing-specific account isolation and cross-site/stale-session write rejection.

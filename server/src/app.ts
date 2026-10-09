@@ -47,7 +47,7 @@ app.get('/moves', async (req, res) => { const date = String(req.query.date ?? re
     return;
 } res.json(await moves(res.locals.session, date)); });
 app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase())); });
-app.get('/track-record', async (_req, res) => { res.json(await trackRecord()); });
+app.get('/track-record', async (_req, res) => { res.json(await trackRecord(res.locals.session)); });
 async function readBriefing(session: string): Promise<BriefingResponse> {
     const date = briefingDay();
     const rows = await query<{text: string; audio: Buffer | null; as_of: Date | null}>(

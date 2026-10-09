@@ -123,12 +123,25 @@ export interface CalibrationBucket {
     meanProb: number | null;
     observedRate: number | null;
 }
+export interface SettledExample {
+    ticker: string;
+    title: string;
+    probability: number;
+    outcome: number;
+    closeTime: string;
+    oddsTime: string;
+}
 export interface CategoryRecord {
     category: string;
     count: number;
     avgMiss: number;
     brier: number;
     buckets: CalibrationBucket[];
+    firstClose: string | null;
+    lastClose: string | null;
+    eligibleForTrust: boolean;
+    relevantHoldings: string[];
+    examples: SettledExample[];
     headline70: {
         count: number;
         observedRate: number;
@@ -136,6 +149,10 @@ export interface CategoryRecord {
 }
 export interface TrackRecordResponse extends Freshness {
     categories: CategoryRecord[];
+    totalMarkets: number;
+    reviewedSeries: number;
+    relevantCategories: {category: string; holdings: string[]}[];
+    minSettled: number;
 }
 export interface HoldingMove extends Holding {
     actual: number | null;
