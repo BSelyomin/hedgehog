@@ -1,5 +1,18 @@
 Hedgehog clarification and verification log
 
+Account update (2026-10-09): Email/password accounts, persistent sessions, optional guest
+portfolio transfer, password changes and session revocation are implemented. See ACCOUNTS.md
+for setup, manual tests and validation limits. No auth-provider or email-service dependency
+was added. Future clarification: which email provider and public application URL should be
+used for verified-email and forgotten-password flows? Those flows, social login, MFA, profile
+editing and account deletion are not implemented. Account sessions currently last 30 days.
+The current workspace cannot access Docker or bind local HTTP listeners; npm network access
+fails with EAI_AGAIN. Cached production packages allowed the web build and isolated account
+checks, but missing Vitest packages block the full test/lint commands. These notes supersede
+earlier environment statements below where they differ.
+The account-phase commit was attempted, but .git is mounted read-only (index.lock creation
+failed). Changes remain in the working tree and need to be committed in a writable checkout.
+
 Current update (2026-10-09): Docker and Git are working locally. Snowflake Cortex replaces Gemini;
 see DEPLOY.md for SNOWFLAKE_ACCOUNT_URL, SNOWFLAKE_PAT, SNOWFLAKE_CORTEX_MODEL and optional
 Cortex Search settings. Tiger Data uses DATABASE_URL, not a management API key. Snowflake live
