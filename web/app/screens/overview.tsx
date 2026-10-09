@@ -22,11 +22,11 @@ export function Overview() {
                 <Card><span className="muted">Daily price changes</span><h3>Understand your move</h3><a href="#moves">Open move explainer →</a></Card>
             </div>
             <Card className="exposure-map">
-                <div className="row"><div><h2>Which events touch which holdings</h2><p className="note">Only connected holdings appear, strongest links first. Use the mouse wheel over a holding row to scroll across it. Red = Direct; blue = Related, backed by historical measurements. Color describes the link, not the direction of a price move.</p></div>
-                    <div className="toolbar">{(['Direct', 'Measured'] as const).map(type => <span key={type} className={`chip ${type}`}>{type === 'Measured' ? 'Related' : type}</span>)}</div>
+                <div className="row exposure-map-heading"><div><h2>Which events touch which holdings</h2><p className="note">Expand an event for details. Use the wheel to scroll its holdings.</p></div>
+                    <div className="exposure-legend">{(['Direct', 'Measured'] as const).map(type => <span key={type} className={`chip ${type}`}>{type === 'Measured' ? 'Related' : type}</span>)}</div>
                 </div>
                 <ExposureTable data={data}/>
-                <p className="note">Share and linked-holding counts use all source links, including those hidden by the display filters. They show portfolio reach, not how much holdings would move.</p>
+                <details className="exposure-help"><summary>How to read this table</summary><p className="note">Red = Direct; blue = Related, backed by historical measurements. Only connected holdings appear, strongest links first. Color describes the link, not the direction of a price move. Share and linked-holding counts use all source links, including those hidden by filters, and your full portfolio value. They show portfolio reach, not how much holdings would move.</p></details>
             </Card>
             <Briefing/>
         </>}

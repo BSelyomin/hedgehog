@@ -50,7 +50,7 @@ it('sorts by full-portfolio reach without mutating or recalculating source data'
     expect(events.map(e => e.share)).toEqual([.6, .3, .1]);
     expect(filterExposure(events, { ...defaultExposureFilters, days: 14 }, Date.parse('2026-10-01'))).toEqual([]);
 });
-it('renders event rows with ticker and value tiles instead of fixed holding columns', () => {
+it('renders compact event rows with outcome controls and accessible holding values', () => {
     const data = { events, holdings, byHolding: [], totalValue: 1000, asOf: null } as ExposureResponse;
     const html = renderToStaticMarkup(<ExposureTable data={data}/>);
     expect(html).toContain('scope="row"');
@@ -72,4 +72,16 @@ it('renders event rows with ticker and value tiles instead of fixed holding colu
     expect(html).toContain('scroll horizontally for more');
     expect(html).toContain('<strong>DAL</strong><span class="holding-value">$600.00</span>');
     expect(html).toContain('<strong>AAPL</strong><span class="holding-value">$300.00</span>');
+    expect(html).toContain('aria-label="Show details for Oil"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('class="exposure-detail-row" hidden=""');
+    expect(html).not.toContain('class="exposure-detail-grid"');
+});
+
+it('keeps missing outcome odds unavailable in compact rows', () => {
+    const source = { ...events[0], markets: events[0].markets.map(market => ({ ...market, probability: null })) };
+    const html = renderToStaticMarkup(<ExposureTable data={{ events: [source], holdings, totalValue: 1000, byHolding: [], asOf: null }}/>);
+    expect(html).toContain('Unavailable');
+    expect(html).not.toContain('0.0% yes');
+    expect(html).not.toContain('Unavailable yes');
 });
