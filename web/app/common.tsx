@@ -12,8 +12,22 @@ export const dateText = (s: string) => new Date(s).toLocaleString(undefined, { m
 
 export const href = (screen: string, id?: string) => `#${screen}${id ? `/${encodeURIComponent(id)}` : ''}`;
 
-export async function api<T>(path: string, options?: RequestInit): Promise<T> { const r = await fetch(`/api${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...options?.headers } }); const data = await r.json(); if (!r.ok)
-    throw new Error(data.error ?? 'Data unavailable'); return data as T; }
+let sessionKey: string | null = null;
+export function setSessionKey(value: string) { sessionKey = value; }
+export async function api<T>(path: string, options?: RequestInit): Promise<T> {
+    const headers = new Headers(options?.headers);
+    headers.set('Content-Type', 'application/json');
+    headers.set('X-Hedgehog-Request', '1');
+    if (sessionKey) headers.set('X-Hedgehog-Session', sessionKey);
+    const r = await fetch(`/api${path}`, { ...options, headers, credentials: 'same-origin', cache: 'no-store' });
+    const data = await r.json();
+    if (!r.ok) {
+        if ((r.status === 401 && !['/auth/signin', '/auth/signup', '/auth/session'].includes(path)) || r.status === 409 && data.error?.includes('session changed'))
+            window.dispatchEvent(new Event('hedgehog-session-changed'));
+        throw new Error(data.error ?? 'Data unavailable');
+    }
+    return data as T;
+}
 
 export function useData<T>(path: string) { const [data, setData] = useState<T | null>(null), [error, setError] = useState(''); useEffect(() => { const controller = new AbortController(); setData(null); setError(''); api<T>(path, { signal: controller.signal }).then(setData).catch(e => { if (e.name !== 'AbortError')
     setError(e.message); }); return () => controller.abort(); }, [path]); return { data, error }; }

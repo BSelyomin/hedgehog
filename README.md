@@ -11,7 +11,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Open http://localhost:3000, enter tickers and dollar values, and map your exposure. Docker starts a private local TimescaleDB database when DATABASE_URL is empty. For Tiger Data, set DATABASE_URL to your service connection string. See [DEPLOY.md](DEPLOY.md) for tag approval, data loading, validation, portability and deployment.
+Open http://localhost:3000, create an account or continue as a guest, enter tickers and dollar values, and map your exposure. Docker starts a private local TimescaleDB database when DATABASE_URL is empty. For Tiger Data, set DATABASE_URL to your service connection string. See [ACCOUNTS.md](ACCOUNTS.md) for account features and a manual test checklist, and [DEPLOY.md](DEPLOY.md) for tag approval, data loading, validation, portability and deployment.
 
 For local development, use Node 24 and `npm ci`, then configure DATABASE_URL. Start `npm run dev -w server` and `npm run dev -w web` in separate terminals (the combined launcher is not Windows-compatible). The server applies migrations on startup; `npm run migrate` also applies them explicitly on Linux. `npm run check:core` runs dependency-free core accuracy checks. `npm test` runs Vitest known-answer and accuracy tests. `npm run lint` runs strict TypeScript checks; `npm run build` checks the backend and builds Next.js.
 
@@ -33,7 +33,7 @@ Move components reconcile mathematically, with unavailable values when aligned c
 
 **Event context:** Optional Cortex Search retrieves reporting from your own index with `TITLE`, `URL` and `TEXT` columns. This replaces Google Search grounding; automatic open-web search is not implemented. Summaries cite only retrieved HTTPS sources and may use only numbers in the supplied market data. Missing configuration, sources or supported numbers means no new summary. See [DEPLOY.md](DEPLOY.md) for setup. Application storage remains in Tiger Data/PostgreSQL, independently of Snowflake.
 
-**ElevenLabs:** The official SDK converts a database-backed template briefing into MP3, cached per anonymous portfolio session and UTC date. Playback appears on the overview when audio is available. Pages only read the cache; scheduled jobs create it. Templates go through the same number guard. Optional AI wording smoothing is omitted to preserve exact template facts.
+**ElevenLabs:** The official SDK converts a database-backed template briefing into MP3, cached per account or guest portfolio and UTC date. Playback appears on the overview when audio is available. Pages only read the cache; scheduled jobs create it. Templates go through the same number guard. Optional AI wording smoothing is omitted to preserve exact template facts.
 
 ## Status
 
