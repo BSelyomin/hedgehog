@@ -39,6 +39,37 @@ describe('Snowflake Cortex', () => {
         expect(request).not.toHaveBeenCalled();
     });
 
+    it('accepts the empty finish reason observed in a live Cortex Claude response', async () => {
+        request.mockResolvedValue(Response.json({
+            choices: [{ finish_reason: '', message: { role: 'assistant', content: '{"tags":["oil"]}', refusal: '' } }],
+            usage: { completion_tokens: 33 }
+        }));
+        expect(await cortexJson('Tag', {}, schema)).toEqual({ tags: ['oil'] });
+    });
+
+    it.each([undefined, null, 0, -1, 1.5, '33', 4096, 4097])(
+        'rejects an empty finish reason with missing, invalid or exhausted token usage: %s', async tokens => {
+            request.mockResolvedValue(Response.json({
+                choices: [{ finish_reason: '', message: { content: '{"tags":[]}' } }],
+                usage: { completion_tokens: tokens }
+            }));
+            await expect(cortexJson('Tag', {}, schema)).rejects.toThrow('incomplete or invalid');
+        });
+
+    it('still rejects truncation, refusal and malformed JSON with reported token usage', async () => {
+        for (const [reason, content, refusal] of [
+            ['length', '{"tags":[]}', ''], ['content_filter', '{"tags":[]}', ''],
+            ['', '{"tags":[]}', 'Refused'], ['', '{"tags":[', ''],
+            [undefined, '{"tags":[]}', '']
+        ]) {
+            request.mockResolvedValueOnce(Response.json({
+                choices: [{ finish_reason: reason, message: { content, refusal } }],
+                usage: { completion_tokens: 33 }
+            }));
+            await expect(cortexJson('Tag', {}, schema)).rejects.toThrow();
+        }
+    });
+
     it.each(['http://example.snowflakecomputing.com', 'https://snowflakecomputing.com.evil.example',
         'https://example.snowflakecomputing.com/api', 'https://user:password@example.snowflakecomputing.com',
         'https://example.snowflakecomputing.com?token=secret'])('rejects unsafe account origins: %s', async url => {
