@@ -13,3 +13,11 @@ it('explains the trust parts and bands from server values',()=>{
  const html=renderToStaticMarkup(<TrustExplainer t={{spread:30,activity:25,depth:20,trackRecord:25,high:80,medium:60}} minSettled={30}/>);
  expect(html).toContain('0 to 100');expect(html).toContain('High 80 or more');expect(html).toContain('Medium 60–79');expect(html).toContain('at least 30 settled markets');
 });
+import {contextLine} from './screens/track-record';import type {TrackRecordResponse} from '../../shared/types';
+it('describes what each tab and topic is showing in plain language',()=>{
+ const data={totalMarkets:120,reviewedSeries:9} as TrackRecordResponse;
+ expect(contextLine('accuracy',data)).toContain('all 120 settled markets');
+ expect(contextLine('holdings',data)).toContain('across all topics');
+ expect(contextLine('holdings',data,{id:'rates',title:'Interest rates'} as any)).toContain('about interest rates');
+ expect(contextLine('accuracy',data,{id:'rates',title:'Interest rates',record:{count:14}} as any)).toContain('the 14 settled markets about interest rates');
+});

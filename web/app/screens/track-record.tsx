@@ -5,6 +5,12 @@ import type { TrackRecordResponse, CategoryRecord, ExposureResponse, HistorySubj
 import { percent, number, dateText, useData, Card, Fresh, Status, Empty, href, Progress } from '../common';
 const historyDate = (s:string|null) => s ? new Date(s).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : 'unavailable';
 
+const topicName=(s:HistorySubject)=>s.id==='all'?'All topics':s.title;
+export function contextLine(view:string,data:TrackRecordResponse,subject?:HistorySubject) {
+    const all=!subject||subject.id==='all';
+    if(view==='holdings') return `Showing past events linked to the stocks you hold today${all?', across all topics. Pick a topic to narrow them.':`, about ${subject!.title.toLowerCase()}.`}`;
+    return all?`Showing all ${data.totalMarkets} settled markets we have scored, from ${data.reviewedSeries} Kalshi series. Pick a topic to narrow them.`:`Showing ${subject!.record?`the ${subject!.record.count} settled markets`:'settled markets'} about ${subject!.title.toLowerCase()}.`;
+}
 export function TrackRecord({initialView='accuracy'}:{initialView?:string}={}) {
     const [view,setView]=useState(initialView==='holdings'?'holdings':'accuracy');
     const {data,error}=useData<TrackRecordResponse>('/track-record');
@@ -20,9 +26,9 @@ export function TrackRecord({initialView='accuracy'}:{initialView?:string}={}) {
         e.preventDefault(); const next=e.key==='Home'?'accuracy':e.key==='End'?'holdings':view==='accuracy'?'holdings':'accuracy';
         setView(next); document.getElementById(next==='accuracy'?'accuracy-tab':'holdings-tab')?.focus();
     }}><button role="tab" tabIndex={view==='accuracy'?0:-1} id="accuracy-tab" aria-selected={view==='accuracy'} aria-controls="accuracy-panel" className={view==='accuracy'?'active':''} onClick={()=>setView('accuracy')}>Forecast accuracy</button><button role="tab" tabIndex={view==='holdings'?0:-1} id="holdings-tab" aria-selected={view==='holdings'} aria-controls="holdings-panel" className={view==='holdings'?'active':''} onClick={()=>setView('holdings')}>Past events linked to my holdings</button></div>
-    {data && <><div className="toolbar"><label>What are you following? <select value={subject?.id??'all'} onChange={e=>setSelected(e.target.value)}>{data.subjects.map(s=><option key={s.id} value={s.id}>{s.title}{!s.record?' — no verified history yet':''}</option>)}</select></label></div>
-    {subject?.id==='all' && <p className="note">Choose a subject above to find evidence for the odds you're watching and see its connection to your holdings. {view==='accuracy'?'All history gives you the full sample.':'The event-history tab shows only events linked to your current holdings.'}</p>}
-    <p className="note">Subject views use only historical series with reviewed matching tags. {view==='accuracy'?'All history includes every verified observation; the broader Kalshi categories remain in the details.':'Past-event connections use current holdings and current relationship evidence.'}</p>
+    <p>{view==='accuracy'?'Were Kalshi’s earlier odds right? Check how often past predictions matched what happened.':'What happened the last time an event like this came up? See how earlier events ended and how the stocks you hold moved around them.'}</p>
+    {data && <><div className="toolbar"><label>Topic <select value={subject?.id??'all'} onChange={e=>setSelected(e.target.value)}>{data.subjects.map(s=><option key={s.id} value={s.id}>{topicName(s)}{view==='accuracy'?s.record?` · ${s.record.count} markets`:' · no history yet':''}</option>)}</select></label></div>
+    <p className="note">{contextLine(view,data,subject)}</p>
     {view==='holdings' ? <div id="holdings-panel" role="tabpanel" aria-labelledby="holdings-tab"><HoldingsHistory subject={subject?.id??'all'} symbols={portfolio?.holdings.map(h=>h.symbol)??[]}/></div> : <div id="accuracy-panel" role="tabpanel" aria-labelledby="accuracy-tab">
     {!category && <Card><h2>No verified {subject?.title.toLowerCase()} history yet</h2><Empty>We have no usable settled outcomes and earlier quotes for this subject yet.</Empty><p>Choose another subject or All history to inspect available evidence. Your holdings CSV cannot supply historical odds or outcomes.</p></Card>}
     {category && <CategoryEvidence category={category} minSettled={data.minSettled} subject={subject}/>}
@@ -35,6 +41,7 @@ export function TrackRecord({initialView='accuracy'}:{initialView?:string}={}) {
     <details><summary>Original Kalshi categories and data coverage</summary><Card><p>{data.totalMarkets} verified markets across {data.categories.length} Kalshi categories. History is collected from {data.reviewedSeries} reviewed market series.</p><p>Categories in this view: {subject?.kalshiCategories.join(', ')||'No verified history'}.</p><div className="scroll"><table><thead><tr><th>Kalshi category</th><th>Markets checked</th><th>Average gap (shown with enough history)</th><th>History used in trust</th></tr></thead><tbody>{data.categories.map(c=><tr key={c.category}><td>{c.category}</td><td>{c.count}</td><td>{c.eligibleForTrust?`${number(c.avgMiss)} pts`:'—'}</td><td>{c.eligibleForTrust?'Yes':'Not enough history'}</td></tr>)}</tbody></table></div><p className="note">Trust scoring still uses these original category statistics. Subject comparisons do not change the trust formula.</p></Card></details>
     </div>}
     </>}
+    <details><summary>About this data</summary><p className="note">Topics group Kalshi market series that a person has reviewed and tagged. Only settled markets with a usable bid–ask quote 24 hours before close are scored, and the quote is the midpoint, not the last trade. The category table under “Original Kalshi categories” shows the same data split the way Kalshi labels it.</p></details>
     <p className="note">Historical results help you judge the evidence. They do not guarantee the next outcome. Trust also considers the quote's spread, activity and open interest.</p></>;
 }
 export function TrustExplainer({t,minSettled}:{t:TrackRecordResponse['trustScoring'];minSettled:number}) {
