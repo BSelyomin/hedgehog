@@ -210,3 +210,27 @@ it('scopes briefing reads and refresh generation to the authenticated portfolio'
     assert.ok(!calls.some(c => c.sql.includes('INSERT INTO ai_cache')));
 
 });
+it('scopes past-event history to the account resolved by authentication',async()=>{
+ respond=sql=>sql.includes('JOIN users')?result([account]):result();
+ const response=await request(createApp(),'/holdings-history?userId=someone-else',{headers:headers(true)});
+ assert.equal(response.status,200);assert.deepEqual(calls.find(c=>c.sql.includes('FROM holdings'))?.values,[`user:${id}`]);
+});
+it('accepts only supported forecast horizons and keeps the default category record at 24 hours',async()=>{
+    for(const horizon of [1,24,168,720]) {
+        calls.length=0;
+        const response=await request(createApp(),`/track-record?horizon=${horizon}`,{headers:headers()});
+        assert.equal(response.status,200);
+        const history=calls.find(c=>c.sql.includes(horizon===24?'FROM settled_markets s':'FROM forecast_observations'));
+        assert.ok(history);
+        if(horizon!==24) assert.deepEqual(history.values,[horizon]);
+        assert.deepEqual(calls.find(c=>c.sql.includes('FROM backfill_skips'))?.values,[horizon]);
+    }
+    const defaultResponse=await request(createApp(),'/track-record',{headers:headers()});
+    assert.equal(defaultResponse.status,200);
+    for(const horizon of ['48','NaN','-24','']) {
+        calls.length=0;
+        const response=await request(createApp(),`/track-record?horizon=${horizon}`,{headers:headers()});
+        assert.equal(response.status,400);
+        assert.ok(!calls.some(c=>c.sql.includes('FROM settled_markets')||c.sql.includes('FROM forecast_observations')));
+    }
+});

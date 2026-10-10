@@ -20,6 +20,28 @@ All 430 tests and both TypeScript checks pass.
   when retried alone (KXAAAGASW 990 markets scored, KXNETFLIXRANKSHOWRUNNERUP 537, KXWTIMAX
   153). The two keep their place and are tried again on the next run.
 
+## One-hour forecast timing (2026-10-10)
+
+Added the one-hour option alongside default 24 hours, seven days and 30 days before trading close. Migration 013 expands the observation/exclusion constraints without changing stored quotes. All 256 tests, lint and production build pass in Node 24. The live one-hour endpoint returns 200 with an empty record; no backfill was run and no grade thresholds were introduced. The existing trust score is unchanged.
+
+## Track Record views and historical horizons (2026-10-10)
+
+All 256 tests, strict TypeScript checks and the Next.js production build pass in the Node 24 Docker validation container. The existing merge conflicts were resolved with both branches preserved; the earnings screen and asset support remain intact.
+
+Added By Market and By Holding views, exact reviewed holding relevance, historical examples before optional statistics, and independent 24/168/720-hour forecast horizons before trading close. No horizon borrows or interpolates another horizon's probability. Added migration 012 for raw bid/ask observations and per-horizon exclusions; the migration was exercised in a disposable Timescale database, including wrong-window and crossed-quote rejection. Existing category trust scoring remains at 24 hours.
+
+Live API validation returned 200 for all supported horizons and 400 for an unsupported horizon. The configured database retains 127 legacy 24-hour observations. A bounded ten-market KXCPI check produced one real 30-day observation and no usable seven-day observations; it recorded missing quotes separately for each horizon. This was a small coverage check, not a full backfill or an independent validation of all outcomes. The 30-day example retains its actual 62% bid / 97% ask rather than treating the midpoint as a precise forecast.
+
+Limitations: sparse longer-horizon samples, incomplete official release timing, correlated contracts and overlapping event identifiers, current rather than historical holding relationships, and Kalshi-reported rather than independently reverified settlements. Browser checks verified By Market / By Holding navigation, the real 30-day CPI example with bid/ask and outcome, and the empty seven-day state with ten recorded exclusions. The browser guest has no holdings; relevance for the existing 25-holding portfolio was checked through the service and individual stock/ETF filtering through tests. Themes with no data show missing-history states. Price changes remain optional context from the existing 24-hour history and do not score investment performance.
+
+## Holdings-linked event history (2026-10-10)
+
+All 144 Vitest tests, strict TypeScript checks and the Next.js production build pass in the Node 24 container.
+
+Added a separate current-holdings history tab, grouped contract outcomes, verified release sources, aligned holding/SPY close comparisons, explicit missing-data states and event-page navigation. Tests cover return arithmetic, pre-open timing across DST/weekends, incomplete/future/intraday windows, missing benchmark/stock dates, session ownership, unowned-symbol filters, subject matching, post-release quote labeling and unsupported market hours. The original calibration and trust paths remain unchanged.
+
+Live validation of the 25-holding portfolio found 49 linked inflation event identifiers; the newest twelve include eight supported comparisons across three BLS release dates. The September 11 example uses September 10 and September 11 closes for both TLT and SPY. Migration 005 and release seeding completed without changing settled probabilities or outcomes. Broader release-time discovery and exchange holiday calendars remain future work.
+
 ## Moves: column help and events inside the row (2026-10-10)
 
 All 430 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390
