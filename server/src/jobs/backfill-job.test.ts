@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), kalshi: vi.fn() }));
 vi.mock('../db.ts', () => ({ query: mocks.query }));
 vi.mock('../services/kalshi.ts', async original => ({ ...await original<typeof import('../services/kalshi.ts')>(), kalshi: mocks.kalshi }));
-import { LOOKBACK_DAYS, backfill, backfillSeries, closeGroups, oddsBeforeClose, scoreable } from './backfill.ts';
+import { DB_BATCH, LOOKBACK_DAYS, backfill, backfillSeries, closeGroups, oddsBeforeClose, scoreable } from './backfill.ts';
 
 const DAY = 86400, HOUR = 3600;
 const close = '2026-09-11T12:25:00Z', mark = Date.parse(close) / 1000 - DAY;
@@ -93,6 +93,24 @@ describe('scoring a series', () => {
         expect(await backfillSeries('KXCPI', 'Economics')).toEqual({ settled: 3, recent: 2, short: 0, scored: 1, noQuote: 0 });
         expect(mocks.kalshi).toHaveBeenCalledWith('/markets/candlesticks', expect.objectContaining({ market_tickers: 'LIVE-B' }));
         expect(inserted().map((row: { ticker: string }) => row.ticker)).toEqual(['LIVE-B']);
+    });
+    it('names a very large series’ markets to the database a batch at a time', async () => {
+        // An hourly series: thousands of markets, each listed for under a day, plus one that can be scored.
+        const hourly = Array.from({ length: 2 * DB_BATCH + 10 }, (_, i) => market(`H-${i}`, { open_time: '2026-09-11T00:00:00Z' }));
+        database(['H-3', `H-${DB_BATCH + 1}`]);
+        mocks.kalshi.mockImplementation(async (path: string) => {
+            if (path === '/markets') return { markets: [...hourly, market('LONG')] };
+            if (path === '/historical/markets') return { markets: [] };
+            if (path === '/markets/candlesticks') return { markets: [{ market_ticker: 'LONG', candlesticks: [candle(mark, '0.4000', '0.4400')] }] };
+            throw new Error(`unexpected ${path}`);
+        });
+        // The two already stored are not counted again as short-lived.
+        expect(await backfillSeries('KXHOURLY', 'Financials')).toEqual({ settled: 2 * DB_BATCH + 11, recent: 2 * DB_BATCH + 11, short: 2 * DB_BATCH + 8, scored: 1, noQuote: 0 });
+        const sizes = (text: string, size: (values: unknown[]) => number) => mocks.query.mock.calls.filter(([sql]) => String(sql).includes(text)).map(([, values]) => size(values));
+        expect(sizes('UPDATE settled_markets', values => JSON.parse(values[1] as string).length)).toEqual([DB_BATCH, DB_BATCH, 11]);
+        expect(sizes('SELECT ticker FROM settled_markets', values => (values[0] as string[]).length)).toEqual([DB_BATCH, DB_BATCH, 11]);
+        expect(inserted().map((row: { ticker: string }) => row.ticker)).toEqual(['LONG']);
+        expect(mocks.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO job_state'), ['settled:KXHOURLY', close.replace('Z', '.000Z')]);
     });
     it('keeps a series’ place when Kalshi fails, and carries on with the next series', async () => {
         mocks.query.mockImplementation(async (sql: string) => sql.includes('FROM snapshot_series') ? [{ series_ticker: 'BROKEN', category: 'Economics' }, { series_ticker: 'NOCAT', category: null }, { series_ticker: 'FINE', category: 'Financials' }] : []);

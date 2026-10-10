@@ -1,5 +1,25 @@
 # Validation and phase status
 
+## Track-record backfill: the full pass, and very large series (2026-10-10)
+
+All 430 tests and both TypeScript checks pass.
+
+- **Coverage.** The full pass looked at 510 series. The track record now holds 19,658 settled
+  markets in 282 series and 1,913 events, up from 127 markets before the backfill was rebuilt:
+  Economics 6,536, Entertainment 6,291, Financials 3,199, Mentions 1,764, Commodities 750,
+  Politics 444, Climate and Weather 435, Science and Technology 226, Companies 13. The table
+  is 5.6 MB. 342 series have recorded how far they got, so a later run reads only what settled
+  since.
+- **Very large series.** KXINXU settles tens of thousands of hourly markets. Naming all of them
+  in one statement ran past the database's 25-second limit 248 s into the series. Statements
+  now carry 5,000 markets each, and the same series got 1,172 s in, past every database step.
+- **Two series are not finished: KXINXU and KXWTI.** Both stop at Kalshi's retry limit. Asked
+  one request at a time, Kalshi answered `429 too_many_requests` with no `Retry-After` header
+  while the poller and candlestick job were also running from this address, so this is rate
+  limiting and not a fault in a request. Three others that failed in the pass went through
+  when retried alone (KXAAAGASW 990 markets scored, KXNETFLIXRANKSHOWRUNNERUP 537, KXWTIMAX
+  153). The two keep their place and are tried again on the next run.
+
 ## Moves: column help and events inside the row (2026-10-10)
 
 All 430 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390

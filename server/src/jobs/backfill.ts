@@ -12,6 +12,10 @@ export const LOOKBACK_DAYS = 7;
 const BATCH = Math.floor(10000 / (LOOKBACK_DAYS * 24 + 1));
 // Archived markets are asked for one at a time, this many at once.
 const PARALLEL = 4;
+// A series of hourly markets settles tens of thousands of them. One statement naming them all
+// ran past the database's time limit (KXINXU, 2026-10-10), so they are sent this many at a time.
+export const DB_BATCH = 5000;
+const batches = <T>(items: T[]) => Array.from({ length: Math.ceil(items.length / DB_BATCH) }, (_, i) => items.slice(i * DB_BATCH, (i + 1) * DB_BATCH));
 
 export function normalizeHistoricalCandles(candles: HistoricalCandle[]): Candle[] {
     return candles.map(c => ({ end_period_ts: c.end_period_ts, yes_bid: { close_dollars: c.yes_bid?.close ?? null }, yes_ask: { close_dollars: c.yes_ask?.close ?? null } }));
@@ -87,11 +91,15 @@ export async function backfillSeries(series: string, category: string) {
     const archived = (await listSettled(series, true)).filter(m => !liveTickers.has(m.ticker));
     const settled = [...live, ...archived].filter(m => m.ticker && (m.result === 'yes' || m.result === 'no') && Number.isFinite(Date.parse(m.close_time)));
     // Rows stored before the series was recorded get their identity here.
-    await query(`UPDATE settled_markets s SET series_ticker=$1,event_ticker=COALESCE(s.event_ticker,r.event_ticker),title=COALESCE(s.title,r.title)
-        FROM jsonb_to_recordset($2::jsonb) AS r(ticker text,event_ticker text,title text) WHERE s.ticker=r.ticker AND (s.series_ticker IS NULL OR s.event_ticker IS NULL OR s.title IS NULL)`,
-    [series, JSON.stringify(settled.map(m => ({ ticker: m.ticker, event_ticker: m.event_ticker ?? null, title: m.title ?? null })))]);
+    for (const batch of batches(settled))
+        await query(`UPDATE settled_markets s SET series_ticker=$1,event_ticker=COALESCE(s.event_ticker,r.event_ticker),title=COALESCE(s.title,r.title)
+            FROM jsonb_to_recordset($2::jsonb) AS r(ticker text,event_ticker text,title text) WHERE s.ticker=r.ticker AND (s.series_ticker IS NULL OR s.event_ticker IS NULL OR s.title IS NULL)`,
+        [series, JSON.stringify(batch.map(m => ({ ticker: m.ticker, event_ticker: m.event_ticker ?? null, title: m.title ?? null })))]);
     const recent = settled.filter(m => Date.parse(m.close_time) > done);
-    const stored = new Set((await query<{ ticker: string }>('SELECT ticker FROM settled_markets WHERE ticker=ANY($1::text[])', [recent.map(m => m.ticker)])).map(row => row.ticker));
+    const stored = new Set<string>();
+    for (const batch of batches(recent))
+        for (const row of await query<{ ticker: string }>('SELECT ticker FROM settled_markets WHERE ticker=ANY($1::text[])', [batch.map(m => m.ticker)]))
+            stored.add(row.ticker);
     const wanted = recent.filter(m => !stored.has(m.ticker) && scoreable(m));
     const window = (m: KalshiMarket) => { const mark = Math.floor(Date.parse(m.close_time) / 1000) - DAY; return { start_ts: String(mark - LOOKBACK_DAYS * DAY), end_ts: String(mark), period_interval: '60' }; };
     const readings: Record<string, unknown>[] = [];
@@ -118,9 +126,10 @@ export async function backfillSeries(series: string, category: string) {
     }
     // A live market the batch has nothing for may already have moved to the archive.
     await parallel([...unanswered, ...wanted.filter(m => !liveTickers.has(m.ticker))], fromArchive);
-    await query(`INSERT INTO settled_markets(ticker,category,prob_24h_before,outcome,close_time,odds_time,series_ticker,event_ticker,title)
-        SELECT ticker,category,prob_24h_before,outcome,close_time,odds_time,series_ticker,event_ticker,title FROM jsonb_to_recordset($1::jsonb)
-        AS r(ticker text,category text,prob_24h_before double precision,outcome integer,close_time timestamptz,odds_time timestamptz,series_ticker text,event_ticker text,title text) ON CONFLICT DO NOTHING`, [JSON.stringify(readings)]);
+    for (const batch of readings.length ? batches(readings) : [readings])
+        await query(`INSERT INTO settled_markets(ticker,category,prob_24h_before,outcome,close_time,odds_time,series_ticker,event_ticker,title)
+            SELECT ticker,category,prob_24h_before,outcome,close_time,odds_time,series_ticker,event_ticker,title FROM jsonb_to_recordset($1::jsonb)
+            AS r(ticker text,category text,prob_24h_before double precision,outcome integer,close_time timestamptz,odds_time timestamptz,series_ticker text,event_ticker text,title text) ON CONFLICT DO NOTHING`, [JSON.stringify(batch)]);
     // Everything up to the latest close has now been looked at once; a later run starts after it.
     const latest = Math.max(done, ...settled.map(m => Date.parse(m.close_time)));
     if (latest > 0)
