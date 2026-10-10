@@ -45,11 +45,25 @@ export interface Sensitivity {
     days: number;
     driver: string;
     computedAt: string;
+    /** How far the holding typically moves with this driver in one period: |b| times the driver's typical change. */
+    typicalEffect: number | null;
+}
+/** One of a holding's measured drivers with its typical daily effect, so drivers can be compared. */
+export interface DriverRank {
+    driver: string;
+    typicalEffect: number;
+}
+/** One driver's estimated part of a holding's or the portfolio's move on a day, in dollars. */
+export interface DriverMove {
+    driver: string;
+    contribution: number;
 }
 export interface HoldingLink extends Holding {
     type: LinkType;
     evidence: string;
     sensitivity: Sensitivity | null;
+    /** The holding's most important measured driver, which may differ from this link's driver. */
+    lead?: DriverRank | null;
 }
 export interface Trust {
     total: number | null;
@@ -96,6 +110,8 @@ export interface ExposureResponse extends Freshness {
             title: string;
             type: LinkType;
         }[];
+        /** Reliable daily drivers of this holding, most important first. */
+        drivers: DriverRank[];
     }[];
     events: ExposureEvent[];
 }
@@ -174,6 +190,8 @@ export interface HoldingMove extends Holding {
     fromMarket: number | null;
     beyondMarket: number | null;
     sourceDate: string | null;
+    /** Each measured driver's estimated part of the day's move, largest first. They overlap and do not add up to the move. */
+    drivers: DriverMove[];
 }
 export interface OddsMove {
     ticker: string;
@@ -189,6 +207,10 @@ export interface MovesResponse extends Freshness {
     fromMarket: number | null;
     beyondMarket: number | null;
     oddsMoves: OddsMove[];
+    /** Driver estimates summed over holdings, largest first; the first is what mattered most that day. */
+    drivers: DriverMove[];
+    /** Daily drivers with no published change for this date yet, so they could not be compared. */
+    missingDrivers: string[];
 }
 /** The stock's move across one past results announcement. Null fields mean the closes were not available. */
 export interface EarningsReportMove {

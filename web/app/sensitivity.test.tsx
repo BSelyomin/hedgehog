@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ExposureEvent, Sensitivity } from '../../shared/types';
-import { describeSensitivity } from './screens/sensitivity';
+import { describeDrivers, describeImportance, describeLeadMove, describeSensitivity } from './screens/sensitivity';
+import { LeadDrivers } from './screens/moves';
 import { EventList, LinkChip, linkLabel } from './common';
 
-const measured = (driver: string, b: number, low: number, high: number): Sensitivity => ({ driver, b, low, high, days: 2480, computedAt: '2026-10-09T00:00:00Z' });
+const measured = (driver: string, b: number, low: number, high: number, typicalEffect: number | null = null): Sensitivity => ({ driver, b, low, high, days: 2480, computedAt: '2026-10-09T00:00:00Z', typicalEffect });
 
 describe('plain-language sensitivity', () => {
     it('restates an oil coefficient per 1% move with its range and sample size', () => {
@@ -23,6 +24,45 @@ describe('plain-language sensitivity', () => {
     it('writes no sentence for an unknown driver or an invalid measurement', () => {
         expect(describeSensitivity('AAPL', measured('GOLD', .1, .05, .15))).toBeNull();
         expect(describeSensitivity('AAPL', measured('SPY', Number.NaN, 1, 1.2))).toBeNull();
+    });
+});
+
+describe('highlighting what matters most', () => {
+    const link = (symbol: string, sensitivity: Sensitivity, lead: { driver: string; typicalEffect: number } | null) => ({ symbol, valueUsd: 100, type: 'Measured' as const, evidence: '', sensitivity, lead });
+    it('describes the new yield and weekly mortgage drivers in their own periods', () => {
+        expect(describeSensitivity('TLT', measured('DGS10', -.16, -.17, -.15))).toContain('On days the 10-year Treasury yield rose 0.10 percentage points, TLT fell 1.60% on average');
+        const mortgage = describeSensitivity('VNQ', measured('MORTGAGE30US', -.02, -.03, -.01))!;
+        expect(mortgage).toContain('In weeks the 30-year mortgage rate rose 0.10 percentage points, VNQ fell 0.20% on average');
+        expect(mortgage).toContain('measured over 2,480 weeks.');
+    });
+    it('marks the main driver and, on a minor link, names what matters more with both sizes', () => {
+        const rates = { driver: 'DGS10', typicalEffect: .0085 };
+        expect(describeImportance(link('TLT', measured('DGS10', -.16, -.17, -.15, .0085), rates))).toEqual({ lead: true, text: 'Most important measured driver for TLT: a typical day’s move in it moves TLT about 0.85%.' });
+        expect(describeImportance(link('TLT', measured('CL=F', -.008, -.014, -.003, .0002), rates))).toEqual({ lead: false,
+            text: '10-year Treasury yield matters more for TLT: a typical day’s move in it moves TLT about 0.85%, against 0.02% for crude oil.' });
+        // Oil ahead of the stock market for an oil fund.
+        expect(describeImportance(link('USO', measured('SPY', .4, .3, .5, .004), { driver: 'CL=F', typicalEffect: .021 }))?.text).toBe(
+            'Crude oil matters more for USO: a typical day’s move in it moves USO about 2.10%, against 0.40% for stock market (s&p 500).');
+        expect(describeImportance(link('AAPL', measured('SPY', 1.2, 1.1, 1.3, .012), null))).toBeNull();
+        // A weekly driver is not put on the daily scale.
+        expect(describeImportance(link('VNQ', measured('MORTGAGE30US', -.02, -.03, -.01, .004), rates))?.text).toBe('10-year Treasury yield matters more for VNQ: a typical day’s move in it moves VNQ about 0.85%.');
+    });
+    it('lists a holding’s drivers and the day’s biggest driver, largest first', () => {
+        expect(describeDrivers([{ driver: 'DGS10', typicalEffect: .0085 }, { driver: 'SPY', typicalEffect: .0009 }])).toBe('Moves most with 10-year treasury yield (about 0.85% on a typical day); then stock market (s&p 500) 0.09%.');
+        expect(describeDrivers([])).toBeNull();
+        const money = (value: number) => `$${value.toFixed(2)}`;
+        expect(describeLeadMove([{ driver: 'CL=F', contribution: -310 }, { driver: 'SPY', contribution: 120 }], money)).toBe('Crude oil mattered most: about $-310.00 of your move, ahead of stock market (s&p 500) at about $120.00.');
+        expect(describeLeadMove([], money)).toBeNull();
+    });
+    it('shows the ranked drivers on the Moves screen and says which could not be compared', () => {
+        const data = { date: '2026-10-09', asOf: null, spyReturn: .01, holdings: [], total: null, fromMarket: null, beyondMarket: null, oddsMoves: [],
+            drivers: [{ driver: 'CL=F', contribution: -310 }, { driver: 'SPY', contribution: 120 }], missingDrivers: ['DGS2', 'DGS10'] };
+        const html = renderToStaticMarkup(<LeadDrivers data={data}/>);
+        expect(html).toContain('Crude oil mattered most');
+        expect(html.indexOf('Crude oil</span>')).toBeLessThan(html.indexOf('Stock market (S&amp;P 500)</span>'));
+        expect(html).toContain('class="driver-bar lead"');
+        expect(html).toContain('not published yet: 2-year Treasury yield, 10-year Treasury yield.');
+        expect(renderToStaticMarkup(<LeadDrivers data={{ ...data, drivers: [], missingDrivers: [] }}/>)).toContain('No measured driver could be compared');
     });
 });
 

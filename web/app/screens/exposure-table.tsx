@@ -2,6 +2,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ExposureEvent, ExposureResponse, Holding, HoldingLink } from '../../../shared/types';
 import { money, percent, dateText, href, linkLabel, Empty, Fresh, TrustBadge } from '../common';
+import { describeDrivers, describeImportance, driverName } from './sensitivity';
 
 export interface ExposureFilters {
     search: string;
@@ -114,7 +115,7 @@ function ExposureRow({ event, holdings, linkFilter }: { event: ExposureEvent; ho
                     <Fresh asOf={market.asOf}/><a className="open-event" href={href('event', market.ticker)}>View outcome and trust details →</a></>}
             </section>
             <section><h3>Holdings shown · {linked.length}</h3><ul className="exposure-holding-details" tabIndex={0} aria-label={`Holding values and evidence for ${event.title}`}>
-                {linked.map(({ holding, link }) => <li key={holding.symbol}><div><span className={`chip ${link.type}`}>{holding.symbol}</span><strong className="mono">{money(holding.valueUsd)}</strong><span className="note">{linkLabel(link.type)}</span></div><p className="note">{link.evidence}</p></li>)}
+                {linked.map(({ holding, link }) => <li key={holding.symbol}><div><span className={`chip ${link.type}`}>{holding.symbol}</span><strong className="mono">{money(holding.valueUsd)}</strong><span className="note">{linkLabel(link.type)}</span></div><p className="note">{link.evidence}</p>{describeImportance(link) && <p className="note driver-note">{describeImportance(link)!.text}</p>}</li>)}
             </ul></section>
         </div>}</td></tr>
     </>;
@@ -144,13 +145,15 @@ export function ExposureTable({ data }: { data: ExposureResponse }) {
             <label>Closes within<select aria-label="Closes within" value={filters.days} onChange={e => update('days', Number(e.target.value))}><option value={0}>Any date</option><option value={14}>14 days</option><option value={30}>30 days</option><option value={90}>90 days</option></select></label>
         </div>
         <div className="exposure-result-bar"><p className="note" role="status">{events.length} of {data.events.length} events · {holdings.length} of {data.holdings.length} holdings{activeFilters > 0 ? ` · ${activeFilters} active ${activeFilters === 1 ? 'filter' : 'filters'}` : ''}</p>{changed && <button className="reset-filters" onClick={() => setFilters(defaultExposureFilters)}>Reset filters</button>}</div>
-        {events.length ? view === 'holding' ? <ByHolding events={events} holdings={holdings} linkFilter={filters.link}/> : <div className="scroll exposure-scroll" tabIndex={0} role="region" aria-label="Exposure table"><table className="exposure-table"><caption className="sr-only">Events with portfolio reach, selected outcome odds and holdings ordered by connection. Expand an event for values, trust and evidence.</caption><thead><tr><th scope="col" className="event-column">Event / close date</th><th scope="col" className="reach-column">Portfolio share</th><th scope="col" className="outcome-column">Outcome</th><th scope="col" className="holdings-column">Holdings <span className="muted">· scroll to see more</span></th></tr></thead><tbody>{events.map(event => <ExposureRow key={event.ticker} event={event} holdings={holdings} linkFilter={filters.link}/>)}</tbody></table></div> : <Empty>{data.events.length ? 'No events match these filters. Try another search or reset filters.' : 'No reviewed market links available. Holdings need supported company tags, measured driver links or a reviewed sector mapping.'}</Empty>}
+        {events.length ? view === 'holding' ? <ByHolding events={events} holdings={holdings} linkFilter={filters.link} ranks={data.byHolding}/> : <div className="scroll exposure-scroll" tabIndex={0} role="region" aria-label="Exposure table"><table className="exposure-table"><caption className="sr-only">Events with portfolio reach, selected outcome odds and holdings ordered by connection. Expand an event for values, trust and evidence.</caption><thead><tr><th scope="col" className="event-column">Event / close date</th><th scope="col" className="reach-column">Portfolio share</th><th scope="col" className="outcome-column">Outcome</th><th scope="col" className="holdings-column">Holdings <span className="muted">· scroll to see more</span></th></tr></thead><tbody>{events.map(event => <ExposureRow key={event.ticker} event={event} holdings={holdings} linkFilter={filters.link}/>)}</tbody></table></div> : <Empty>{data.events.length ? 'No events match these filters. Try another search or reset filters.' : 'No reviewed market links available. Holdings need supported company tags, measured driver links or a reviewed sector mapping.'}</Empty>}
     </>;
 }
 
-function ByHolding({ events, holdings, linkFilter }: { events: ExposureEvent[]; holdings: Holding[]; linkFilter: ExposureFilters['link'] }) {
+function ByHolding({ events, holdings, linkFilter, ranks }: { events: ExposureEvent[]; holdings: Holding[]; linkFilter: ExposureFilters['link']; ranks: ExposureResponse['byHolding'] }) {
     return <>{holdings.map(holding => {
         const linked = events.filter(event => event.links.some(link => link.symbol === holding.symbol && matchesLink(link, linkFilter)));
-        return <details className="holding-event-group" key={holding.symbol}><summary><strong>{holding.symbol}</strong><span className="mono muted">{money(holding.valueUsd)}</span><span className="note">{linked.length} events</span></summary><div>{linked.map(event => { const link = event.links.find(link => link.symbol === holding.symbol)!; return <p key={event.ticker}><span className={`chip ${link.type}`}>{linkLabel(link.type)}</span> <a href={href('event', event.ticker)}>{event.title}</a></p>; })}</div></details>;
+        // The holding's most important measured driver is always shown, so a minor link is not mistaken for the main one.
+        const drivers = ranks.find(rank => rank.symbol === holding.symbol)?.drivers ?? [];
+        return <details className="holding-event-group" key={holding.symbol}><summary><strong>{holding.symbol}</strong><span className="mono muted">{money(holding.valueUsd)}</span><span className="note">{linked.length} events</span>{drivers[0] && <span className="note driver-top">Moves most with <strong>{driverName(drivers[0].driver).toLowerCase()}</strong></span>}</summary><div>{drivers.length > 0 && <p className="driver-lead">{describeDrivers(drivers)}</p>}{linked.map(event => { const link = event.links.find(link => link.symbol === holding.symbol)!; return <p key={event.ticker}><span className={`chip ${link.type}`}>{linkLabel(link.type)}</span> <a href={href('event', event.ticker)}>{event.title}</a></p>; })}</div></details>;
     })}</>;
 }

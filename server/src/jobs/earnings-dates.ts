@@ -27,7 +27,7 @@ export async function earningsDates() {
         console.warn('SEC_USER_AGENT missing; earnings report dates unavailable');
         return;
     }
-    const symbols = (await query<{ symbol: string }>('SELECT DISTINCT symbol FROM holdings')).map(row => row.symbol);
+    const symbols = (await query<{ symbol: string }>("SELECT DISTINCT symbol FROM holdings WHERE asset_type='security'")).map(row => row.symbol);
     if (!symbols.length)
         return;
     const companies = Object.values(await sec<Record<string, SecCompany>>('https://www.sec.gov/files/company_tickers.json'));

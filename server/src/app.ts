@@ -4,7 +4,7 @@ import { loadSession, protectWrites } from './auth/session.ts';
 import { query, iso } from './db.ts';
 import { getHoldings, saveHoldings, validateHoldings } from './services/holdings.ts';
 import { exposure, calendar, eventDetail } from './services/exposure.ts';
-import { moves } from './services/moves.ts';
+import { latestSession, moves } from './services/moves.ts';
 import { earnings } from './services/earnings.ts';
 import { trackRecord } from './services/track-record.ts';
 import { briefing } from './jobs/briefing.ts';
@@ -42,7 +42,8 @@ app.get('/event/:ticker', async (req, res) => { const result = await eventDetail
     res.status(404).json({ error: 'No linked event found', asOf: null });
     return;
 } res.json(result); });
-app.get('/moves', async (req, res) => { const date = String(req.query.date ?? req.query.day ?? new Date().toISOString().slice(0, 10)); if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) {
+// With no date, show the latest completed session rather than a day whose close is not in yet.
+app.get('/moves', async (req, res) => { const date = String(req.query.date ?? req.query.day ?? await latestSession() ?? new Date().toISOString().slice(0, 10)); if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) {
     res.status(400).json({ error: 'Use a valid YYYY-MM-DD date', asOf: null });
     return;
 } res.json(await moves(res.locals.session, date)); });

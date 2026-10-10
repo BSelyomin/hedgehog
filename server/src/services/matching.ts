@@ -1,5 +1,7 @@
-import type { Holding, HoldingLink, Sensitivity } from '../../../shared/types.ts';
-export const drivers: Record<string, string> = { 'oil': 'CL=F', 'fed-rates': 'DGS2', 'inflation': 'DGS2', 'sp500': 'SPY' };
+import type { DriverRank, Holding, HoldingLink, Sensitivity } from '../../../shared/types.ts';
+import { DRIVERS, driverFor } from '../config/drivers.ts';
+// Topic tag -> the series that measures it.
+export const drivers: Record<string, string> = Object.fromEntries(DRIVERS.flatMap(driver => driver.tags.map(tag => [tag, driver.key])));
 export interface MeasuredRow {
     symbol: string;
     driver: string;
@@ -10,6 +12,16 @@ export interface MeasuredRow {
     days: number;
     reliable: boolean;
     computed_at: Date;
+    /** |b| times the driver's typical change; null on rows measured before it was stored. */
+    effect?: number | null;
+}
+export const reliableRow = (m: MeasuredRow) => m.reliable && m.days >= 60 && Number.isFinite(m.b) && Number.isFinite(m.se) && m.se >= 0 && (m.b - 1.96 * m.se > 0 || m.b + 1.96 * m.se < 0);
+const effect = (m: MeasuredRow) => typeof m.effect === 'number' && Number.isFinite(m.effect) ? m.effect : null;
+// A holding's reliable daily drivers, most important first. Importance is the typical daily effect,
+// which is comparable across drivers; weekly drivers are measured on a different period and left out.
+export function rankDrivers(symbol: string, measurements: MeasuredRow[]): DriverRank[] {
+    return measurements.filter(m => m.symbol === symbol && reliableRow(m) && effect(m) !== null && driverFor(m.driver)?.period === 'day')
+        .map(m => ({ driver: m.driver, typicalEffect: effect(m)! })).sort((a, b) => b.typicalEffect - a.typicalEffect);
 }
 export function matchHolding(holding: Holding, eventTags: string[], stockTags: string[], measurements: MeasuredRow[]): HoldingLink | null {
     if (eventTags.includes(holding.symbol))
@@ -17,10 +29,12 @@ export function matchHolding(holding: Holding, eventTags: string[], stockTags: s
     const shared = eventTags.filter(t => stockTags.includes(t));
     if (!shared.length)
         return null;
-    const measured = measurements.find(m => m.symbol === holding.symbol && shared.some(t => drivers[t] === m.driver) && m.reliable && m.days >= 60 && Number.isFinite(m.b) && Number.isFinite(m.se) && m.se >= 0 && (m.b - 1.96 * m.se > 0 || m.b + 1.96 * m.se < 0));
+    // An event can carry tags for several drivers; show the one that moves this holding most.
+    const measured = measurements.filter(m => m.symbol === holding.symbol && shared.some(t => drivers[t] === m.driver) && reliableRow(m))
+        .sort((a, b) => (effect(b) ?? 0) - (effect(a) ?? 0))[0];
     if (measured) {
-        const sensitivity: Sensitivity = { b: measured.b, low: measured.b - 1.96 * measured.se, high: measured.b + 1.96 * measured.se, days: measured.days, driver: measured.driver, computedAt: measured.computed_at.toISOString() };
-        return { ...holding, type: 'Measured', sensitivity, evidence: `Measured daily returns against ${measured.driver}${measured.driver === 'SPY' ? '' : ' with SPY as a control'}. Historical association with the driver; not an event-outcome forecast.` };
+        const sensitivity: Sensitivity = { b: measured.b, low: measured.b - 1.96 * measured.se, high: measured.b + 1.96 * measured.se, days: measured.days, driver: measured.driver, computedAt: measured.computed_at.toISOString(), typicalEffect: effect(measured) };
+        return { ...holding, type: 'Measured', sensitivity, lead: rankDrivers(holding.symbol, measurements)[0] ?? null, evidence: `Measured ${driverFor(measured.driver)?.period === 'week' ? 'weekly' : 'daily'} returns against ${measured.driver}${measured.driver === 'SPY' ? '' : ' with SPY as a control'}. Historical association with the driver; not an event-outcome forecast.` };
     }
     return { ...holding, type: 'Related', evidence: `Shared reviewed tags: ${shared.join(', ')}. No reliable sensitivity; no move estimate shown.`, sensitivity: null };
 }

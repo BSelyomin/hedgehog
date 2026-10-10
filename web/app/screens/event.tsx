@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import type { EventResponse, HoldingLink, Market, OddsPoint } from '../../../shared/types';
 import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip, EventDate } from '../common';
-import { describeSensitivity } from './sensitivity';
+import { describeImportance, describeSensitivity } from './sensitivity';
 
 export function EventPage({ ticker }: {
     ticker: string;
@@ -53,9 +53,11 @@ export function EventPage({ ticker }: {
 
 export function LinkedHolding({ link }: { link: HoldingLink }) {
     const sentence = link.sensitivity && describeSensitivity(link.symbol, link.sensitivity);
+    const importance = describeImportance(link);
     return <div className="event-row">
         <div className="row"><strong>{link.symbol} · <span className="mono">{money(link.valueUsd)}</span></strong><LinkChip type={link.type}/></div>
         {sentence && <p className="sensitivity-text">{sentence}</p>}
+        {importance && <p className={importance.lead ? 'driver-lead' : 'driver-minor'}><span className="chip lead">{importance.lead ? 'Main driver' : 'Something else matters more'}</span> {importance.text}</p>}
         <p>{link.evidence}</p>
         {link.sensitivity && <p className="note mono">b {number(link.sensitivity.b, 4)} · 95% range [{number(link.sensitivity.low, 4)}, {number(link.sensitivity.high, 4)}] · {link.sensitivity.days} aligned days · driver {link.sensitivity.driver}<br/>Measured {dateText(link.sensitivity.computedAt)}</p>}
     </div>;

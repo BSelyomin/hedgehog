@@ -1,7 +1,7 @@
 import type { ExposureResponse, ExposureEvent, Market, EventResponse, CalendarResponse } from '../../../shared/types.ts';
 import { query, iso } from '../db.ts';
 import { getHoldings } from './holdings.ts';
-import { matchHolding, linkRank } from './matching.ts';
+import { matchHolding, linkRank, rankDrivers } from './matching.ts';
 import type { MeasuredRow } from './matching.ts';
 import { trustScore } from '../config/trust.ts';
 import { eventTime, isRangeLadder, marketKind } from './kalshi.ts';
@@ -72,7 +72,7 @@ export async function exposure(session: string): Promise<ExposureResponse> {
     const latest = await query<{
         ts: Date | null;
     }>('SELECT max(ts) AS ts FROM odds_snapshots');
-    const byHolding = holdings.map(h => ({ symbol: h.symbol, events: result.flatMap(e => { const l = e.links.find(l => l.symbol === h.symbol); return l ? [{ ticker: e.ticker, title: e.title, type: l.type }] : []; }).sort((a, b) => linkRank[a.type] - linkRank[b.type]) }));
+    const byHolding = holdings.map(h => ({ symbol: h.symbol, events: result.flatMap(e => { const l = e.links.find(l => l.symbol === h.symbol); return l ? [{ ticker: e.ticker, title: e.title, type: l.type }] : []; }).sort((a, b) => linkRank[a.type] - linkRank[b.type]), drivers: rankDrivers(h.symbol, measurements) }));
     return { holdings, totalValue, byHolding, events: result.sort((a, b) => b.share - a.share), asOf: iso(latest[0]?.ts) };
 }
 export async function calendar(session: string, days: number): Promise<CalendarResponse> { const data = await exposure(session); const end = Date.now() + days * 86400000; return { days, asOf: data.asOf, events: data.events.filter(e => Date.parse(e.eventTime) <= end).sort((a, b) => Date.parse(a.eventTime) - Date.parse(b.eventTime)) }; }
