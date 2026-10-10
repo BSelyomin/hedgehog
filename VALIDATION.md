@@ -1,5 +1,20 @@
 # Validation and phase status
 
+## Earnings screen rebuilt to the design (2026-10-10)
+
+All 221 tests and strict TypeScript checks pass in a Node 24 container, and the Next.js production build succeeds. Migration 011 applied; one poll filled strike values for 75,638 markets.
+
+Checked against the running app with the 25-holding example portfolio in a temporary guest session, cleared afterwards:
+
+- **Who is listed.** 12 of 25 holdings have an earnings call Kalshi has dated, soonest first: JPM and GS on Oct 13 through COST on Dec 10. Holdings without one, such as XOM, are not listed.
+- **Call dates.** Netflix, Mastercard and United now show Kalshi's stated days (Oct 20, Oct 29, Oct 14) instead of the occurrence times they carried (Nov 4, Nov 13, March 31, 2027). JPM reads "before the market opens" and AAPL "after the close"; Tesla, Amazon and Alphabet, which carry Kalshi's default 10:00 am, show the day only.
+- **Lead metric.** Apple headcount in 2026: levels at 92%, 86%, 67%, 44%, 15%, 17%, with even odds between 168,000 and 170,000. United passengers flown in 2026: between 186 million and 188 million. Netflix headcount skips the 17,500 level, whose quote straddles 50%.
+- **Results only.** Apple shows two events, its earnings call and headcount; its product, lawsuit and price markets are no longer on this screen.
+- **Call topics.** Apple: 17 words, led by "iPhone 18" at 92.5%.
+- **Past moves.** Apple's typical move over its last eight reports is 3.1%, which is $310.82 on a $10,000 position.
+
+Not verified: the screen in a browser. Not built, as agreed: year-ago values from filings.
+
 ## Full database, read-only mode and odds storage (2026-10-10)
 
 The shared Tiger Data service reached 2,965 MB and turned read-only; 2,815 MB of it was 17 hours of odds history (9.9 million rows, about 141,000 per poll). The backend then crash-looped at startup because applying migrations writes.
