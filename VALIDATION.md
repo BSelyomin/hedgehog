@@ -1,5 +1,36 @@
 # Validation and phase status
 
+## Empty books, the link floor and the track-record backfill (2026-10-10)
+
+All 374 tests and both TypeScript checks pass; the stack was rebuilt on each change. One run
+had a password-hashing test exceed its five-second limit while the stack's jobs were busy; the
+next run passed and the test is unrelated to these changes.
+
+- **Empty order books.** Of 894 markets with a recent reading, 56 had no bid and no offer and
+  were shown at 50%. After the change the stored portfolio's 4,813 linked markets include 151
+  with no probability; the 31 still at exactly 50% have real two-sided quotes.
+- **Link floor.** Of 30 lesser measured links across held tickers, none fell between 16% and
+  22% of its holding's biggest, so the floor is 20%. On the stored portfolio the Oil theme went
+  from eight holdings to two (XOM, USO), Fed rates from 13 to 9, and a typical Overview row from
+  about ten holdings to six. 1,352 links are now Topic links whose evidence states the measured
+  share, for example "DAL: a typical move in CL=F moves DAL about 11% as much as a typical move
+  in SPY". A browser run showed the Oil choice as 2 of 17 holdings on the Overview, Calendar and
+  Moves alike, and no browser errors.
+- **Stored portfolio.** Its SAVINGS, TNOTE-2036, CORP-2031 and HOME rows had been saved as
+  stocks by an import made before the CSV carried asset types. It was re-saved from
+  `examples/feature-tour.csv` through the server's own validation, after checking that the
+  stored symbols and values matched the file: 13 securities and 4 others, same $425,000.
+- **Backfill.** Still running when this was written. After 85 of 515 series it had raised the
+  track record from 127 settled markets, none with a series, to 1,209, of which 1,082 carry
+  their series (30 series, 103 events; table size 368 kB). The quote read at the 24-hour mark
+  was a median of 1.0 hour old and 21 hours at the 90th percentile. Whole series of daily
+  markets were skipped as listed for under a day. Final counts are not yet known.
+
+During this work no odds were stored between 17:57 and about 18:58 UTC: a backend that started
+at 17:57 took the shared poll lock and stopped, and its database session stayed open, so every
+other backend skipped polling. The session was dropped without intervention and polling resumed.
+Nothing in the code prevents a recurrence.
+
 ## Categories, link explanations and the merge with brokerage sync (2026-10-10)
 
 Local main was merged with origin/main (brokerage sync, AI cache, reload buttons, hourly price
