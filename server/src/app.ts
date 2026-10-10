@@ -1,3 +1,4 @@
+import { trackRatings } from './services/track-ratings.ts';
 import express from 'express';
 import { authRouter } from './auth/routes.ts';
 import { loadSession, protectWrites } from './auth/session.ts';
@@ -65,6 +66,13 @@ app.get('/holdings-history', async (req,res) => {
     const subject=String(req.query.subject??'all'),symbol=req.query.symbol===undefined?undefined:String(req.query.symbol).trim().toUpperCase();
     if(subject!=='all'&&!HISTORY_SUBJECTS.some(s=>s.id===subject) || symbol!==undefined&&!/^[A-Z][A-Z0-9.\-^=]{0,14}$/.test(symbol)) {res.status(400).json({error:'Choose a supported subject and ticker',asOf:null});return;}
     res.json(await holdingsHistory(res.locals.session,subject,symbol));
+});
+app.get('/track-record/ratings', async (req,res) => {
+    const horizon=Number(req.query.horizon??24),page=Number(req.query.page??1),search=req.query.search??'';
+    if(![1,24,168,720].includes(horizon)||!Number.isSafeInteger(page)||page<1||typeof search!=='string'||search.length>80) {
+        res.status(400).json({error:'Invalid history filters'});return;
+    }
+    res.json(await trackRatings(res.locals.session,horizon,page,search));
 });
 app.get('/track-record', async (req, res) => {
     const horizon = req.query.horizon === undefined ? 24 : Number(req.query.horizon);

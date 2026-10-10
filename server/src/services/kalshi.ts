@@ -9,6 +9,11 @@ export interface KalshiMarket {
     occurrence_datetime?: string;
     expected_expiration_time?: string;
     status: string;
+    settlement_ts?: string;
+    is_provisional?: boolean;
+    market_type?: string;
+    mve_collection_ticker?: string;
+    mve_selected_legs?: unknown[];
     result?: string;
     yes_bid_dollars?: string;
     yes_ask_dollars?: string;

@@ -29,6 +29,7 @@ services:
       ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID:-}
       FRED_API_KEY: ${FRED_API_KEY:-}
       SEC_USER_AGENT: ${SEC_USER_AGENT:-}
+      TRACK_HISTORY_ENABLED: ${TRACK_HISTORY_ENABLED:-false}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     depends_on:
       database:

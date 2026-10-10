@@ -1,3 +1,4 @@
+import { trackHistory, trackEntities } from './track-history.ts';
 import cron from 'node-cron';
 import { pool, query } from '../db.ts';
 import { poll } from './poll.ts';
@@ -30,6 +31,7 @@ export async function runJob(name: string, job: () => Promise<void>) {
 }
 export function scheduler() {
     const tasks = [cron.schedule('*/5 * * * *', () => runJob('poll', poll)), cron.schedule('30 22 * * *', () => runJob('nightly', async () => { await prices(); await reportDates(); await stockTags(); await tagSeries(); await measure(); await backfill(); await summaries(); }), { timezone: 'America/New_York' }), cron.schedule('0 8 * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), cron.schedule('15 * * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), cron.schedule('0 * * * *', () => runJob('enrich', async () => { await stockTags(); await tagSeries(); await summaries(); }))];
+    if(process.env.TRACK_HISTORY_ENABLED==='true')tasks.push(cron.schedule('40 * * * *',()=>runJob('track-history',async()=>{await trackEntities();await trackHistory();})));
     tasks.push(cron.schedule('15 * * * *', () => runJob('session-cleanup', async () => {
         await query('DELETE FROM auth_sessions WHERE expires_at<=now()');
         await query('DELETE FROM auth_rate_limits WHERE resets_at<=now()');

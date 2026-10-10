@@ -243,6 +243,33 @@ export const FORECAST_HORIZONS = [
     { hours: 24, label: '24 hours' },
     { hours: 1, label: '1 hour' },
 ] as const;
+export interface HistoricalRating {
+    accuracy: number | null;
+    grade: 'A' | 'B' | 'C' | 'D' | null;
+    label: string;
+    matched: number;
+    evaluated: number;
+    eventCount: number;
+    missing: number;
+    tied: number;
+    excluded: number;
+}
+export interface TrackRatingItem {
+    id: string;
+    name: string;
+    symbol?: string;
+    rating: HistoricalRating;
+    linkedHoldings: {symbol:string;type:LinkType;evidence:string}[];
+}
+export interface TrackRatingsResponse extends Freshness {
+    horizonHours: number;
+    themes: TrackRatingItem[];
+    companies: TrackRatingItem[];
+    page: number;
+    pageSize: number;
+    totalCompanies: number;
+    fundSymbols: string[];
+}
 export interface HoldingMove extends Holding {
     actual: number | null;
     beta: number | null;
