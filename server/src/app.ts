@@ -68,11 +68,11 @@ app.get('/holdings-history', async (req,res) => {
     res.json(await holdingsHistory(res.locals.session,subject,symbol));
 });
 app.get('/track-record/ratings', async (req,res) => {
-    const horizon=Number(req.query.horizon??24),page=Number(req.query.page??1),search=req.query.search??'';
-    if(![1,24,168,720].includes(horizon)||!Number.isSafeInteger(page)||page<1||typeof search!=='string'||search.length>80) {
+    const horizon=Number(req.query.horizon??24),page=Number(req.query.page??1),fundPage=Number(req.query.fundPage??1),search=req.query.search??'';
+    if(![1,24,168,720].includes(horizon)||!Number.isSafeInteger(page)||page<1||!Number.isSafeInteger(fundPage)||fundPage<1||typeof search!=='string'||search.length>80) {
         res.status(400).json({error:'Invalid history filters'});return;
     }
-    res.json(await trackRatings(res.locals.session,horizon,page,search));
+    res.json(await trackRatings(res.locals.session,horizon,page,search,fundPage));
 });
 app.get('/track-record', async (req, res) => {
     const horizon = req.query.horizon === undefined ? 24 : Number(req.query.horizon);

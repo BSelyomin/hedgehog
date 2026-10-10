@@ -33,7 +33,7 @@ export async function trackHistory(options:{maxMarkets?:number;maxSeries?:number
     const horizons=FORECAST_HORIZONS.filter(h=>!options.horizons||options.horizons.includes(h.hours));
     const maxMarkets=Math.max(1,Math.min(50,options.maxMarkets??25));
     const maxSeries=Math.max(1,Math.min(6,options.maxSeries??3));
-    const available=await query<{series_ticker:string}>(`SELECT t.series_ticker FROM (SELECT series_ticker,reviewed FROM series_tags UNION SELECT series_ticker,true FROM track_company_series) t LEFT JOIN track_sync s ON s.series_ticker=t.series_ticker
+    const available=await query<{series_ticker:string}>(`SELECT t.series_ticker FROM (SELECT series_ticker,reviewed FROM series_tags UNION SELECT series_ticker,true FROM track_company_series UNION SELECT series_ticker,true FROM track_benchmark_series) t LEFT JOIN track_sync s ON s.series_ticker=t.series_ticker
         WHERE t.reviewed=true GROUP BY t.series_ticker ORDER BY COALESCE(min(s.updated_at),'epoch'::timestamptz),t.series_ticker`);
     const perSeries=Math.max(1,Math.min(maxMarkets,options.perSeries??maxMarkets));
     const series=available.filter(s=>!options.series?.length||options.series.includes(s.series_ticker)).slice(0,maxSeries);

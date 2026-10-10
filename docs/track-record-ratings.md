@@ -81,3 +81,26 @@ checks apply. The collector can request only a selected horizon for a small init
 without manufacturing other horizons. Company percentages describe company-specific
 questions (including earnings-call words), not how accurately stock returns were predicted.
 The linked-holdings disclosure caps its content at 220px with keyboard-accessible vertical scrolling.
+
+## ETFs and index funds
+
+The primary page has three separate tabs: Asset holdings, Companies, and ETFs & index
+funds. The fund view treats a fund/index as one record and never expands constituents.
+The public S&P 500 record uses verified index-price series registered by
+`npm run job -- track-funds`: KXINX, KXINXU, KXINXAB, KXINXW, KXINXM and KXINXY,
+validated against the official catalog's Financials category, price-question title and
+.INX:INDEXSP settlement-source URL. Collect via the existing bounded track-history job.
+Migration 016 only adds track_benchmark_series; existing tags and trust remain unchanged.
+
+SPY is linked to this benchmark using State Street's published fund information. This
+is a score of S&P 500 questions, not a score of SPY share-price tracking differences.
+Other saved funds/indexes are shown separately and score only verified questions about
+that specific fund/index. Broad Fed, inflation or Treasury-yield records are never used
+as substitute fund scores. Unmapped funds remain unscored. Fund pagination is independent
+of company pagination, with ten records per page.
+
+Track Record's holding disclosures now show the name, entered USD position value and
+position value / total entered portfolio value. Enrichment uses only the requesting
+session's saved holdings, with unavailable values shown as unavailable rather than zero.
+The list has ticker/name search, spaced rows, a persistent scroll hint and visible scroll
+styling. Search stays outside the 260px scrolling region. Values are not live valuations.

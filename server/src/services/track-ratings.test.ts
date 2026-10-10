@@ -27,3 +27,14 @@ it('puts usable theme and company data first before paginating',async()=>{
  query.mockImplementation(async(sql:string)=>sql.includes('series_tags')?[{series_ticker:'OIL',tag:'oil'},{series_ticker:'Z-S',tag:'OTHER11'}]:sql.includes('track_entities')?Array.from({length:12},(_,i)=>({symbol:`OTHER${i}`,name:`Other company ${i}`,kind:'company'})):sql.includes('track_quotes')?[{series_ticker:'Z-S',event:'E',bid:'.7',ask:'.8',outcome:1,status:'quoted',fetched_at:new Date()},{series_ticker:'OIL',event:'E2',bid:'.2',ask:'.3',outcome:0,status:'quoted',fetched_at:new Date()},{series_ticker:'OIL',event:'E3',bid:'.2',ask:'.3',outcome:0,status:'quoted',fetched_at:new Date()}]:[]);
  const d=await trackRatings('owner',24,1,'other');expect(d.themes[0].name).toBe('Oil');expect(d.companies[0].symbol).toBe('OTHER11');expect(d.companies).toHaveLength(10);
 });
+it('scores SPY using explicit benchmark questions, keeps funds separate and scopes portfolio values',async()=>{
+ holdings.mockResolvedValue({holdings:[{symbol:'SPY',valueUsd:4000},{symbol:'TLT',valueUsd:1000},{symbol:'AAPL',valueUsd:5000}]});
+ query.mockImplementation(async(sql:string)=>sql.includes('series_tags')?[{series_ticker:'CPI',tag:'inflation'}]:sql.includes('track_entities')?[{symbol:'SPY',name:'S&P ETF',kind:'fund'},{symbol:'TLT',name:'Treasury ETF',kind:'fund'},{symbol:'AAPL',name:'Apple',kind:'company'}]:sql.includes('track_quotes')?[{series_ticker:'INDEX',event:'E',bid:'.7',ask:'.8',outcome:1,status:'quoted',fetched_at:new Date()},{series_ticker:'CPI',event:'CPI',bid:'.7',ask:'.8',outcome:1,status:'quoted',fetched_at:new Date()}]:sql.includes('track_benchmark_series')?[{benchmark:'sp500',series_ticker:'INDEX'}]:[]);
+ const d=await trackRatings('owner');expect(d.funds[0]).toMatchObject({id:'sp500',rating:{accuracy:1,evaluated:1},linkedHoldings:[{symbol:'SPY',valueUsd:4000,share:.4}]});expect(d.funds.find(f=>f.symbol==='TLT')?.rating.accuracy).toBeNull();expect(d.companies.some(c=>c.symbol==='SPY'||c.symbol==='TLT')).toBe(false);expect(d.themes.some(c=>c.symbol==='SPY'||c.symbol==='TLT')).toBe(false);
+});
+
+it('paginates funds independently of company pages',async()=>{
+ holdings.mockResolvedValue({holdings:Array.from({length:12},(_,i)=>({symbol:`FUND${i}`,valueUsd:100}))});
+ query.mockImplementation(async(sql:string)=>sql.includes('track_entities')?Array.from({length:12},(_,i)=>({symbol:`FUND${i}`,name:`Fund ${i}`,kind:'fund'})):[]);
+ const d=await trackRatings('owner',24,1,'',2);expect(d.totalFunds).toBe(13);expect(d.fundPage).toBe(2);expect(d.funds).toHaveLength(3);expect(d.page).toBe(1);expect(d.companies).toEqual([]);
+});

@@ -256,16 +256,21 @@ export interface HistoricalRating {
 }
 export interface TrackRatingItem {
  relatedThemes?: string[];
+    scope?: string;
+    kind?: 'company' | 'fund' | 'benchmark';
     id: string;
     name: string;
     symbol?: string;
     rating: HistoricalRating;
-    linkedHoldings: {symbol:string;type:LinkType;evidence:string}[];
+    linkedHoldings: {symbol:string;type:LinkType;evidence:string;name?:string|null;valueUsd?:number|null;share?:number|null}[];
 }
 export interface TrackRatingsResponse extends Freshness {
     horizonHours: number;
     themes: TrackRatingItem[];
     companies: TrackRatingItem[];
+    funds: TrackRatingItem[];
+    fundPage: number;
+    totalFunds: number;
     page: number;
     pageSize: number;
     totalCompanies: number;
