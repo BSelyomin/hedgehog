@@ -255,6 +255,7 @@ export interface HistoricalRating {
     excluded: number;
 }
 export interface TrackRatingItem {
+ relatedThemes?: string[];
     id: string;
     name: string;
     symbol?: string;

@@ -2,8 +2,7 @@
 
 The primary page uses GET /track-record/ratings?horizon=24&page=1&search=.
 Supported hours: 1, 24 (default), 168 and 720. Company pages contain ten entries.
-An empty search shows verified companies whose reviewed direct-company series link to
-this session's holdings. A search matches verified company names or symbols in the cached
+An empty search shows verified company holdings plus companies whose reviewed direct-company series link to this session's holdings. Reviewed macro theme links are displayed separately and never substituted for company-specific accuracy. Rows with scored data sort first, before pagination. A search matches verified company names or symbols in the cached
 allowed-tag catalog. ETFs, mutual funds and indexes are not expanded into constituents.
 The six asset cards reuse reviewed series tags and existing holding-link evidence.
 

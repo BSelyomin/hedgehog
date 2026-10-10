@@ -21,14 +21,18 @@ export async function trackRatings(session:string,horizonHours=24,page=1,search=
         const series=s.id==='companies'?[...new Set(tags.filter(t=>companySymbols.has(t.tag)).map(t=>t.series_ticker))]:subjectSeries(s.id,tags);
         return {id:s.id,name:s.id==='companies'?'Direct company markets':s.title,rating:summarize(series),linkedHoldings:themeLinks(series,links)};
     });
+    const dataFirst=(a:TrackRatingItem,b:TrackRatingItem)=>b.rating.evaluated-a.rating.evaluated||a.name.localeCompare(b.name);
+    themes.sort(dataFirst);
+    const heldSymbols=new Set(portfolio.holdings.filter(h=>!h.assetType||h.assetType==='security').map(h=>h.symbol));
     const term=search.trim().toLowerCase();
     const allCompanies=companies.flatMap(e=>{
         const series=[...new Set(tags.filter(t=>t.tag===e.symbol).map(t=>t.series_ticker))];
         const ownLinks=themeLinks(series,links);
-        // Default is companies with a reviewed direct-company series linked to this portfolio.
-        if(term?!e.symbol.toLowerCase().includes(term)&&!e.name.toLowerCase().includes(term):!ownLinks.length)return [];
-        return [{id:e.symbol,symbol:e.symbol,name:e.name,rating:summarize(series),linkedHoldings:ownLinks}];
+        // Include verified company holdings even without a direct-company historical series.
+        if(term?!e.symbol.toLowerCase().includes(term)&&!e.name.toLowerCase().includes(term):!heldSymbols.has(e.symbol)&&!ownLinks.length)return [];
+        return [{id:e.symbol,symbol:e.symbol,name:e.name,rating:summarize(series),linkedHoldings:ownLinks,relatedThemes:themes.filter(t=>t.id!=='companies'&&t.linkedHoldings.some(h=>h.symbol===e.symbol)).map(t=>t.name)}];
     });
+    allCompanies.sort(dataFirst);
     const pageSize=10,totalCompanies=allCompanies.length,safePage=Math.max(1,Math.min(page,Math.max(1,Math.ceil(totalCompanies/pageSize))));
     const asOf=rows.length?iso(new Date(Math.max(...rows.map(r=>r.fetched_at.getTime())))):null;
     return {asOf,horizonHours,themes,companies:allCompanies.slice((safePage-1)*pageSize,safePage*pageSize),page:safePage,pageSize,totalCompanies,
