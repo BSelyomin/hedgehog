@@ -9,8 +9,14 @@ export function countdown(time: string, now = Date.now()): string {
     return days <= 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
 }
 
-export const sessionText = (session: EarningsCall['session']) =>
+export const sessionText = (session: NonNullable<EarningsCall['session']>) =>
     session === 'before-open' ? 'before the market opens' : session === 'after-close' ? 'after the close' : 'during market hours';
+
+// When the call is. The part of the day is said only when Kalshi gives the call's own time.
+export const describeCall = (call: EarningsCall, now = Date.now()) => `Earnings call ${countdown(call.time, now)}${call.session ? `, ${sessionText(call.session)}` : ''}`;
+
+// A quote wider than 50 cents straddles even odds, so it cannot say which side a level is on.
+export const firmQuote = (threshold: EarningsThreshold) => threshold.bid !== null && threshold.ask !== null && threshold.ask - threshold.bid <= 0.5;
 
 const share = (value: number | null) => value === null ? 'unavailable' : `${(value * 100).toFixed(1)}%`;
 
@@ -42,7 +48,7 @@ export function describeEvenOdds(metric: EarningsMetric): string | null {
 export function summarizeEvenOdds(metric: EarningsMetric): string {
     const odds = metric.evenOdds;
     if (!odds)
-        return metric.thresholds.length ? 'Odds do not fall in order across its levels' : 'A range ladder; see its outcomes below';
+        return metric.thresholds.length ? 'No level is clearly on either side of even odds' : 'A range ladder; see its outcomes below';
     if (odds.above && odds.below)
         return `Even odds between ${level(odds.above.label)} and ${level(odds.below.label)}`;
     return odds.above ? `Likely ${outcome(odds.above)} (${share(odds.above.probability)})` : odds.below ? `Unlikely ${outcome(odds.below)} (${share(odds.below.probability)})` : 'No levels listed';

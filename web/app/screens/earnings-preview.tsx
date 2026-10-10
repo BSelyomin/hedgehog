@@ -1,7 +1,7 @@
 'use client';
 import type { EarningsCall, EarningsCompany, EarningsMetric, EarningsReportMove, TrustSummary } from '../../../shared/types';
-import { money, percent, number, href, dateText, Card } from '../common';
-import { countdown, describeEvenOdds, leadTickers, signed, summarizeEvenOdds } from './earnings-text';
+import { money, percent, number, href, dateText, dayOnly, Card } from '../common';
+import { countdown, describeEvenOdds, firmQuote, leadTickers, signed, summarizeEvenOdds } from './earnings-text';
 
 // One trust figure for a group of markets: the median of their scores.
 export function GroupTrust({ trust }: { trust: TrustSummary | null }) {
@@ -29,13 +29,13 @@ export function ExpectationCard({ metric }: { metric: EarningsMetric }) {
         <div className="row expectation-heading"><h2>{metric.title}: what traders expect</h2><GroupTrust trust={metric.trust}/></div>
         <p className="expectation-lead">{describeEvenOdds(metric)}</p>
         <div className="threshold-bars" role="list" aria-label={`Chance of each level for ${metric.title}`}>
-            {metric.thresholds.map(threshold => <div key={threshold.ticker} role="listitem" className={`threshold${lead.has(threshold.ticker) ? ' lead' : ''}`} title={`${threshold.label}: ${percent(threshold.probability)} · Kalshi bid–ask midpoint`}>
+            {metric.thresholds.map(threshold => <div key={threshold.ticker} role="listitem" className={`threshold${lead.has(threshold.ticker) ? ' lead' : ''}`} title={firmQuote(threshold) ? `${threshold.label}: bid ${percent(threshold.bid)}, ask ${percent(threshold.ask)} · midpoint ${percent(threshold.probability)}` : `${threshold.label}: the bid and ask are more than 50 points apart`}>
                 <span className="mono threshold-label">{threshold.label}</span>
-                <div className="bar"><span style={{ width: `${Math.min(1, Math.max(0, threshold.probability ?? 0)) * 100}%` }}/></div>
-                <strong className="mono">{percent(threshold.probability)}</strong>
+                {firmQuote(threshold) ? <><div className="bar"><span style={{ width: `${Math.min(1, Math.max(0, threshold.probability ?? 0)) * 100}%` }}/></div><strong className="mono">{percent(threshold.probability)}</strong></>
+                    : <span className="note threshold-unquoted">No firm quote</span>}
             </div>)}
         </div>
-        <p className="note">Each bar is one Kalshi market: the bid–ask midpoint for that level being exceeded. The highlighted levels sit either side of even odds. These are separate markets, so they are not scaled to add up. <a href={href('event', metric.eventTicker)}>Open the event →</a></p>
+        <p className="note">Each bar is one Kalshi market: the bid–ask midpoint for that level being exceeded. The highlighted levels sit either side of even odds: the highest whose bid is at least 50% and the lowest whose ask is at most 50%. A level whose bid and ask are more than 50 points apart shows no number. These are separate markets, so they are not scaled to add up. <a href={href('event', metric.eventTicker)}>Open the event →</a></p>
     </Card>;
 }
 
@@ -49,7 +49,7 @@ export function MetricsTable({ metrics }: { metrics: EarningsMetric[] }) {
                 <td><GroupTrust trust={metric.trust}/></td>
             </tr>)}
         </tbody></table></div>
-        <p className="note">Each reading comes from the two Kalshi markets either side of 50% odds for that metric. Open a metric for every level.</p>
+        <p className="note">Each reading comes from the two Kalshi markets clearly either side of 50% odds for that metric. Open a metric for every level.</p>
     </Card>;
 }
 
@@ -59,7 +59,7 @@ export function CallTopics({ call }: { call: EarningsCall }) {
         <div className="row expectation-heading"><h2>Topics expected on the call</h2><GroupTrust trust={call.trust}/></div>
         <div className="topic-chips">{call.topics.map(topic => <a key={topic.ticker} className="topic-chip" href={href('event', topic.ticker)}>{topic.word} <span className="mono">{percent(topic.probability)}</span></a>)}</div>
         <p className="note">Chance each word is said on the call. These markets trade thinly, so treat them as rough.</p>
-        <p className="note">Call <time dateTime={call.time}>{dateText(call.time, true)}</time> · Kalshi event time</p>
+        <p className="note">Call <time dateTime={call.time}>{call.session ? dateText(call.time, true) : dayOnly(call.time, true)}</time> · {call.session ? 'Kalshi event time' : 'Kalshi’s date for the call; it gives no time'}</p>
     </Card>;
 }
 

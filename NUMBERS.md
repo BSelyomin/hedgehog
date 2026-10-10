@@ -7,7 +7,7 @@
 | Overview / Calendar / Event | Linked value and share | Sum of unique linked holdings / total entered holding value |
 | Overview / Calendar | Event and market counts | Database events and markets after reviewed-tag matching |
 | All data screens | asOf | Max relevant source update timestamp; null means no source data |
-| Calendar / Event / Earnings | Event date | First of these still in the future: Kalshi market occurrence_datetime, event strike_date, market expected_expiration_time; otherwise markets.close_time. The screen names the field used and shows the market close beside it |
+| Calendar / Event / Earnings | Event date | A date Kalshi states in the event subtitle ("On Oct 29, 2026") wins, with a precise time only when one falls on that day. Otherwise the first of these still in the future: Kalshi market occurrence_datetime, event strike_date, market expected_expiration_time; otherwise markets.close_time. The screen names the field used and shows the market close beside it |
 | Overview / Event | Close date/time | markets.close_time, never guessed report time |
 | Event / Overview / Earnings | Probability | odds_snapshots.mid = (yes_bid + yes_ask) / 2 from Kalshi dollar fields |
 | Event | One-week chart | odds_snapshots.ts and mid per selected ticker |
@@ -27,10 +27,11 @@
 | Moves | Portfolio totals | Holding sums in integer cents; beyond-market total = actual total − market total |
 | Moves | Odds changes in points | Supported midpoint samples about 24 hours apart; only absolute changes ≥ 3 points |
 | Earnings | Normalized bracket probability | Midpoints of a complete exclusive range ladder (buckets and open-ended end caps) divided by their raw sum |
-| Earnings | Call date and countdown | Kalshi occurrence_datetime of the company's earnings-call market; before the open, during trading or after the close by the New York clock |
+| Earnings / Calendar | Call date and countdown | The date Kalshi states in the call event's subtitle. The time, and before the open / after the close by the New York clock, only when the market's occurrence_datetime falls on that day and is not Kalshi's 10:00 am default |
 | Earnings | Position and share of portfolio | Entered holding value; value ÷ total entered value |
 | Earnings | Chance of each level | odds_snapshots.mid of each "above X" market, ordered by Kalshi's floor_strike; not scaled |
-| Earnings | Where even odds fall | The two neighbouring levels with midpoints either side of 50%; no interpolation; omitted when a quote is missing or the odds rise with the level |
+| Earnings | Where even odds fall | The highest level whose bid (midpoint − half the spread) is at least 50% and the lowest whose ask is at most 50%; no interpolation; omitted when no level is clearly on a side or they are out of order |
+| Earnings | "No firm quote" | Shown instead of a chance when a level's bid and ask are more than 50 points apart |
 | Earnings | Group trust | Median trust score of the markets in the group |
 | Earnings | Call topics | odds_snapshots.mid of each word market for the next earnings call |
 | Earnings | Typical move | Mean absolute move over the last 8 reports with a move (at least 4); × entered holding value for dollars |

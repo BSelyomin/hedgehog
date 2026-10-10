@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { EarningsCall, EarningsMetric, EarningsResponse, EarningsThreshold } from '../../shared/types';
-import { countdown, describeEvenOdds, describeTypicalMove, level, leadTickers, sessionText, summarizeEvenOdds } from './screens/earnings-text';
+import { countdown, describeCall, describeEvenOdds, describeTypicalMove, firmQuote, level, leadTickers, sessionText, summarizeEvenOdds } from './screens/earnings-text';
 import { CallTopics, ExpectationCard, MetricsTable, MovesChart, UpcomingReports } from './screens/earnings-preview';
 import { EarningsHistory, EarningsMarkets } from './screens/earnings';
 
-const threshold = (label: string, strike: number, probability: number | null): EarningsThreshold => ({ ticker: `T${strike}`, label, strike, probability });
+const threshold = (label: string, strike: number, probability: number | null, spread = .1): EarningsThreshold =>
+    ({ ticker: `T${strike}`, label, strike, probability, bid: probability === null ? null : Math.round((probability - spread / 2) * 1e4) / 1e4, ask: probability === null ? null : Math.round((probability + spread / 2) * 1e4) / 1e4 });
 const ladder = [threshold('Above 164000', 164000, .92), threshold('Above 166000', 166000, .86), threshold('Above 168000', 168000, .67), threshold('Above 170000', 170000, .44)];
 const metric = (evenOdds: EarningsMetric['evenOdds'], thresholds = ladder): EarningsMetric =>
     ({ eventTicker: 'KXAAPLA-28JANHEAD', title: 'Apple headcount in 2026', eventTime: '2028-01-01T15:00:00Z', eventTimeSource: 'occurrence', thresholds, evenOdds, trust: { total: 42.5, band: 'Low', markets: 4 } });
@@ -34,7 +35,9 @@ describe('earnings wording', () => {
     });
     it('gives no reading when the odds do not support one', () => {
         expect(describeEvenOdds(metric(null))).toBeNull();
-        expect(summarizeEvenOdds(metric(null))).toBe('Odds do not fall in order across its levels');
+        expect(summarizeEvenOdds(metric(null))).toBe('No level is clearly on either side of even odds');
+        // A quote wider than 50 points straddles even odds; an absent one says nothing.
+        expect([firmQuote(threshold('Above 1', 1, .515, .51)), firmQuote(threshold('Above 1', 1, .5, 1)), firmQuote(threshold('Above 1', 1, null)), firmQuote(threshold('Above 1', 1, .67))]).toEqual([false, false, false, true]);
         expect(summarizeEvenOdds(metric(null, []))).toBe('A range ladder; see its outcomes below');
     });
 });
@@ -60,12 +63,21 @@ describe('earnings preview cards', () => {
         expect(html).toContain('width:67%');
         expect(html).toContain('Trust 43 · Low');
         expect(html).toContain('not scaled to add up');
+        expect(html).toContain('bid 62.0%, ask 72.0%');
+    });
+    it('shows no number for a level without a firm quote', () => {
+        const wide = [threshold('Above 400,000', 400000, .775, .09), threshold('Above 425,000', 425000, .515, .51), threshold('Above 450,000', 450000, .35, .08)];
+        const html = renderToStaticMarkup(<ExpectationCard metric={metric({ above: wide[0], below: wide[2] }, wide)}/>);
+        expect(html).toContain('No firm quote');
+        expect(html).not.toContain('51.5%');
+        expect(html.match(/class="bar"/g)).toHaveLength(2);
+        expect(html).toContain('Even odds fall between 400,000 and 450,000.');
     });
     it('gives each other metric one row with its reading and trust', () => {
         const html = renderToStaticMarkup(<MetricsTable metrics={[headcount, { ...metric(null), eventTicker: 'OTHER', title: 'Apple stores in fiscal 2026', trust: null }]}/>);
         expect(html).toContain('href="#event/KXAAPLA-28JANHEAD"');
         expect(html).toContain('Even odds between 168,000 and 170,000');
-        expect(html).toContain('Odds do not fall in order across its levels');
+        expect(html).toContain('No level is clearly on either side of even odds');
         expect(html).toContain('Trust unavailable');
     });
     it('shows call topics with the chance each word is said', () => {
@@ -78,6 +90,15 @@ describe('earnings preview cards', () => {
         expect(html).toContain('Unavailable');
         expect(html).toContain('Trust 52 · Low');
         expect(html).toContain('trade thinly');
+        expect(html).toContain('Kalshi event time');
+        // With only a day from Kalshi, no time of day is shown or implied.
+        const dayOnly = { ...call, time: '2026-10-20T16:00:00Z', session: null };
+        const undated = renderToStaticMarkup(<CallTopics call={dayOnly}/>);
+        expect(undated).toContain('it gives no time');
+        expect(undated).not.toMatch(/\d:\d\d [AP]M/);
+        const now = new Date(2026, 9, 10, 9, 0).getTime();
+        expect(describeCall({ ...call, time: new Date(2026, 9, 29, 17, 0).toISOString() }, now)).toBe('Earnings call in 19 days, after the close');
+        expect(describeCall({ ...dayOnly, time: new Date(2026, 9, 20, 12, 0).toISOString() }, now)).toBe('Earnings call in 10 days');
     });
 });
 

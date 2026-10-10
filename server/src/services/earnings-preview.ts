@@ -21,23 +21,31 @@ export function medianTrust(markets: Market[]): TrustSummary | null {
     return { total, band: trustBand(total), markets: totals.length };
 }
 
-// The "above X" markets of an event in order of level. Null when the event is not such a ladder.
+const cents = (value: number) => Math.round(value * 10000) / 10000;
+// The "above X" markets of an event in order of level, each with the bid and ask behind its
+// midpoint. Null when the event is not such a ladder.
 export function thresholdLadder(event: ExposureEvent): EarningsThreshold[] | null {
     if (event.markets.length < 2 || !event.markets.every(m => typeof m.floorStrike === 'number' && m.kind !== 'bracket'))
         return null;
-    return event.markets.map(m => ({ ticker: m.ticker, label: m.subtitle || m.title, strike: m.floorStrike!, probability: m.probability }))
-        .sort((a, b) => a.strike - b.strike);
+    return event.markets.map(m => {
+        const quoted = m.probability !== null && m.spread !== null;
+        return { ticker: m.ticker, label: m.subtitle || m.title, strike: m.floorStrike!, probability: m.probability,
+            bid: quoted ? cents(m.probability! - m.spread! / 2) : null, ask: quoted ? cents(m.probability! + m.spread! / 2) : null };
+    }).sort((a, b) => a.strike - b.strike);
 }
 
-// Where the odds cross 50%: the highest level traders think is more likely than not to be
-// exceeded, and the next level up. Each side is a real midpoint; nothing is interpolated.
-// Null when a quote is missing or the odds do not fall as the level rises, because then the
-// ladder does not describe one consistent expectation.
+// Where the odds cross 50%. A level counts as more likely than not only when even its bid is at
+// 50% or better, and as less likely only when even its ask is at 50% or below. A quote that
+// straddles 50%, as every quote wider than 50 cents must, says neither and is passed over. The
+// reading is the highest clearly likely level and the lowest clearly unlikely one: both are real
+// quotes and nothing is interpolated. Null when no level is clearly on either side, or when a
+// likely level sits above an unlikely one, because then the ladder holds no single expectation.
 export function evenOdds(ladder: EarningsThreshold[]): EarningsMetric['evenOdds'] {
-    if (ladder.some(t => t.probability === null) || ladder.some((t, i) => i > 0 && t.probability! > ladder[i - 1].probability!))
+    const above = ladder.filter(t => t.bid !== null && t.bid >= 0.5).at(-1) ?? null;
+    const below = ladder.find(t => t.ask !== null && t.ask <= 0.5 && t.bid! < 0.5) ?? null;
+    if ((!above && !below) || (above && below && above.strike >= below.strike))
         return null;
-    const likely = ladder.filter(t => t.probability! >= 0.5);
-    return { above: likely.at(-1) ?? null, below: ladder[likely.length] ?? null };
+    return { above, below };
 }
 
 export function metricFor(event: ExposureEvent): EarningsMetric {
@@ -46,29 +54,37 @@ export function metricFor(event: ExposureEvent): EarningsMetric {
         evenOdds: thresholds.length ? evenOdds(thresholds) : null, trust: medianTrust(event.markets) };
 }
 
-// The metric to lead with: one whose ladder gives a clear reading, the best supported first.
+// The metric to lead with: one that pins even odds between two levels, the best supported first.
 export function featuredMetric(metrics: EarningsMetric[]): EarningsMetric | null {
+    const pinned = (m: EarningsMetric) => m.evenOdds?.above && m.evenOdds.below ? 1 : 0;
     return metrics.filter(m => m.evenOdds !== null)
-        .sort((a, b) => (b.trust?.total ?? -1) - (a.trust?.total ?? -1) || b.thresholds.length - a.thresholds.length || a.eventTicker.localeCompare(b.eventTicker))[0] ?? null;
+        .sort((a, b) => pinned(b) - pinned(a) || (b.trust?.total ?? -1) - (a.trust?.total ?? -1) || b.thresholds.length - a.thresholds.length || a.eventTicker.localeCompare(b.eventTicker))[0] ?? null;
 }
 
-// Whether a time falls before the New York stock market opens, during trading or after the close.
-export function callSession(time: string): EarningsCall['session'] {
+const newYorkMinutes = (time: string) => {
     const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(new Date(time));
-    const minutes = Number(parts.find(p => p.type === 'hour')!.value) * 60 + Number(parts.find(p => p.type === 'minute')!.value);
+    return Number(parts.find(p => p.type === 'hour')!.value) * 60 + Number(parts.find(p => p.type === 'minute')!.value);
+};
+// Whether a time falls before the New York stock market opens, during trading or after the close.
+export function callSession(time: string): NonNullable<EarningsCall['session']> {
+    const minutes = newYorkMinutes(time);
     return minutes < 9 * 60 + 30 ? 'before-open' : minutes >= 16 * 60 ? 'after-close' : 'market-hours';
 }
 
-// The next earnings call Kalshi lists for a company: the call event whose date comes from
-// Kalshi's occurrence time and is still ahead. A call that has happened no longer counts.
+const HALF_DAY = 12 * 3600000;
+// The next earnings call Kalshi has dated for a company. The date comes from Kalshi's stated day
+// or from an occurrence time on that day (see eventTime). The time of day is reported only when
+// Kalshi gives the call's own: half of these markets carry exactly 10:00 am New York time, its
+// default, which says nothing about when the call is.
 export function upcomingCall(events: ExposureEvent[], now = Date.now()): EarningsCall | null {
-    const event = events.filter(e => isEarningsCall(e) && e.eventTimeSource === 'occurrence' && Date.parse(e.eventTime) > now)
-        .sort((a, b) => Date.parse(a.eventTime) - Date.parse(b.eventTime))[0];
+    const dated = (e: ExposureEvent) => e.eventTimeSource === 'occurrence' ? Date.parse(e.eventTime) > now : e.eventTimeSource === 'stated' && Date.parse(e.eventTime) + HALF_DAY > now;
+    const event = events.filter(e => isEarningsCall(e) && dated(e)).sort((a, b) => Date.parse(a.eventTime) - Date.parse(b.eventTime))[0];
     if (!event)
         return null;
     const topics = event.markets.map(m => ({ ticker: m.ticker, word: m.subtitle || m.title, probability: m.probability }))
         .sort((a, b) => (b.probability ?? -1) - (a.probability ?? -1) || a.word.localeCompare(b.word));
-    return { eventTicker: event.ticker, time: event.eventTime, session: callSession(event.eventTime), topics, trust: medianTrust(event.markets) };
+    const timed = event.eventTimeSource === 'occurrence' && newYorkMinutes(event.eventTime) !== 10 * 60;
+    return { eventTicker: event.ticker, time: event.eventTime, session: timed ? callSession(event.eventTime) : null, topics, trust: medianTrust(event.markets) };
 }
 
 // How far the stock typically moved across past reports: the average size of the move, whichever

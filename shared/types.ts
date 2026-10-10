@@ -125,7 +125,8 @@ export interface ExposureEvent {
     closeTime: string;
     /** When the event happens according to Kalshi; the market close when Kalshi gives no later date. */
     eventTime: string;
-    eventTimeSource: 'occurrence' | 'strike' | 'expected' | 'close';
+    /** 'stated' is a date Kalshi gives by day only; its time of day is not known. */
+    eventTimeSource: 'occurrence' | 'stated' | 'strike' | 'expected' | 'close';
     linkedValue: number;
     share: number;
     links: HoldingLink[];
@@ -268,6 +269,9 @@ export interface EarningsThreshold {
     label: string;
     strike: number;
     probability: number | null;
+    /** Bid and ask behind the midpoint; null without a quote. */
+    bid: number | null;
+    ask: number | null;
 }
 /** A reported metric for a period, such as headcount in 2026, read from its "above X" markets. */
 export interface EarningsMetric {
@@ -277,7 +281,7 @@ export interface EarningsMetric {
     eventTimeSource: ExposureEvent['eventTimeSource'];
     /** In order of level. Empty when the metric is not a ladder of "above X" markets. */
     thresholds: EarningsThreshold[];
-    /** The neighbouring levels either side of 50% odds. Null when a quote is missing or the odds do not fall as the level rises. */
+    /** The highest level whose bid is at least 50% and the lowest whose ask is at most 50%. Null when no level is clearly on either side or the two are out of order. */
     evenOdds: { above: EarningsThreshold | null; below: EarningsThreshold | null } | null;
     trust: TrustSummary | null;
 }
@@ -285,7 +289,8 @@ export interface EarningsMetric {
 export interface EarningsCall {
     eventTicker: string;
     time: string;
-    session: 'before-open' | 'market-hours' | 'after-close';
+    /** Null when Kalshi gives only the day, or its default time rather than the call's own. */
+    session: 'before-open' | 'market-hours' | 'after-close' | null;
     topics: { ticker: string; word: string; probability: number | null }[];
     trust: TrustSummary | null;
 }

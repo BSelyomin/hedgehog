@@ -37,6 +37,20 @@ On 2026-10-09, `HEDGEHOG.REPORTING.EVENT_SOURCES` was provisioned with 21 dated 
   (CIK 2115436), whose filings begin on 2026-07-01. Reports filed by a predecessor registrant
   are not followed, so a company that changes registrant starts with a short history.
 
+# Earnings-call dates and strike values (October 10, 2026)
+
+- All 62 open earnings-call events state their date in the event subtitle ("On Oct 20, 2026").
+  The markets' `occurrence_datetime` agreed with it for 39 and held another date for 23: later
+  by one day or by about two weeks, or equal to the market close (United: March 31, 2027).
+  Thirty-one carried exactly 10:00 am New York time. Hedgehog therefore dates a call by the
+  stated day, and reports a time of day only from an occurrence time on that day that is not
+  10:00 am.
+- `floor_strike` and `cap_strike` are numbers on live market responses (Apple headcount:
+  164000, 166000, ...). `product_metadata.competition_scope` names the metric on some events;
+  it is not stored.
+- Kalshi lists no company revenue or earnings-per-share markets. Company results markets are
+  ladders of "above X" levels on operating metrics (232 open) and earnings-call word markets.
+
 # Additional coverage validation (October 9, 2026)
 
 - [Kalshi historical data](https://docs.kalshi.com/getting_started/historical_data): older

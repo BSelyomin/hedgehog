@@ -198,15 +198,21 @@ link is Measured; otherwise say it moved the same day, nothing more.
 
 Laid out as in `/design`: upcoming reports on the left, then the chosen company's preview.
 
-- **Who appears:** only holdings whose next earnings call Kalshi has dated (the occurrence time of
-  its earnings-call market), soonest first. A holding without one is not shown on this screen.
+- **Who appears:** only holdings whose next earnings call Kalshi has dated, soonest first. A
+  holding without one is not shown on this screen. The date is the one Kalshi states in the
+  call event's subtitle ("On Oct 29, 2026"). Its `occurrence_datetime` is used for the hour only
+  when it falls on that day: for about a third of these markets it holds a later administrative
+  date. Say "before the open" or "after the close" only with the call's own time; exactly
+  10:00 am New York is Kalshi's default and says nothing.
 - **Which markets:** only those about reported results: the earnings call, and numeric metrics
   for a reporting period ("headcount in 2026", "bookings in Q3"). Products, lawsuits, executives,
   prices, rankings and monthly third-party data stay on the other screens.
 - **Lead card:** one reported metric read from its ladder of "above X" markets, ordered by
-  Kalshi's strike. Say where even odds fall using the two markets either side of 50%. Never
-  interpolate between them, and give no reading when a quote is missing or the odds do not fall
-  as the level rises. These are separate markets, so they are not scaled to add up. Kalshi lists
+  Kalshi's strike. Say where even odds fall: the highest level whose bid is at least 50% and the
+  lowest whose ask is at most 50%. Never interpolate between them. A quote that straddles 50%,
+  as any quote wider than 50 cents must, says neither and shows no number. Give no reading when
+  no level is clearly on a side or the sides are out of order. These are separate markets, so
+  they are not scaled to add up. Kalshi lists
   no company revenue brackets, which the design assumed.
 - **Bracket ladders** (mutually exclusive ranges) are still scaled so they sum to 100%, with the
   raw sum in a note.

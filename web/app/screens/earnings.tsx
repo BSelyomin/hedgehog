@@ -1,11 +1,11 @@
 'use client';
 import { useRef, useState } from 'react';
 import type { EarningsListResponse, EarningsResponse } from '../../../shared/types';
-import { money, percent, dateText, href, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, EventDate } from '../common';
+import { money, percent, dateText, dayOnly, href, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, EventDate } from '../common';
 import { EarningsControls } from './earnings-controls';
 import { defaultEarningsFilters, earningsRows, filterEarningsRows, type EarningsFilters, type EarningsRow } from './earnings-filters';
 import { CallTopics, ExpectationCard, MetricsTable, MovesChart, UpcomingReports } from './earnings-preview';
-import { countdown, describeTypicalMove, sessionText } from './earnings-text';
+import { describeCall, describeTypicalMove } from './earnings-text';
 
 export function Earnings() {
     const { data, error } = useData<EarningsListResponse>('/earnings');
@@ -56,7 +56,7 @@ export function EarningsMarkets({ data }: { data: EarningsResponse }) {
     function changePage(next: number) { setPage(Math.max(1, Math.min(next, pages))); heading.current?.focus({ preventScroll: true }); heading.current?.scrollIntoView({ block: 'start' }); }
     return <>
         <p className="earnings-subline">
-            {data.call ? <>Earnings call {countdown(data.call.time)}, {sessionText(data.call.session)} (<time dateTime={data.call.time}>{dateText(data.call.time, true)}</time>)</> : 'No earnings call dated by Kalshi'}
+            {data.call ? <>{describeCall(data.call)} (<time dateTime={data.call.time}>{data.call.session ? dateText(data.call.time, true) : dayOnly(data.call.time, true)}</time>)</> : 'No earnings call dated by Kalshi'}
             {data.position && <> · Your position <span className="mono">{money(data.position.valueUsd)}</span> · <span className="mono">{percent(data.position.share)}</span> of portfolio</>}
         </p>
         <Fresh asOf={data.asOf}/>

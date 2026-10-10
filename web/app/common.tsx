@@ -20,12 +20,15 @@ export const linkLabel = (type: LinkType) => type === 'Measured' ? 'Related' : t
 export const assetLabel: Record<AssetType, string> = { security: 'Stock or fund', cash: 'Cash or savings', treasury: 'Treasury or CD', bond: 'Bond', property: 'Property' };
 
 // Says which Kalshi field an event date came from, so a market close is never passed off as the event.
-export const eventTimeLabel = (source: ExposureEvent['eventTimeSource']) => ({ occurrence: 'Kalshi event time', strike: 'Kalshi strike date', expected: 'Kalshi expected resolution', close: 'Kalshi market close' })[source];
+export const eventTimeLabel = (source: ExposureEvent['eventTimeSource']) => ({ occurrence: 'Kalshi event time', stated: 'Kalshi stated date', strike: 'Kalshi strike date', expected: 'Kalshi expected resolution', close: 'Kalshi market close' })[source];
+
+// A day without a time, read in New York where Kalshi states it.
+export const dayOnly = (s: string, showYear = false) => new Date(s).toLocaleDateString(undefined, { timeZone: 'America/New_York', year: showYear ? 'numeric' : undefined, month: 'short', day: 'numeric', weekday: 'short' });
 
 export function EventDate({ event, showYear = false }: {
     event: ExposureEvent;
     showYear?: boolean;
-}) { return <><time dateTime={event.eventTime}>{dateText(event.eventTime, showYear)}</time> · {eventTimeLabel(event.eventTimeSource)}{event.eventTimeSource !== 'close' && <> · market closes <time dateTime={event.closeTime}>{dateText(event.closeTime, showYear)}</time></>}</>; }
+}) { return <><time dateTime={event.eventTime}>{event.eventTimeSource === 'stated' ? dayOnly(event.eventTime, showYear) : dateText(event.eventTime, showYear)}</time> · {eventTimeLabel(event.eventTimeSource)}{event.eventTimeSource !== 'close' && <> · market closes <time dateTime={event.closeTime}>{dateText(event.closeTime, showYear)}</time></>}</>; }
 
 export function LinkChip({ type, children }: {
     type: LinkType;
