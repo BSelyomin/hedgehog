@@ -12,6 +12,7 @@ import { trackRecord } from './services/track-record.ts';
 import { briefing } from './jobs/briefing.ts';
 import { briefingDay } from './services/briefing-content.ts';
 import type { BriefingResponse } from '../../shared/types.ts';
+import { FORECAST_HORIZONS } from '../../shared/types.ts';
 // What a failed request tells the browser. Postgres reports 25006 when a write reaches a
 // database that is accepting reads only, for example because its storage is full.
 export function errorResponse(error: unknown): { status: number; error: string } {
@@ -65,7 +66,11 @@ app.get('/holdings-history', async (req,res) => {
     if(subject!=='all'&&!HISTORY_SUBJECTS.some(s=>s.id===subject) || symbol!==undefined&&!/^[A-Z][A-Z0-9.\-^=]{0,14}$/.test(symbol)) {res.status(400).json({error:'Choose a supported subject and ticker',asOf:null});return;}
     res.json(await holdingsHistory(res.locals.session,subject,symbol));
 });
-app.get('/track-record', async (_req, res) => { res.json(await trackRecord(res.locals.session)); });
+app.get('/track-record', async (req, res) => {
+    const horizon = req.query.horizon === undefined ? 24 : Number(req.query.horizon);
+    if (!FORECAST_HORIZONS.some(h => h.hours === horizon)) { res.status(400).json({error:'Choose a horizon of 24, 168 or 720 hours',asOf:null}); return; }
+    res.json(await trackRecord(res.locals.session,horizon));
+});
 async function readBriefing(session: string): Promise<BriefingResponse> {
     const date = briefingDay();
     const rows = await query<{text: string; audio: Buffer | null; as_of: Date | null}>(

@@ -1,5 +1,15 @@
 # Validation and phase status
 
+## Track Record views and historical horizons (2026-10-10)
+
+All 256 tests, strict TypeScript checks and the Next.js production build pass in the Node 24 Docker validation container. The existing merge conflicts were resolved with both branches preserved; the earnings screen and asset support remain intact.
+
+Added By Market and By Holding views, exact reviewed holding relevance, historical examples before optional statistics, and independent 24/168/720-hour forecast horizons before trading close. No horizon borrows or interpolates another horizon's probability. Added migration 012 for raw bid/ask observations and per-horizon exclusions; the migration was exercised in a disposable Timescale database, including wrong-window and crossed-quote rejection. Existing category trust scoring remains at 24 hours.
+
+Live API validation returned 200 for all supported horizons and 400 for an unsupported horizon. The configured database retains 127 legacy 24-hour observations. A bounded ten-market KXCPI check produced one real 30-day observation and no usable seven-day observations; it recorded missing quotes separately for each horizon. This was a small coverage check, not a full backfill or an independent validation of all outcomes. The 30-day example retains its actual 62% bid / 97% ask rather than treating the midpoint as a precise forecast.
+
+Limitations: sparse longer-horizon samples, incomplete official release timing, correlated contracts and overlapping event identifiers, current rather than historical holding relationships, and Kalshi-reported rather than independently reverified settlements. Browser checks verified By Market / By Holding navigation, the real 30-day CPI example with bid/ask and outcome, and the empty seven-day state with ten recorded exclusions. The browser guest has no holdings; relevance for the existing 25-holding portfolio was checked through the service and individual stock/ETF filtering through tests. Themes with no data show missing-history states. Price changes remain optional context from the existing 24-hour history and do not score investment performance.
+
 ## Holdings-linked event history (2026-10-10)
 
 All 144 Vitest tests, strict TypeScript checks and the Next.js production build pass in the Node 24 container.

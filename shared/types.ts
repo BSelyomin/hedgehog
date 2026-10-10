@@ -183,6 +183,10 @@ export interface SettledExample {
     outcome: number;
     closeTime: string;
     oddsTime: string;
+    eventTicker?: string | null;
+    release?: { at: string; sourceUrl: string } | null;
+    bid?: number | null;
+    ask?: number | null;
 }
 export interface CategoryRecord {
     category: string;
@@ -199,6 +203,8 @@ export interface CategoryRecord {
     coverage: {scored: number; noQuote: number; outcomeKnown: number};
     // Distinct Kalshi events behind `count`; contracts in one event are not independent.
     eventCount: number;
+    knownReleaseCount?: number;
+    marketsWithRelease?: number;
     // Brier score of always predicting this sample's own Yes rate; the score to beat.
     baseRateBrier: number;
     headline70: {
@@ -217,8 +223,11 @@ export interface HistorySubject {
     eventCount: number;
     unknownEventMarkets: number;
     kalshiCategories: string[];
+    linkedHoldings?: { symbol: string; type: LinkType; evidence: string }[];
+    coverage?: CategoryRecord['coverage'];
 }
 export interface TrackRecordResponse extends Freshness {
+    horizonHours?: number;
     subjects: HistorySubject[];
     categories: CategoryRecord[];
     totalMarkets: number;
@@ -228,6 +237,11 @@ export interface TrackRecordResponse extends Freshness {
     // Trust-score weights and bands, read from server config so this page cannot drift from the formula.
     trustScoring: {spread: number; activity: number; depth: number; trackRecord: number; high: number; medium: number};
 }
+export const FORECAST_HORIZONS = [
+    { hours: 720, label: '30 days' },
+    { hours: 168, label: '7 days' },
+    { hours: 24, label: '24 hours' },
+] as const;
 export interface HoldingMove extends Holding {
     actual: number | null;
     beta: number | null;
