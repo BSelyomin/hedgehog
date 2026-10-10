@@ -9,16 +9,18 @@ export interface Driver {
     change: 'return' | 'difference';
     /** Weekly series are regressed on weekly changes and are not ranked against daily drivers. */
     period: 'day' | 'week';
+    /** Series in one family move together, so a holding's sensitivities to them describe the same thing. */
+    family: 'market' | 'oil' | 'rates';
     tags: string[];
 }
 // Every non-market driver is measured with the stock market held fixed.
 export const CONTROL = 'SPY';
 export const DRIVERS: Driver[] = [
-    { key: 'SPY', source: 'yahoo', change: 'return', period: 'day', tags: ['sp500'] },
-    { key: 'CL=F', source: 'yahoo', change: 'return', period: 'day', tags: ['oil'] },
-    { key: 'DGS2', source: 'fred', change: 'difference', period: 'day', tags: ['fed-rates', 'inflation'] },
-    { key: 'DGS10', source: 'fred', change: 'difference', period: 'day', tags: ['treasury-yields'] },
-    { key: 'MORTGAGE30US', source: 'fred', change: 'difference', period: 'week', tags: ['mortgage-rates'] },
+    { key: 'SPY', source: 'yahoo', change: 'return', period: 'day', family: 'market', tags: ['sp500'] },
+    { key: 'CL=F', source: 'yahoo', change: 'return', period: 'day', family: 'oil', tags: ['oil'] },
+    { key: 'DGS2', source: 'fred', change: 'difference', period: 'day', family: 'rates', tags: ['fed-rates', 'inflation'] },
+    { key: 'DGS10', source: 'fred', change: 'difference', period: 'day', family: 'rates', tags: ['treasury-yields'] },
+    { key: 'MORTGAGE30US', source: 'fred', change: 'difference', period: 'week', family: 'rates', tags: ['mortgage-rates'] },
 ];
 export const driverFor = (key: string) => DRIVERS.find(driver => driver.key === key);
 // A typical effect under one basis point per period is numerical noise, not a relationship:

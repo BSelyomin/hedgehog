@@ -8,11 +8,18 @@ endpoint that sends money anywhere.
 
 ## The one rule that matters most: accuracy
 
-Every number on screen is either read straight from a data source or measured from price history,
-and the UI says which. When the data can't support a number, show no number.
+Every number on screen is read straight from a data source, measured from price history, or
+calculated exactly from the terms the user entered for a holding, and the UI says which. When the
+data can't support a number, show no number.
 
 - Never hard-code how much a stock moves when an event happens. Sensitivities come only from
   `measured_links`, computed from historical data.
+- A **Calculated** figure is arithmetic on a holding's own terms: yearly interest on a cash balance
+  per point of rate, a bond's price change from its modified duration, yearly interest on an
+  adjustable mortgage balance. It never comes from a regression and is always labelled Calculated.
+- When a holding has several measured drivers, always show which matters most. Importance is the
+  typical effect, |b| × the driver's typical daily change, so oil, yields and the stock market
+  compare on one scale. A link on a minor driver says what matters more.
 - A link that fails `checkSensitivity` stays unmeasured (API type `Related`, labelled **Topic**
   on screen) with no number.
 - Probabilities are the bid–ask midpoint, never the last trade.
@@ -37,7 +44,7 @@ npm workspaces monorepo, Node 24+, TypeScript everywhere.
 | Database | Tiger Data (Postgres + TimescaleDB) via `pg` |
 | Scheduling | `node-cron` inside the server process |
 | Stock and oil prices | `yahoo-finance2` (daily closes) |
-| 2-year Treasury yield | FRED API, series `DGS2` |
+| Treasury yields and mortgage rate | FRED API, series `DGS2`, `DGS10`, `MORTGAGE30US` |
 | Past earnings-report dates | SEC EDGAR APIs via Node's built-in fetch |
 | Regression | `ml-matrix` (least squares) |
 | AI | Snowflake Cortex REST APIs via Node's built-in fetch |
@@ -94,9 +101,9 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | `prices` | ts (date), symbol, close | price loader, daily |
 | `series_tags` | series_ticker, tag, source ('snowflake', legacy 'gemini', or 'manual'), reviewed boolean | tagging job |
 | `stock_tags` | symbol, tag, link_type ('direct', 'measured', 'related') | sector table + 10-K job |
-| `measured_links` | symbol, driver, b, se, low, high, days, reliable, computed_at | nightly job |
+| `measured_links` | symbol, driver, b, se, low, high, days, reliable, computed_at, effect | nightly job |
 | `settled_markets` | ticker, category, prob_24h_before, outcome (0/1), close_time | backfill |
-| `holdings` | session_id, symbol, value_usd | add-holdings screen |
+| `holdings` | session_id, symbol, value_usd, asset_type ('security', 'cash', 'treasury', 'bond', 'property'), details | add-holdings screen |
 | `sector_tags` | sector, tag | seeded from `server/seed/sector_tags.json` (written by a human) |
 | `earnings_reports` | symbol, accession, filing_date, report_date, source_url | earnings-dates job (SEC EDGAR) |
 
@@ -112,12 +119,22 @@ per company ticker for company markets. Never create tags outside this list.
    link between the holding and that tag's driver.
 3. **Related:** a shared tag only. Show it, labeled, with no sensitivity number.
 
+4. **Calculated:** the holding has no ticker (cash, a Treasury or CD, a bond, a property) and its
+   asset type shares a tag with the market. Where its terms give an exact figure, show it;
+   otherwise it is a Related link with no number. Property links only to housing and weather
+   markets that name its state or the whole country. Rules: `server/src/services/asset-links.ts`.
+
+Tickers, sector tags and measurements apply to listed securities only.
+
 Drivers used for measurement: `oil` → crude oil futures (`CL=F`); `fed-rates` and `inflation` →
-daily change in `DGS2`; `sp500` → SPY (this one is the stock's beta).
+daily change in `DGS2`; `treasury-yields` → daily change in `DGS10`; `mortgage-rates` → weekly
+change in `MORTGAGE30US`; `sp500` → SPY (this one is the stock's beta). The list lives in
+`server/src/config/drivers.ts`; add a driver there and nowhere else.
 
 Exposure for an event: `linkedValue` = sum of the values of holdings linked to it;
 `share` = `linkedValue / totalValue`. These show reach, not how much a holding would move.
-Sort links Direct → Measured → Related. On screen these read Direct, Related and Topic (see UI).
+Sort links Direct → Calculated → Measured → Related. On screen these read Direct, Calculated,
+Related and Topic (see UI).
 
 ## Math (port of `hedgehog_math.py`, in `server/src/math/`)
 
@@ -165,7 +182,10 @@ calibration buckets. Headline example: "When Kalshi said 70%, it happened X% of 
 ## Move explainer
 
 For a day: each holding's dollar move; `fromMarket = beta × SPY return × value`;
-`beyondMarket = actual − fromMarket`. The totals must add up exactly. List linked markets whose
+`beyondMarket = actual − fromMarket`. The totals must add up exactly and cover listed securities;
+state the value of holdings with no daily price. Also compare each measured driver's estimated part
+of the day (sensitivity × the driver's change × value) and highlight the largest. Those estimates
+overlap, so they are compared and never summed; name any driver whose change is not published yet. List linked markets whose
 midpoint moved 3+ points in the last 24 hours. Connect a market to a holding's move only when the
 link is Measured; otherwise say it moved the same day, nothing more.
 
@@ -223,7 +243,7 @@ Design tokens: background `#0E1116`, card `#151A21`, border `#2A313C`, text `#E8
 secondary text `#A3ADBA`, accent `#5AA2FF`, up `#7DB6FF`, down `#FF9F45`. Fonts: Space Grotesk
 (headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). Link chips use one vocabulary
 on every screen, set by the Overview: Direct = `#f87171` (red); Measured links are labelled
-"Related" = `#5aa2ff` (blue); unmeasured links are labelled "Topic" = dashed border. Touch targets ≥ 44 px; real `<button>` and
+"Related" = `#5aa2ff` (blue); Calculated = `#34d399` (green); unmeasured links are labelled "Topic" = dashed border. Touch targets ≥ 44 px; real `<button>` and
 `<a>` elements; works at phone width. Footer on every screen: "Not financial advice. Odds from
 Kalshi."
 

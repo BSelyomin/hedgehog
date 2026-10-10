@@ -15,6 +15,11 @@
 | Event | Spread cents | (yes_ask - yes_bid) × 100 |
 | Event | b, interval, days and measured date | measured_links; revalidated reliability, range b ± 1.96 se; never a forecast from odds |
 | Event | Plain-language sensitivity sentence | measured_links b, low and high × a fixed step (1% for oil and SPY, 0.10 percentage points for DGS2) × 100; a restatement, not a new estimate |
+| Overview / Event | Typical effect and "moves most with" | measured_links.effect = \|b\| × the sample standard deviation of the driver's daily change, in the holding's return units; drivers ranked by it. Weekly drivers are not ranked against daily ones |
+| Event / Overview | Calculated interest per point of rate | Entered cash balance × 0.01 a year; adjustable mortgage balance × 0.01 a year |
+| Event / Overview | Calculated bond price change | −modified duration × 0.01 × entered value. Duration from the entered maturity and coupon, discounted at the latest DGS2 (five years or less) or DGS10 yield, or at the coupon when neither is loaded |
+| Moves | Driver estimates and "what mattered most" | measured_links b × the driver's change that session × entered holding value, summed over holdings per driver; compared, never added to the total |
+| Moves | Value with no daily price | Sum of entered values for cash, bonds held directly and property |
 | Moves | Beta | Nightly measured_links SPY regression over available trailing five-year history; reliable range and minimum 60 observations required |
 | Moves | Actual dollar move | Aligned daily-close return × entered holding value |
 | Moves | Market component | Beta × SPY daily return × entered holding value |

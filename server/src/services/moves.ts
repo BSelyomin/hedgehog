@@ -4,7 +4,7 @@ import { exposure } from './exposure.ts';
 import { checkSensitivity } from '../math/statistics.ts';
 import { driverContribution, rankMoves, splitMove, sumByDriver } from '../math/move.ts';
 import { CONTROL, DRIVERS } from '../config/drivers.ts';
-import { reliableRow } from './matching.ts';
+import { reliableRow, strongestPerFamily } from './matching.ts';
 import { isSecurity } from './asset-links.ts';
 import type { MeasuredRow } from './matching.ts';
 import { briefingDay } from './briefing-content.ts';
@@ -72,7 +72,7 @@ export async function moves(session: string, date: string): Promise<MovesRespons
         // is fitted alone, the others with the market held fixed), so they are compared, never summed.
         const drivers: DriverMove[] = split ? [{ driver: CONTROL, contribution: split.fromMarket }] : [];
         if (actual !== null)
-            for (const m of own.filter(m => m.driver !== CONTROL && reliableRow(m) && driverChange.has(m.driver)))
+            for (const m of strongestPerFamily(own.filter(m => m.driver !== CONTROL && reliableRow(m) && driverChange.has(m.driver))))
                 drivers.push({ driver: m.driver, contribution: driverContribution(m.b, driverChange.get(m.driver)!, h.valueUsd) });
         holdings.push({ ...h, actual, beta: b, fromMarket: split?.fromMarket ?? null, beyondMarket: split?.beyondMarket ?? null, sourceDate: price ? date : null, drivers: rankMoves(drivers) });
     }

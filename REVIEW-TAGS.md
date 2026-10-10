@@ -155,7 +155,14 @@ so a series covering many subjects cannot carry one company's tag.
 | oil | KXNATGAS15M, KXNATGASMON, KXNATGASW, KXNGASMAX, KXNGASMIN, KXMARCELLUSGAS, KXPAGAS, KXIAETHANOL, KXNORDSTREAM2, KXPRIMEENGCONSUMPTION | Natural gas, ethanol, a gas pipeline and the 2030 energy mix; the driver is crude oil |
 | sp500 | KXDJI, KXDJIA, KXDJIAREMOVE, KXME | The Dow and Mexico's S&P/BMV IPC are other indexes |
 
-The exact pairs are in the migration. These debatable groups were **left approved** and still
+After `treasury-yields` gained a driver (the 10-year Treasury yield) and began to carry
+calculated bond figures, migrations `008_asset_classes.sql` and `009_treasury_yield_tags.sql`
+withdrew eight more pairs from that tag: KXTOKENUST, KXUSDTTBILL and KXUSTHOLDERS (tokenised
+Treasuries, a stablecoin's reserves, foreign holders), KXCREDITC and KXSOFRD (SOFR, a funding
+rate), KXIBONDFIX (a savings-bond fixed rate), and KX10Y2Y and KX10Y2YDATE (a spread between
+two yields). They keep any other approved tags.
+
+The exact pairs are in the migrations. These debatable groups were **left approved** and still
 need a decision from a person:
 
 - **oil:** about 70 retail gasoline price series (national and per state), nine diesel series,

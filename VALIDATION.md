@@ -1,5 +1,20 @@
 # Validation and phase status
 
+## Asset types, rate drivers and "what matters most" (2026-10-10)
+
+All 188 tests and strict TypeScript checks pass in a Node 24 container, and the Next.js production build succeeds. Migrations 008 and 009 applied to the shared database.
+
+Checked against the running app with a temporary guest portfolio of ten holdings (AAPL, XOM, TLT, SPY, an oil fund, a real-estate fund, cash, a Treasury note, a corporate bond and a Florida property), cleared afterwards:
+
+- **Drivers ranked.** TLT moves 15.7% per point of the 10-year yield, close to its duration, and that yield ranks first for it (typical daily effect 0.84% against 0.09% for the stock market). Crude oil ranks ahead of the stock market for XOM (0.78% against 0.42%) and for the oil fund (2.07% against 0.15%). AAPL has only the stock market.
+- **Measurement fixes.** With the negative crude close of 2020-04-20 excluded, XOM's oil coefficient is 0.266. SPY no longer carries links to oil or rates.
+- **Calculated figures.** $50,000 of cash: $500 a year per point of rate. A $10,000 4% note maturing 2036: modified duration 7.85 years at the 5.22% 10-year yield, so $785.44 per point. A $200,000 adjustable mortgage: $2,000 a year per point. An invalid maturity is rejected.
+- **Property.** The Florida property linked to 15 events: mortgage-rate markets (calculated) and national housing markets (no number). It did not link to Canadian or other states' housing markets.
+- **Moves.** Opens on the latest completed session. Totals reconcile (176.66 = 209.83 − 33.17), state the $470,000 with no daily price, and name the two yields FRED had not yet published. On 2026-10-07 crude oil (−$121.26) outweighed the stock market (−$84.01).
+- **Speed.** The snapshot lookup was running for every market in the table. Filtering first cut the exposure request from about 31 seconds to 3, and Moves from timing out to under 5.
+
+Not verified: the screens in a browser. Driver estimates on Moves overlap and are compared, not summed; the page says so.
+
 ## Earnings filters, link accuracy, event dates and report dates (2026-10-10)
 
 All 156 tests and strict TypeScript checks pass in a Node 24 container, and the Next.js production build succeeds. Migrations 004 to 007 applied to the shared database on restart.

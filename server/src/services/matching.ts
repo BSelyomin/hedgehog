@@ -23,6 +23,18 @@ export function rankDrivers(symbol: string, measurements: MeasuredRow[]): Driver
     return measurements.filter(m => m.symbol === symbol && reliableRow(m) && effect(m) !== null && driverFor(m.driver)?.period === 'day')
         .map(m => ({ driver: m.driver, typicalEffect: effect(m)! })).sort((a, b) => b.typicalEffect - a.typicalEffect);
 }
+// One row per driver family: the member that typically moves the holding most. The 2-year and
+// 10-year yields usually move together, so on a day they diverge their two separately fitted
+// estimates would otherwise be shown as opposing drivers of the same holding.
+export function strongestPerFamily(rows: MeasuredRow[]): MeasuredRow[] {
+    const kept = new Map<string, MeasuredRow>();
+    for (const row of rows) {
+        const family = driverFor(row.driver)?.family ?? row.driver, held = kept.get(family);
+        if (!held || (effect(row) ?? 0) > (effect(held) ?? 0))
+            kept.set(family, row);
+    }
+    return [...kept.values()];
+}
 export function matchHolding(holding: Holding, eventTags: string[], stockTags: string[], measurements: MeasuredRow[]): HoldingLink | null {
     if (eventTags.includes(holding.symbol))
         return { ...holding, type: 'Direct', evidence: 'Reviewed company tag: a Kalshi market about this ticker.', sensitivity: null };

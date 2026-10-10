@@ -5,7 +5,7 @@ import { driverContribution, rankMoves, sumByDriver } from '../math/move.ts';
 import { oddsChanges } from './moves.ts';
 import type { ExposureEvent } from '../../../shared/types.ts';
 import { measureLink } from '../jobs/measure.ts';
-import { drivers, matchHolding, rankDrivers } from './matching.ts';
+import { drivers, matchHolding, rankDrivers, strongestPerFamily } from './matching.ts';
 import type { MeasuredRow } from './matching.ts';
 import { DRIVERS } from '../config/drivers.ts';
 
@@ -86,6 +86,12 @@ describe('which driver matters most', () => {
         expect(bond?.sensitivity).toMatchObject({ driver: 'CL=F', typicalEffect: .0002 });
         expect(bond?.lead).toEqual({ driver: 'DGS10', typicalEffect: .0085 });
         expect(matchHolding({ symbol: 'XOM', valueUsd: 100 }, ['oil'], ['oil'], rows)?.lead?.driver).toBe('SPY');
+    });
+    it('compares one yield per holding on a given day, the one that typically matters most', () => {
+        const tlt = rows.filter(r => r.symbol === 'TLT' && r.driver !== 'SPY' && r.driver !== 'MORTGAGE30US');
+        expect(strongestPerFamily(tlt).map(r => r.driver).sort()).toEqual(['CL=F', 'DGS10']);
+        // With only the 2-year yield published for the date, it stands in for rates.
+        expect(strongestPerFamily(tlt.filter(r => r.driver !== 'DGS10')).map(r => r.driver).sort()).toEqual(['CL=F', 'DGS2']);
     });
     it('uses the strongest driver when an event carries tags for several', () => {
         const link = matchHolding({ symbol: 'TLT', valueUsd: 100 }, ['fed-rates', 'treasury-yields'], ['fed-rates', 'treasury-yields'], rows);

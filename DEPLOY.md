@@ -83,6 +83,23 @@ Open Add holdings at http://localhost:3000 and import `examples/fake-portfolio.c
 
 `FRED_API_KEY`, `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` retain their existing roles. Without Snowflake configuration, AI jobs skip generation while the rest of the application can run. No credentials belong in Git or browser environment variables.
 
+## Asset types and drivers
+
+Migration `008_asset_classes.sql` adds the holding type and its terms, and a typical effect to
+every measurement. After upgrading, load the new yield series and re-measure so drivers can be
+ranked:
+
+```powershell
+docker compose exec backend npm run job -- prices
+docker compose exec backend npm run job -- measure
+```
+
+`prices` loads `DGS2`, `DGS10` and `MORTGAGE30US` from FRED and needs `FRED_API_KEY`. Both jobs
+also run nightly and at startup. Only listed securities are priced and measured; cash,
+Treasuries, bonds and property are entered with their terms on the Add holdings screen and need
+no job. The CSV import remains symbol,valueUsd for securities. FRED publishes yields a day late,
+so Moves names the yield drivers it could not yet compare for the latest session.
+
 ## Past earnings-report dates (SEC EDGAR)
 
 Set `SEC_USER_AGENT` in the root `.env` to a string that identifies you, for example
