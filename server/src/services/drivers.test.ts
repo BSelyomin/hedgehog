@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { alignedChanges, standardDeviation, typicalEffect } from '../math/series.ts';
 import type { PricePoint } from '../math/series.ts';
 import { driverContribution, rankMoves, sumByDriver } from '../math/move.ts';
+import { oddsChanges } from './moves.ts';
+import type { ExposureEvent } from '../../../shared/types.ts';
 import { measureLink } from '../jobs/measure.ts';
 import { drivers, matchHolding, rankDrivers } from './matching.ts';
 import type { MeasuredRow } from './matching.ts';
@@ -88,6 +90,19 @@ describe('which driver matters most', () => {
     it('uses the strongest driver when an event carries tags for several', () => {
         const link = matchHolding({ symbol: 'TLT', valueUsd: 100 }, ['fed-rates', 'treasury-yields'], ['fed-rates', 'treasury-yields'], rows);
         expect(link?.sensitivity?.driver).toBe('DGS10');
+    });
+});
+
+describe('odds that moved over the day', () => {
+    const event = { ticker: 'E', links: [{ symbol: 'XOM' }], markets: [{ ticker: 'UP', title: 'Up' }, { ticker: 'SMALL', title: 'Small' }, { ticker: 'DOWN', title: 'Down' }, { ticker: 'ONE-SIDED', title: 'One-sided' }] } as unknown as ExposureEvent;
+    it('keeps moves of three points or more and needs a quote at both ends of the window', () => {
+        const quotes = [{ ticker: 'UP', side: 'end' as const, mid: .62 }, { ticker: 'UP', side: 'start' as const, mid: .5 }, { ticker: 'SMALL', side: 'end' as const, mid: .52 }, { ticker: 'SMALL', side: 'start' as const, mid: .5 },
+            { ticker: 'DOWN', side: 'end' as const, mid: .3 }, { ticker: 'DOWN', side: 'start' as const, mid: .345 }, { ticker: 'ONE-SIDED', side: 'end' as const, mid: .9 }];
+        const moves = oddsChanges([event], quotes);
+        expect(moves.map(m => m.ticker)).toEqual(['UP', 'DOWN']);
+        expect(moves[0].changePoints).toBeCloseTo(12);
+        expect(moves[1].changePoints).toBeCloseTo(-4.5);
+        expect(moves[0].links).toBe(event.links);
     });
 });
 

@@ -38,6 +38,12 @@ export function assetLink(holding: Holding, eventTags: string[], eventTitle: str
     const calculated = (calculation: Calculation, evidence: string): HoldingLink => ({ ...holding, type: 'Calculated', evidence, sensitivity: null, calculation });
     const topic = (evidence: string): HoldingLink => ({ ...holding, type: 'Related', evidence: `${evidence} No figure is calculated for this link.`, sensitivity: null });
 
+    // A market tagged for mortgage rates is about what borrowers pay; of these holdings only property shares it.
+    if (type !== 'property' && eventTags.includes('mortgage-rates'))
+        return null;
+    // Interest on cash follows short policy rates, not longer Treasury yields.
+    if (type === 'cash' && eventTags.includes('treasury-yields'))
+        return null;
     if (type === 'cash')
         return calculated({ kind: 'income', perPointUsd: holding.valueUsd * 0.01, rate: 'the rate it earns' },
             `Calculated from the amount entered: a one percentage point change in the rate it earns changes yearly interest by ${money(holding.valueUsd * 0.01)}. How closely that rate follows the Fed's policy rate depends on the account.`);

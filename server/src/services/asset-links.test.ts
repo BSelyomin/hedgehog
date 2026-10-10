@@ -39,6 +39,10 @@ describe('links for holdings without a ticker', () => {
         expect(link).toMatchObject({ type: 'Calculated', sensitivity: null, calculation: { kind: 'income', perPointUsd: 500 } });
         expect(link?.evidence).toContain('$500.00');
         expect(assetLink(cash, ['oil'], 'WTI price', context)).toBeNull();
+        // Markets on mortgage rates or longer Treasury yields are not about what a savings account earns.
+        expect(assetLink(cash, ['fed-rates', 'mortgage-rates'], '30-year mortgage rate at the end of 2027', context)).toBeNull();
+        expect(assetLink(cash, ['fed-rates', 'treasury-yields'], '10Y US Treasury yield at year-end?', context)).toBeNull();
+        expect(assetLink(note, ['fed-rates', 'mortgage-rates'], '30-year mortgage rate at the end of 2027', context)).toBeNull();
     });
     it('calculates a Treasury’s price sensitivity from its terms and the matching Treasury yield', () => {
         const link = assetLink(note, ['treasury-yields'], '10Y US Treasury yield at year-end?', context);

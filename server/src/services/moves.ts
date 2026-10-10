@@ -1,4 +1,4 @@
-import type { MovesResponse, HoldingMove, OddsMove, DriverMove } from '../../../shared/types.ts';
+import type { MovesResponse, HoldingMove, OddsMove, DriverMove, ExposureEvent } from '../../../shared/types.ts';
 import { query, iso } from '../db.ts';
 import { exposure } from './exposure.ts';
 import { checkSensitivity } from '../math/statistics.ts';
@@ -9,6 +9,17 @@ import { isSecurity } from './asset-links.ts';
 import type { MeasuredRow } from './matching.ts';
 import { briefingDay } from './briefing-content.ts';
 export { splitMove } from '../math/move.ts';
+// Markets whose midpoint moved at least three points between the two ends of the window.
+// A market needs a quote at both ends; one without is left out, not treated as unchanged.
+export function oddsChanges(events: ExposureEvent[], quotes: { ticker: string; side: 'end' | 'start'; mid: number }[]): OddsMove[] {
+    const at = (side: 'end' | 'start') => new Map(quotes.filter(q => q.side === side).map(q => [q.ticker, q.mid]));
+    const end = at('end'), start = at('start');
+    return events.flatMap(e => e.markets.flatMap(m => {
+        const last = end.get(m.ticker), first = start.get(m.ticker);
+        const changePoints = last === undefined || first === undefined ? 0 : (last - first) * 100;
+        return Math.abs(changePoints) >= 3 ? [{ ticker: m.ticker, title: m.title, changePoints, links: e.links }] : [];
+    }));
+}
 // The latest SPY session before today's New York date. Yahoo's candle for today can still be in progress.
 export async function latestSession(): Promise<string | null> {
     return (await query<{ date: string | null }>("SELECT to_char(max(ts),'YYYY-MM-DD') date FROM prices WHERE symbol=$1 AND ts::date<$2::date", [CONTROL, briefingDay()]))[0]?.date ?? null;
@@ -65,19 +76,17 @@ export async function moves(session: string, date: string): Promise<MovesRespons
     const beyondMarket = total !== null && fromMarket !== null ? (Math.round(total * 100) - Math.round(fromMarket * 100)) / 100 : null;
     const end = new Date(`${date}T23:59:59.999Z`);
     const start = new Date(end.getTime() - 86400000);
-    const oddsMoves: OddsMove[] = [];
-    for (const e of data.events)
-        for (const m of e.markets) {
-            const quotes = await query<{
-                ts: Date;
-                mid: number;
-            }>(`(SELECT ts,mid FROM odds_snapshots WHERE ticker=$1 AND ts<=$2 AND ts>=$2::timestamptz-interval '10 minutes' ORDER BY ts DESC LIMIT 1) UNION ALL (SELECT ts,mid FROM odds_snapshots WHERE ticker=$1 AND ts<=$3 AND ts>=$3::timestamptz-interval '10 minutes' ORDER BY ts DESC LIMIT 1)`, [m.ticker, end, start]);
-            if (quotes.length === 2) {
-                const changePoints = (quotes[0].mid - quotes[1].mid) * 100;
-                if (Math.abs(changePoints) >= 3)
-                    oddsMoves.push({ ticker: m.ticker, title: m.title, changePoints, links: e.links });
-            }
-        }
+    // One query for every linked market: its latest midpoint in the ten minutes before each end of
+    // the window. Asking market by market made thousands of round trips and timed the page out.
+    const quotes = await query<{
+        ticker: string;
+        side: 'end' | 'start';
+        mid: number;
+    }>(`SELECT DISTINCT ON(ticker,side) ticker,side,mid FROM (
+            SELECT ticker,'end' AS side,ts,mid FROM odds_snapshots WHERE ticker=ANY($1) AND ts<=$2 AND ts>=$2::timestamptz-interval '10 minutes'
+            UNION ALL SELECT ticker,'start' AS side,ts,mid FROM odds_snapshots WHERE ticker=ANY($1) AND ts<=$3 AND ts>=$3::timestamptz-interval '10 minutes'
+        ) q ORDER BY ticker,side,ts DESC`, [data.events.flatMap(e => e.markets.map(m => m.ticker)), end, start]);
+    const oddsMoves: OddsMove[] = oddsChanges(data.events, quotes);
     const timestamp = await query<{
         ts: Date | null;
     }>(`SELECT max(loaded_at) ts FROM prices WHERE ts::date=$1::date`, [date]);
