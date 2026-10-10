@@ -72,6 +72,7 @@ export interface Market {
     kind: 'bracket' | 'kpi' | 'mention';
 }
 export interface ExposureEvent {
+    seriesTicker?: string;
     ticker: string;
     title: string;
     category: string;
@@ -147,7 +148,17 @@ export interface CategoryRecord {
         observedRate: number;
     } | null;
 }
+export interface HistorySubject {
+    id: string;
+    title: string;
+    seriesTickers: string[];
+    record: CategoryRecord | null;
+    eventCount: number;
+    unknownEventMarkets: number;
+    kalshiCategories: string[];
+}
 export interface TrackRecordResponse extends Freshness {
+    subjects: HistorySubject[];
     categories: CategoryRecord[];
     totalMarkets: number;
     reviewedSeries: number;

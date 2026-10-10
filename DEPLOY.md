@@ -164,3 +164,9 @@ Track record reads verified settled Kalshi observations, not holdings CSV rows. 
 `examples/fake-portfolio-large.csv` supplies 25 allowed demo tickers at $10,000 each ($250,000 total). Import it to exercise broader portfolio matching. It replaces the current holdings when saved and contains invented portfolio allocations only; it does not populate historical market outcomes. Reviewed tags and verified historical bid–ask quotes are still required.
 
 The track-record main view explains the sample and compares around-70% quotes with observed outcomes. It keeps small-group warnings beside that comparison and links current events to the selected category. Technical charts and scores are under **Explore the details**. The category-linked filter says when all loaded categories are relevant, so identical views are expected rather than unexplained.
+
+## Subject-level forecasting evidence
+
+The track-record selector offers All history, Inflation, Interest rates, Company events and Stock market. Subject samples use exact series identities and reviewed tags; unknown or unclassified observations remain in All history. The original category aggregation and trust-score formula are unchanged. Subjects use the same calibration/Brier functions over their own matching observations. A focused current event explains the recorded Direct/Measured/Related holding evidence and opens the existing event page.
+
+Migration 004 adds nullable series/event/title identity to settled observations. It recovers known local catalog metadata without altering quotes or outcomes. New backfill rows retain those identifiers. Run `docker compose exec backend npm run job -- history-metadata` to recover missing identity from public live/archive market responses and their event metadata. Unavailable identities remain explicit; no ticker parsing or guessed subject labels are used. Distinct-event counts describe identified events, not statistically independent observations.
