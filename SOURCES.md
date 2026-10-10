@@ -30,8 +30,12 @@ On 2026-10-09, `HEDGEHOG.REPORTING.EVENT_SOURCES` was provisioned with 21 dated 
   2026-07-30 reads 2026-07-31T00:30:28Z, while the filing page shows it accepted at 16:30:28
   Eastern on 2026-07-30. Because the two disagree by eight hours, Hedgehog does not infer
   pre-market or after-close timing; it measures across the filing date instead.
-- The earnings-dates job itself has not run against EDGAR in this environment:
-  `SEC_USER_AGENT` was not set. Its parsing is tested against the inspected shapes.
+- The earnings-dates job ran against EDGAR for the 25 held symbols on 2026-10-10. Apple and
+  JPMorgan each returned eight reports whose dates match their quarterly results days; the
+  banks needed the older filing lists. SPY returned none and TLT is not in the ticker file.
+- XOM returned one report. Its ticker now maps to a new registrant, ExxonMobil Holdings Corp
+  (CIK 2115436), whose filings begin on 2026-07-01. Reports filed by a predecessor registrant
+  are not followed, so a company that changes registrant starts with a short history.
 
 # Additional coverage validation (October 9, 2026)
 

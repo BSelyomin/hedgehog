@@ -9,9 +9,9 @@ Checked against the running app with the 25-holding example portfolio in a tempo
 - Withdrawing 103 incorrect mappings reduced linked events from 622 to 425. DAL, BAC and XOM each keep one company event (previously 23, 5 and 25).
 - Apple's 17 earnings-call outcomes are classified as call mentions (none were before). Two S&P 500 range ladders now qualify for scaling; the first has 27 outcomes with a raw midpoint sum of 101.5%.
 - 421 of 425 linked events carry a Kalshi event date. The 14-day calendar holds 73 events by event date against 70 by market close.
-- With `SEC_USER_AGENT` unset, the earnings response returns no history and says why.
+- With `SEC_USER_AGENT` unset, the earnings response returns no history and says why. With it set, the earnings-dates job loaded report dates from live EDGAR for 23 of the 25 holdings (SPY and TLT file none). Apple's and JPMorgan's last eight match their results days, and each move reconciles with the stored closes. XOM has one report because its ticker now maps to a new registrant (see SOURCES.md).
 
-Not verified: the earnings-dates job against live EDGAR (needs `SEC_USER_AGENT`), and the screens in a browser. `git fetch` could not authenticate from the agent's shell, so the merge used the local copy of origin/main at a5b17b3.
+Not verified: the screens in a browser. `git fetch` could not authenticate from the agent's shell, so the merge used the local copy of origin/main at a5b17b3.
 
 Known issues found in review and not changed here: the Moves market split is unavailable for completed sessions, one extreme crude-oil return in April 2020 distorts oil coefficients, and each poll stores about 140,000 odds rows with no retention policy.
 
