@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import type { EventResponse, HoldingLink, Market, OddsPoint } from '../../../shared/types';
 import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip, EventDate } from '../common';
-import { describeImportance, describeSensitivity } from './sensitivity';
+import { describeCalculation, describeImportance, describeSensitivity } from './sensitivity';
 
 export function EventPage({ ticker }: {
     ticker: string;
@@ -34,7 +34,7 @@ export function EventPage({ ticker }: {
                     <Card>
                         <div className="row"><h2>Your holdings linked to this event</h2><span className="mono">{money(data.event.linkedValue)} · {percent(data.event.share)}</span></div>
                         {data.event.links.map(l => <LinkedHolding key={l.symbol} link={l}/>)}
-                        <p className="note">Related links are measured against the underlying driver (oil, the 2-year Treasury yield or the S&P 500), not against the probability of this event. They describe past daily moves, not a forecast.</p>
+                        <p className="note">Related links are measured against the underlying driver (oil, the 2-year Treasury yield or the S&P 500), not against the probability of this event. They describe past daily moves, not a forecast. Calculated links are exact arithmetic on the terms you entered for cash, bonds or a mortgage.</p>
                     </Card>
                 </div>
                 <div>
@@ -54,8 +54,10 @@ export function EventPage({ ticker }: {
 export function LinkedHolding({ link }: { link: HoldingLink }) {
     const sentence = link.sensitivity && describeSensitivity(link.symbol, link.sensitivity);
     const importance = describeImportance(link);
+    const calculation = describeCalculation(link, money);
     return <div className="event-row">
         <div className="row"><strong>{link.symbol} · <span className="mono">{money(link.valueUsd)}</span></strong><LinkChip type={link.type}/></div>
+        {calculation && <p className="sensitivity-text">{calculation}</p>}
         {sentence && <p className="sensitivity-text">{sentence}</p>}
         {importance && <p className={importance.lead ? 'driver-lead' : 'driver-minor'}><span className="chip lead">{importance.lead ? 'Main driver' : 'Something else matters more'}</span> {importance.text}</p>}
         <p>{link.evidence}</p>

@@ -48,6 +48,21 @@ export function describeImportance(link: HoldingLink): { lead: boolean; text: st
     return { lead: false, text: `${driverName(top.driver)} matters more for ${link.symbol}: a typical day’s move in it moves ${link.symbol} about ${share(top.typicalEffect)}${comparison}.` };
 }
 
+// Restates a Calculated link for a quarter-point move, the usual size of a rate change. The figure
+// is the server's per-point amount times 0.25; nothing is estimated here.
+export function describeCalculation(link: HoldingLink, money: (value: number) => string): string | null {
+    const calculation = link.calculation;
+    if (!calculation || !Number.isFinite(calculation.perPointUsd))
+        return null;
+    const quarter = money(Math.abs(calculation.perPointUsd) * 0.25);
+    if (calculation.kind === 'income')
+        return `Each 0.25 percentage point change in the rate it earns changes the yearly interest on ${link.symbol} by ${quarter}.`;
+    if (calculation.kind === 'payment')
+        return `Each 0.25 percentage point change in the mortgage rate changes the yearly interest on ${link.symbol}’s adjustable mortgage by ${quarter}.`;
+    return `A 0.25 percentage point rise in its yield lowers the market value of ${link.symbol} by about ${quarter}`
+        + `${typeof calculation.duration === 'number' ? ` (modified duration ${calculation.duration.toFixed(2)} years)` : ''}. Held to maturity it still repays its face value.`;
+}
+
 // One line for a holding's ranked drivers: the most important first, with the size of each.
 export function describeDrivers(ranks: DriverRank[]): string | null {
     if (!ranks.length)

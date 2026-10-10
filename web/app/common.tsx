@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import type { ReactNode, FormEvent } from 'react';
-import type { ExposureEvent, LinkType, Market } from '../../shared/types';
+import type { AssetType, ExposureEvent, LinkType, Market } from '../../shared/types';
 export const money = (n: number | null) => n === null ? 'Unavailable' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
 
 export const percent = (n: number | null) => n === null ? 'Unavailable' : `${(n * 100).toFixed(1)}%`;
@@ -14,7 +14,10 @@ export const href = (screen: string, id?: string) => `#${screen}${id ? `/${encod
 
 // One link vocabulary for every screen, as shown on the Overview. The API's Measured links
 // (backed by a historical measurement) read "Related"; unmeasured shared-topic links read "Topic".
+// Calculated links are exact arithmetic on a holding's own terms (cash, bonds, a mortgage).
 export const linkLabel = (type: LinkType) => type === 'Measured' ? 'Related' : type === 'Related' ? 'Topic' : type;
+
+export const assetLabel: Record<AssetType, string> = { security: 'Stock or fund', cash: 'Cash or savings', treasury: 'Treasury or CD', bond: 'Bond', property: 'Property' };
 
 // Says which Kalshi field an event date came from, so a market close is never passed off as the event.
 export const eventTimeLabel = (source: ExposureEvent['eventTimeSource']) => ({ occurrence: 'Kalshi event time', strike: 'Kalshi strike date', expected: 'Kalshi expected resolution', close: 'Kalshi market close' })[source];

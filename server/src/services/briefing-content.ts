@@ -33,11 +33,13 @@ export function buildBriefing(portfolio: ExposureResponse, move: MovesResponse |
             market: fresh(portfolio.asOf) && e.markets.length === 1 && fresh(e.markets[0].asOf) && e.markets[0].probability !== null
                 ? { title: e.markets[0].title, probability: Math.round(e.markets[0].probability * 100), asOf: spokenQuoteTime(e.markets[0].asOf!) } : null }))
     };
+    // The daily move covers listed securities; cash, bonds held directly and property have no daily price.
+    const subject = move?.unpricedValue ? 'Your listed holdings' : 'Your portfolio';
     const parts = ['Good morning.'];
     if (facts.total !== null) {
         parts.push(Number(facts.total) === 0
-            ? `Your portfolio ended the ${facts.session} session unchanged.`
-            : `Your portfolio ended the ${facts.session} session ${direction(facts.total)} ${facts.totalMagnitude} dollars.`);
+            ? `${subject} ended the ${facts.session} session unchanged.`
+            : `${subject} ended the ${facts.session} session ${direction(facts.total)} ${facts.totalMagnitude} dollars.`);
         if (facts.fromMarket !== null && facts.beyondMarket !== null)
             parts.push(`Our historical model puts the broad market contribution at ${direction(facts.fromMarket)} ${facts.marketMagnitude} dollars, leaving ${direction(facts.beyondMarket)} ${facts.remainderMagnitude} dollars beyond that estimate.`);
     } else parts.push("We're still waiting for a complete view of the last trading session. In the meantime, let's look ahead.");

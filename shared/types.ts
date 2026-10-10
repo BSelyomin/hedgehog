@@ -1,4 +1,28 @@
-export type LinkType = 'Direct' | 'Measured' | 'Related';
+export type LinkType = 'Direct' | 'Calculated' | 'Measured' | 'Related';
+/** A listed security has a ticker and a price history. The others are described by their own terms. */
+export type AssetType = 'security' | 'cash' | 'treasury' | 'bond' | 'property';
+/** Terms entered for a holding without a ticker. Which fields apply depends on the asset type. */
+export interface HoldingDetails {
+    /** Treasury or bond: maturity date (YYYY-MM-DD) and yearly coupon rate in percent. */
+    maturity?: string;
+    couponRate?: number;
+    /** Property: the US state it is in, used to find markets that name it. */
+    state?: string;
+    /** Property: outstanding adjustable-rate mortgage balance in dollars. */
+    adjustableMortgage?: number;
+    /** Property: let to tenants, so rent markets apply. */
+    rental?: boolean;
+}
+/** A figure worked out exactly from a holding's own terms, not measured from price history. */
+export interface Calculation {
+    /** What changes: yearly interest earned, market price, or yearly mortgage interest paid. */
+    kind: 'income' | 'price' | 'payment';
+    /** Dollar change for a one percentage point rise in the rate named by `rate`. */
+    perPointUsd: number;
+    rate: string;
+    /** Modified duration in years, for a price calculation. */
+    duration?: number;
+}
 export interface Freshness {
     asOf: string | null;
 }
@@ -29,8 +53,12 @@ export interface ChangePasswordRequest {
     newPassword: string;
 }
 export interface Holding {
+    /** A ticker for a listed security; otherwise a short name chosen by the user. */
     symbol: string;
     valueUsd: number;
+    /** Absent means a listed security. */
+    assetType?: AssetType;
+    details?: HoldingDetails;
 }
 export interface HoldingsResponse extends Freshness {
     holdings: Holding[];
@@ -64,6 +92,8 @@ export interface HoldingLink extends Holding {
     sensitivity: Sensitivity | null;
     /** The holding's most important measured driver, which may differ from this link's driver. */
     lead?: DriverRank | null;
+    /** Present on Calculated links. */
+    calculation?: Calculation | null;
 }
 export interface Trust {
     total: number | null;
@@ -211,6 +241,8 @@ export interface MovesResponse extends Freshness {
     drivers: DriverMove[];
     /** Daily drivers with no published change for this date yet, so they could not be compared. */
     missingDrivers: string[];
+    /** Value of holdings with no daily price (cash, bonds held directly, property); the totals leave them out. */
+    unpricedValue: number;
 }
 /** The stock's move across one past results announcement. Null fields mean the closes were not available. */
 export interface EarningsReportMove {

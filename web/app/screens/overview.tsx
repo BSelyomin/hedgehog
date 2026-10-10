@@ -24,10 +24,10 @@ export function Overview() {
             </div>
             <Card className="exposure-map">
                 <div className="row exposure-map-heading"><div><h2>Which events touch which holdings</h2><p className="note">Expand an event for details. Use the wheel to scroll its holdings.</p></div>
-                    <div className="exposure-legend">{(['Direct', 'Measured'] as const).map(type => <LinkChip key={type} type={type}/>)}</div>
+                    <div className="exposure-legend">{(['Direct', 'Calculated', 'Measured'] as const).map(type => <LinkChip key={type} type={type}/>)}</div>
                 </div>
                 <ExposureTable data={data}/>
-                <details className="exposure-help"><summary>How to read this table</summary><p className="note">Red = Direct; blue = Related, backed by historical measurements. Only connected holdings appear, strongest links first. Color describes the link, not the direction of a price move. Share and linked-holding counts use all source links, including those hidden by filters, and your full portfolio value. They show portfolio reach, not how much holdings would move.</p></details>
+                <details className="exposure-help"><summary>How to read this table</summary><p className="note">Red = Direct; green = Calculated from a holding’s own terms (cash, bonds, a mortgage); blue = Related, backed by historical measurements. Only connected holdings appear, strongest links first. Color describes the link, not the direction of a price move. Share and linked-holding counts use all source links, including those hidden by filters, and your full portfolio value. They show portfolio reach, not how much holdings would move.</p></details>
             </Card>
             <Briefing/>
         </>}

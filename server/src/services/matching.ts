@@ -38,4 +38,4 @@ export function matchHolding(holding: Holding, eventTags: string[], stockTags: s
     }
     return { ...holding, type: 'Related', evidence: `Shared reviewed tags: ${shared.join(', ')}. No reliable sensitivity; no move estimate shown.`, sensitivity: null };
 }
-export const linkRank = { Direct: 0, Measured: 1, Related: 2 };
+export const linkRank = { Direct: 0, Calculated: 1, Measured: 2, Related: 3 };

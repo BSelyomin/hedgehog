@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import type { MovesResponse } from '../../../shared/types';
-import { money, percent, number, href, useData, Card, Fresh, Status, Empty, LinkChip } from '../common';
+import { money, percent, number, href, useData, assetLabel, Card, Fresh, Status, Empty, LinkChip } from '../common';
 import { describeLeadMove, driverName } from './sensitivity';
 
 export function Moves() {
@@ -24,9 +24,9 @@ export function Moves() {
             <LeadDrivers data={data}/>
             <Card><h2>By holding</h2>
                 <label className="move-search">Search holdings<input type="search" placeholder="Ticker, e.g. AAPL" value={search} onChange={e => setSearch(e.target.value)}/></label>
-                <p className="note">Search filters the rows below. Totals above cover your full portfolio.</p>
+                <p className="note">Search filters the rows below. Totals above cover {data.unpricedValue > 0 ? `your listed securities; ${money(data.unpricedValue)} in cash, bonds held directly and property has no daily price and is left out` : 'your full portfolio'}.</p>
                 <div className="scroll"><table><thead><tr>{['Holding', 'Measured beta', 'Dollar move', 'From market', 'Beyond market', 'Biggest measured driver'].map(t => <th key={t}>{t}</th>)}</tr></thead><tbody>
-                    {rows.map(h => <tr key={h.symbol}><td>{h.symbol}</td><td className="amount">{number(h.beta, 3)}</td><td className="amount">{money(h.actual)}</td><td className="amount">{money(h.fromMarket)}</td><td className="amount">{money(h.beyondMarket)}</td>
+                    {rows.map(h => h.assetType && h.assetType !== 'security' ? <tr key={h.symbol}><td>{h.symbol}<span className="note"> · {assetLabel[h.assetType]}</span></td><td colSpan={5} className="note">No daily price, so no daily move. Worth {money(h.valueUsd)} as entered.</td></tr> : <tr key={h.symbol}><td>{h.symbol}</td><td className="amount">{number(h.beta, 3)}</td><td className="amount">{money(h.actual)}</td><td className="amount">{money(h.fromMarket)}</td><td className="amount">{money(h.beyondMarket)}</td>
                         <td className={h.drivers[0] && h.drivers[0].driver !== 'SPY' ? 'driver-cell lead' : 'driver-cell'}>{h.drivers[0] ? <>{driverName(h.drivers[0].driver)} <span className="mono">{money(h.drivers[0].contribution)}</span></> : 'Unavailable'}</td></tr>)}
                     {!rows.length && <tr><td colSpan={6}><Empty>No holdings match your search.</Empty></td></tr>}
                 </tbody></table></div>

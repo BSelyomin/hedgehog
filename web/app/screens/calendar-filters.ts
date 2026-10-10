@@ -5,7 +5,7 @@ export interface CalendarFilters {
     type: 'All' | 'Company' | 'Other';
     holding: string;
     category: string;
-    link: 'All' | 'Affected' | 'Direct' | 'Measured';
+    link: 'All' | 'Affected' | 'Direct' | 'Calculated' | 'Measured';
     minShare: number;
     trust: 'All' | 'Unavailable' | NonNullable<Trust['band']>;
     sort: 'date' | 'date-desc' | 'reach' | 'holdings' | 'name';
@@ -17,7 +17,7 @@ export const defaultCalendarFilters: CalendarFilters = {
 };
 
 function matchesLink(link: HoldingLink, filter: CalendarFilters['link']) {
-    return filter === 'All' || (filter === 'Affected' ? link.type === 'Direct' || link.type === 'Measured' : link.type === filter);
+    return filter === 'All' || (filter === 'Affected' ? link.type !== 'Related' : link.type === filter);
 }
 
 export function filterCalendarEvents(events: ExposureEvent[], filters: CalendarFilters): ExposureEvent[] {

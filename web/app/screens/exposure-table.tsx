@@ -7,7 +7,7 @@ import { describeDrivers, describeImportance, driverName } from './sensitivity';
 export interface ExposureFilters {
     search: string;
     holding: string;
-    link: 'All' | 'Affected' | 'Direct' | 'Measured';
+    link: 'All' | 'Affected' | 'Direct' | 'Calculated' | 'Measured';
     category: string;
     days: number;
     sort: 'reach-desc' | 'reach-asc' | 'date' | 'name' | 'holdings';
@@ -42,7 +42,7 @@ export function filterExposureHoldings(holdings: Holding[], events: ExposureEven
 }
 
 export function eventHoldings(event: ExposureEvent, holdings: Holding[], filter: ExposureFilters['link']) {
-    const rank = { Direct: 0, Measured: 1, Related: 2 };
+    const rank = { Direct: 0, Calculated: 1, Measured: 2, Related: 3 };
     return holdings.flatMap(holding => {
         const link = event.links.find(link => link.symbol === holding.symbol);
         return link && matchesLink(link, filter) ? [{ holding, link }] : [];
@@ -140,7 +140,7 @@ export function ExposureTable({ data }: { data: ExposureResponse }) {
         </div>
         <div className="exposure-controls" id={filterId} hidden={!filtersOpen}>
             <label>Holding<select aria-label="Holding" value={filters.holding} onChange={e => update('holding', e.target.value)}><option value="">All holdings</option>{data.holdings.map(h => <option key={h.symbol}>{h.symbol}</option>)}</select></label>
-            <label>Link type<select aria-label="Link type" value={filters.link} onChange={e => update('link', e.target.value as ExposureFilters['link'])}><option>All</option><option value="Affected">Affected only</option><option>Direct</option><option value="Measured">Related</option></select></label>
+            <label>Link type<select aria-label="Link type" value={filters.link} onChange={e => update('link', e.target.value as ExposureFilters['link'])}><option>All</option><option value="Affected">Affected only</option><option>Direct</option><option>Calculated</option><option value="Measured">Related</option></select></label>
             <label>Category<select aria-label="Category" value={filters.category} onChange={e => update('category', e.target.value)}><option value="">All categories</option>{[...new Set(data.events.map(e => e.category))].sort().map(category => <option key={category}>{category}</option>)}</select></label>
             <label>Closes within<select aria-label="Closes within" value={filters.days} onChange={e => update('days', Number(e.target.value))}><option value={0}>Any date</option><option value={14}>14 days</option><option value={30}>30 days</option><option value={90}>90 days</option></select></label>
         </div>

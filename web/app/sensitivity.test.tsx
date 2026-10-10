@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ExposureEvent, Sensitivity } from '../../shared/types';
-import { describeDrivers, describeImportance, describeLeadMove, describeSensitivity } from './screens/sensitivity';
+import { describeCalculation, describeDrivers, describeImportance, describeLeadMove, describeSensitivity } from './screens/sensitivity';
+import { filterCalendarEvents, defaultCalendarFilters } from './screens/calendar-filters';
+import { eventHoldings } from './screens/exposure-table';
 import { LeadDrivers } from './screens/moves';
 import { EventList, LinkChip, linkLabel } from './common';
 
@@ -56,13 +58,35 @@ describe('highlighting what matters most', () => {
     });
     it('shows the ranked drivers on the Moves screen and says which could not be compared', () => {
         const data = { date: '2026-10-09', asOf: null, spyReturn: .01, holdings: [], total: null, fromMarket: null, beyondMarket: null, oddsMoves: [],
-            drivers: [{ driver: 'CL=F', contribution: -310 }, { driver: 'SPY', contribution: 120 }], missingDrivers: ['DGS2', 'DGS10'] };
+            drivers: [{ driver: 'CL=F', contribution: -310 }, { driver: 'SPY', contribution: 120 }], missingDrivers: ['DGS2', 'DGS10'], unpricedValue: 0 };
         const html = renderToStaticMarkup(<LeadDrivers data={data}/>);
         expect(html).toContain('Crude oil mattered most');
         expect(html.indexOf('Crude oil</span>')).toBeLessThan(html.indexOf('Stock market (S&amp;P 500)</span>'));
         expect(html).toContain('class="driver-bar lead"');
         expect(html).toContain('not published yet: 2-year Treasury yield, 10-year Treasury yield.');
         expect(renderToStaticMarkup(<LeadDrivers data={{ ...data, drivers: [], missingDrivers: [] }}/>)).toContain('No measured driver could be compared');
+    });
+});
+
+describe('figures calculated from a holding’s own terms', () => {
+    const money = (value: number) => `$${value.toFixed(2)}`;
+    const link = (symbol: string, calculation: { kind: 'income' | 'price' | 'payment'; perPointUsd: number; rate: string; duration?: number }) => ({ symbol, valueUsd: 50000, type: 'Calculated' as const, evidence: '', sensitivity: null, calculation });
+    it('restates each kind for a quarter-point move without estimating anything', () => {
+        expect(describeCalculation(link('SAVINGS', { kind: 'income', perPointUsd: 500, rate: 'the rate it earns' }), money)).toBe('Each 0.25 percentage point change in the rate it earns changes the yearly interest on SAVINGS by $125.00.');
+        expect(describeCalculation(link('TNOTE', { kind: 'price', perPointUsd: -817.57, rate: 'its own yield', duration: 8.1757 }), money)).toBe('A 0.25 percentage point rise in its yield lowers the market value of TNOTE by about $204.39 (modified duration 8.18 years). Held to maturity it still repays its face value.');
+        expect(describeCalculation(link('HOME', { kind: 'payment', perPointUsd: 2000, rate: 'the mortgage rate' }), money)).toBe('Each 0.25 percentage point change in the mortgage rate changes the yearly interest on HOME’s adjustable mortgage by $500.00.');
+        expect(describeCalculation({ symbol: 'AAPL', valueUsd: 1, type: 'Direct', evidence: '', sensitivity: null }, money)).toBeNull();
+    });
+    it('labels Calculated links and counts them as affected, ahead of measured ones', () => {
+        expect(linkLabel('Calculated')).toBe('Calculated');
+        expect(renderToStaticMarkup(<LinkChip type="Calculated"/>)).toBe('<span class="chip Calculated">Calculated</span>');
+        const event = { ticker: 'FED', title: 'Fed decision', category: 'Economics', closeTime: '2026-11-03T00:00:00Z', eventTime: '2026-11-03T00:00:00Z', eventTimeSource: 'close', linkedValue: 150, share: .5, mutuallyExclusive: false, markets: [],
+            links: [{ symbol: 'TLT', valueUsd: 100, type: 'Measured', evidence: '', sensitivity: null }, { symbol: 'SAVINGS', valueUsd: 50, type: 'Calculated', evidence: '', sensitivity: null }] } as ExposureEvent;
+        expect(filterCalendarEvents([event], { ...defaultCalendarFilters, link: 'Affected', holding: 'SAVINGS' })).toHaveLength(1);
+        expect(filterCalendarEvents([event], { ...defaultCalendarFilters, link: 'Calculated', holding: 'TLT' })).toHaveLength(0);
+        const holdings = [{ symbol: 'TLT', valueUsd: 100 }, { symbol: 'SAVINGS', valueUsd: 50 }];
+        expect(eventHoldings(event, holdings, 'All').map(row => row.holding.symbol)).toEqual(['SAVINGS', 'TLT']);
+        expect(eventHoldings(event, holdings, 'Calculated').map(row => row.holding.symbol)).toEqual(['SAVINGS']);
     });
 });
 

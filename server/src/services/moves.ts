@@ -5,6 +5,7 @@ import { checkSensitivity } from '../math/statistics.ts';
 import { driverContribution, rankMoves, splitMove, sumByDriver } from '../math/move.ts';
 import { CONTROL, DRIVERS } from '../config/drivers.ts';
 import { reliableRow } from './matching.ts';
+import { isSecurity } from './asset-links.ts';
 import type { MeasuredRow } from './matching.ts';
 import { briefingDay } from './briefing-content.ts';
 export { splitMove } from '../math/move.ts';
@@ -35,10 +36,11 @@ export async function moves(session: string, date: string): Promise<MovesRespons
         else
             missingDrivers.push(driver.key);
     }
-    const measured = await query<MeasuredRow>('SELECT * FROM measured_links WHERE symbol=ANY($1)', [data.holdings.map(h => h.symbol)]);
+    const measured = await query<MeasuredRow>('SELECT * FROM measured_links WHERE symbol=ANY($1)', [data.holdings.filter(isSecurity).map(h => h.symbol)]);
     const holdings: HoldingMove[] = [];
     for (const h of data.holdings) {
-        const history = await recent(h.symbol);
+        // Cash, bonds held directly and property have no daily price, so they have no daily move.
+        const history = isSecurity(h) ? await recent(h.symbol) : [];
         const price = history.find(r => r.date === date), prior = history.filter(r => r.date < date).at(-1);
         // Same market session on both series; missing date means no move.
         const actual = price && prior && previous && prior.date === previous.date && prior.close > 0 ? Math.round((price.close / prior.close - 1) * h.valueUsd * 100) / 100 : null;
@@ -56,8 +58,10 @@ export async function moves(session: string, date: string): Promise<MovesRespons
                 drivers.push({ driver: m.driver, contribution: driverContribution(m.b, driverChange.get(m.driver)!, h.valueUsd) });
         holdings.push({ ...h, actual, beta: b, fromMarket: split?.fromMarket ?? null, beyondMarket: split?.beyondMarket ?? null, sourceDate: price ? date : null, drivers: rankMoves(drivers) });
     }
-    const total = holdings.length && holdings.every(h => h.actual !== null) ? holdings.reduce((s, h) => s + Math.round(h.actual! * 100), 0) / 100 : null;
-    const fromMarket = holdings.length && holdings.every(h => h.fromMarket !== null) ? holdings.reduce((s, h) => s + Math.round(h.fromMarket! * 100), 0) / 100 : null;
+    // Totals cover the listed securities. A security without a price still leaves them unavailable.
+    const priced = holdings.filter(isSecurity);
+    const total = priced.length && priced.every(h => h.actual !== null) ? priced.reduce((s, h) => s + Math.round(h.actual! * 100), 0) / 100 : null;
+    const fromMarket = priced.length && priced.every(h => h.fromMarket !== null) ? priced.reduce((s, h) => s + Math.round(h.fromMarket! * 100), 0) / 100 : null;
     const beyondMarket = total !== null && fromMarket !== null ? (Math.round(total * 100) - Math.round(fromMarket * 100)) / 100 : null;
     const end = new Date(`${date}T23:59:59.999Z`);
     const start = new Date(end.getTime() - 86400000);
@@ -78,5 +82,6 @@ export async function moves(session: string, date: string): Promise<MovesRespons
         ts: Date | null;
     }>(`SELECT max(loaded_at) ts FROM prices WHERE ts::date=$1::date`, [date]);
     return { date, asOf: iso(timestamp[0]?.ts), holdings, spyReturn, total, fromMarket, beyondMarket, oddsMoves: oddsMoves.sort((a, b) => Math.abs(b.changePoints) - Math.abs(a.changePoints)),
-        drivers: sumByDriver(holdings.flatMap(h => h.drivers)), missingDrivers };
+        drivers: sumByDriver(holdings.flatMap(h => h.drivers)), missingDrivers,
+        unpricedValue: holdings.filter(h => !isSecurity(h)).reduce((s, h) => s + Math.round(h.valueUsd * 100), 0) / 100 };
 }
