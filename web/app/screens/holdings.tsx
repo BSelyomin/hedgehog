@@ -93,6 +93,6 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
             </Card>
         </div>
         <h2>How it works</h2>
-        <div className="grid">{[['Add what you own', 'Enter tickers and dollar values, or import a CSV.'], ['We match Kalshi markets', 'Company markets first, then measured links and related events. Every link says which kind it is.'], ['Watch what matters to you', 'Explore upcoming events, earnings previews and daily moves, with evidence behind the odds.']].map(([title, text], i) => <Card key={title}><span className="eyebrow">0{i + 1}</span><h3>{title}</h3><p>{text}</p></Card>)}</div>
+        <div className="grid">{[['Add what you own', 'Enter tickers and dollar values, or import a CSV.'], ['We match Kalshi markets', 'Direct company markets first, then Related links backed by historical price measurements. Every link says which kind it is.'], ['Watch what matters to you', 'Explore upcoming events, earnings previews and daily moves, with evidence behind the odds.']].map(([title, text], i) => <Card key={title}><span className="eyebrow">0{i + 1}</span><h3>{title}</h3><p>{text}</p></Card>)}</div>
     </>;
 }

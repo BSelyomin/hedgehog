@@ -68,7 +68,7 @@ export function EarningsOutcome({ row: { event, market, ladder, scaledProbabilit
     const probability = scaledProbability ?? market.probability;
     return <article className="earnings-outcome" data-ticker={market.ticker}>
         <div className="earnings-outcome-main"><p className="note earnings-event-title">{event.title}</p><h3><a href={href('event', market.ticker)}>{market.subtitle || market.title}</a></h3>
-            <p className="note"><span className="chip Related">{market.kind === 'mention' ? 'Call mention' : market.kind === 'bracket' ? 'Bracket / range' : 'Company market'}</span> · {event.category}<br/>Event closes <time dateTime={event.closeTime}>{dateText(event.closeTime, true)}</time></p>
+            <p className="note"><span className="chip plain">{market.kind === 'mention' ? 'Call mention' : market.kind === 'bracket' ? 'Bracket / range' : 'Company market'}</span> · {event.category}<br/>Event closes <time dateTime={event.closeTime}>{dateText(event.closeTime, true)}</time></p>
             {ladder && scaledProbability !== null && <p className="note">Full ladder: {ladder.outcomes.length} outcomes · raw midpoint sum {percent(ladder.rawSum)}. Shares are scaled to 100% across that full ladder.</p>}
         </div>
         <div className="earnings-odds"><strong className="mono">{percent(probability)}</strong><p className="note">{scaledProbability !== null ? 'Scaled bracket share' : 'Yes · Kalshi midpoint'}</p>{probability !== null && <Progress value={probability}/>}{scaledProbability !== null && <p className="note">Raw midpoint: {percent(market.probability)}</p>}</div>
