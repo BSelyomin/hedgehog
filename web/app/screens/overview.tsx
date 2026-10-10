@@ -1,7 +1,8 @@
 'use client';
+import { useState } from 'react';
 import { ExposureTable } from './exposure-table';
 import type { ExposureResponse, CalendarResponse, BriefingResponse } from '../../../shared/types';
-import { money, percent, dateText, href, useData, Card, Fresh, Status } from '../common';
+import { money, percent, dateText, href, api, useData, Card, Fresh, Status } from '../common';
 
 export function Overview() {
     const { data, error } = useData<ExposureResponse>('/exposure');
@@ -46,10 +47,22 @@ function EndingSoon() {
 }
 
 export function Briefing() {
-    const { data, error } = useData<BriefingResponse>('/briefing');
-    return <Card><h2>Your daily briefing</h2>
-        {data?.audioUrl ? <audio controls preload="none" src={data.audioUrl}/> : <p className="note">Audio is not ready yet. The daily briefing appears when source data and the voice service are available.</p>}
+    const { data: saved, error } = useData<BriefingResponse>('/briefing');
+    const [updated, setUpdated] = useState<BriefingResponse | null>(null);
+    const [busy, setBusy] = useState(false), [refreshError, setRefreshError] = useState(''), [revision, setRevision] = useState(0);
+    const data = updated ?? saved;
+    async function refresh() {
+        setBusy(true); setRefreshError('');
+        try { setUpdated(await api<BriefingResponse>('/briefing/refresh', {method:'POST', body:'{}'})); setRevision(r => r + 1); }
+        catch (e) { setRefreshError((e as Error).message); }
+        finally { setBusy(false); }
+    }
+    return <Card>
+        <div className="row"><h2>Your morning briefing</h2><button disabled={busy} onClick={() => void refresh()}>{busy ? 'Preparing briefing…' : 'Refresh briefing'}</button></div>
+        <p className="note">Prepared daily from 8 a.m. New York time. Refresh to hear an updated check-in now.</p>
+        {data?.audioUrl ? <audio key={revision} controls preload="none" src={`${data.audioUrl}?revision=${revision}`}/> : <p className="note">Audio is not ready yet. The daily briefing appears when source data and the voice service are available.</p>}
         {data?.text && <details><summary>Read briefing</summary><p>{data.text}</p></details>}
-        {error && <p className="note">Briefing unavailable.</p>}<Fresh asOf={data?.asOf ?? null}/>
+        {(refreshError || error) && <p role="alert" className="note">{refreshError || 'Briefing unavailable.'}</p>}
+        <Fresh asOf={data?.asOf ?? null}/>
     </Card>;
 }

@@ -183,3 +183,23 @@ it('signs out other sessions while preserving the current one', async () => {
     assert.equal(response.status, 200);
     assert.deepEqual(calls.find(c => c.sql.includes('token_hash<>'))?.values, [id, digest(token)]);
 });
+it('protects briefing refresh against cross-site and stale-session writes', async () => {
+    for (const h of [{ cookie: `hedgehog_session=${guest}` }, { ...headers(), 'sec-fetch-site': 'cross-site' }]) {
+        const response = await request(createApp(), '/briefing/refresh', {method:'POST',headers:h,body:{}});
+        assert.equal(response.status,403);
+    }
+    respond = sql => sql.includes('JOIN users') ? result([account]) : result();
+    const response = await request(createApp(), '/briefing/refresh', {method:'POST',headers:{...headers(true),'x-hedgehog-session':digest(guest)},body:{}});
+    assert.equal(response.status,409);
+    assert.ok(!calls.some(c => c.sql.includes('pg_try_advisory_lock')));
+});
+it('scopes briefing reads and refresh generation to the authenticated portfolio', async () => {
+    respond = sql => sql.includes('JOIN users') ? result([account]) : sql.includes('pg_try_advisory_lock') ? result([{locked:false}]) : result();
+    const read = await request(createApp(), '/briefing', {headers:headers(true)});
+    assert.equal(read.status,200);
+    assert.equal(calls.find(c => c.sql.includes('FROM briefings'))?.values[0],`user:${id}`);
+    assert.match(String(calls.find(c => c.sql.includes('FROM briefings'))?.values[1]), /^\d{4}-\d{2}-\d{2}$/);
+    const refresh = await request(createApp(), '/briefing/refresh', {method:'POST',headers:headers(true),body:{}});
+    assert.equal(refresh.status,503);
+    assert.ok(String(calls.find(c => c.sql.includes('pg_try_advisory_lock'))?.values[0]).includes(`user:${id}`));
+});
