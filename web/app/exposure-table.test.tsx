@@ -10,6 +10,8 @@ const event = (title: string, share: number, symbol: string, type: LinkType): Ex
 });
 const events = [event('Oil', .6, 'DAL', 'Measured'), event('Apple', .3, 'AAPL', 'Direct'), event('Jobs', .1, 'JPM', 'Related')];
 const holdings = [{ symbol: 'DAL', valueUsd: 600 }, { symbol: 'AAPL', valueUsd: 300 }, { symbol: 'JPM', valueUsd: 100 }];
+// No category is chosen in these tests; the shared category filter has its own.
+const categories = { totalValue: 1000, holdings: [], assetClasses: [], themes: [] };
 it('searches by holding, event and outcome and combines link and holding filters', () => {
     expect(filterExposure(events, { ...defaultExposureFilters, search: 'aapl' }).map(e => e.title)).toEqual(['Apple']);
     expect(filterExposure(events, { ...defaultExposureFilters, search: 'oil', link: 'Measured' }).map(e => e.title)).toEqual(['Oil']);
@@ -52,7 +54,7 @@ it('shows every linked holding in the row, with the holdings the event matters m
     const oil: ExposureEvent = { ...events[0], links: portfolio.map(holding => ({ ...holding, type: 'Measured' as const, evidence: 'Test evidence', sensitivity: sensitivity('CL=F'),
         lead: { driver: ['USO', 'XOM'].includes(holding.symbol) ? 'CL=F' : 'SPY', typicalEffect: .02 } })) };
     expect(eventHoldings(oil, portfolio, 'All').map(row => row.holding.symbol)).toEqual(['XOM', 'USO', 'DAL', 'UAL', 'TLT', 'JPM', 'ITB', 'VNQ', 'GLD', 'AAPL', 'SPY']);
-    const html = renderToStaticMarkup(<ExposureTable data={{ events: [oil], holdings: portfolio, byHolding: [], totalValue: 275000, asOf: null }}/>);
+    const html = renderToStaticMarkup(<ExposureTable data={{ events: [oil], holdings: portfolio, categories, byHolding: [], totalValue: 275000, asOf: null }}/>);
     for (const symbol of symbols)
         expect(html, symbol).toContain(`aria-label="${symbol}: Oil, Related,`);
     expect(html).toContain('aria-label="11 holdings for Oil, strongest links first"');
@@ -65,7 +67,7 @@ it('sorts by full-portfolio reach without mutating or recalculating source data'
     expect(filterExposure(events, { ...defaultExposureFilters, days: 14 }, Date.parse('2026-10-01'))).toEqual([]);
 });
 it('renders compact event rows with outcome controls and accessible holding values', () => {
-    const data = { events, holdings, byHolding: [], totalValue: 1000, asOf: null } as ExposureResponse;
+    const data: ExposureResponse = { events, holdings, categories, byHolding: [], totalValue: 1000, asOf: null };
     const html = renderToStaticMarkup(<ExposureTable data={data}/>);
     expect(html).toContain('scope="row"');
     expect(html).toContain('Outcome for Oil');
@@ -97,7 +99,7 @@ it('renders compact event rows with outcome controls and accessible holding valu
 
 it('keeps missing outcome odds unavailable in compact rows', () => {
     const source = { ...events[0], markets: events[0].markets.map(market => ({ ...market, probability: null })) };
-    const html = renderToStaticMarkup(<ExposureTable data={{ events: [source], holdings, totalValue: 1000, byHolding: [], asOf: null }}/>);
+    const html = renderToStaticMarkup(<ExposureTable data={{ events: [source], holdings, categories, totalValue: 1000, byHolding: [], asOf: null }}/>);
     expect(html).toContain('Unavailable');
     expect(html).not.toContain('0.0% yes');
     expect(html).not.toContain('Unavailable yes');

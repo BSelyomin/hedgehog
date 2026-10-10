@@ -5,6 +5,11 @@
 | Add holdings | Entered dollar values and terms | User form or CSV (symbol,valueUsd, plus optional type, maturity, coupon, state, mortgage, rental), persisted to holdings |
 | Overview | Portfolio value and holdings count | holdings; backend sums values |
 | Overview / Calendar / Event | Linked value and share | Sum of unique linked holdings / total entered holding value |
+| Overview | Category value and share | Sum of the values of the holdings in the group, each counted once / total holding value. Asset classes add up to 100%; event themes overlap and do not |
+| Overview | Category basis (sector, fund category) | security_profiles from Yahoo quoteSummary: assetProfile.sector, fundProfile.categoryName; or the asset type the user entered |
+| Overview | Category linked events and next event | Open events with a Direct, Calculated or Measured link to a holding in the group (for a theme, through that theme). Next is the soonest reached by a Direct or Calculated link or through a holding's most important measured driver; with none, the soonest linked event |
+| Overview / Calendar / Moves | Category filter summary | Count and summed value of the chosen holdings / total holding value |
+| Moves | Chosen holdings' move | Sum, in whole cents, of the rows shown: dollar move, from market, beyond market. Withheld when a chosen security lacks the figure |
 | Overview / Calendar | Event and market counts | Database events and markets after reviewed-tag matching |
 | All data screens | asOf | Max relevant source update timestamp; null means no source data |
 | Calendar / Event / Earnings | Event date | A date Kalshi states in the event subtitle ("On Oct 29, 2026") wins, with a precise time only when one falls on that day. Otherwise the first of these still in the future: Kalshi market occurrence_datetime, event strike_date, market expected_expiration_time; otherwise markets.close_time. The screen names the field used and shows the market close beside it |

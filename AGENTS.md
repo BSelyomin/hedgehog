@@ -104,6 +104,7 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | `snapshot_series` | series_ticker | poller: series a holding could link to (approved ticker, driver or asset-type tag) |
 | `odds_candles` | ticker, minutes (60 or 1440), ts (end of the period), mid | candlestick job: Kalshi's hourly closes for 8 days and daily closes since listing, for open markets in `snapshot_series` |
 | `candle_progress` | ticker, minutes, through | candlestick job: how far each market has been fetched |
+| `security_profiles` | symbol PK, quote_type, name, sector, industry, fund_category, updated_at | profiles job: Yahoo's description of each held ticker |
 | `prices` | ts (date), symbol, close | price loader, daily |
 | `series_tags` | series_ticker, tag, source ('snowflake', legacy 'gemini', or 'manual'), reviewed boolean | tagging job |
 | `stock_tags` | symbol, tag, link_type ('direct', 'measured', 'related') | sector table + 10-K job |
@@ -185,6 +186,33 @@ For each category, take settled markets, read the odds **24 hours before close**
 (not at close), and pair them with the outcome. Report count, `avgMiss`, Brier score, and the
 calibration buckets. Headline example: "When Kalshi said 70%, it happened X% of the time" uses the
 65–75 bucket.
+
+## Categories
+
+The portfolio is grouped two ways (`server/src/services/categories.ts`), sent as `categories`
+with the exposure and calendar responses:
+
+- **Asset class** says what a holding is; each holding has exactly one, so the groups add up to
+  the portfolio. A holding the user described is classed by that description (cash, Treasury or
+  CD, bond, property). A ticker is classed from Yahoo's profile of it in `security_profiles`: a
+  company is a stock (with its sector); a fund is classed by its category through
+  `server/seed/fund_classes.json`, written by a human from category names Yahoo returned.
+  Nothing is inferred from a name: a ticker with no profile, or a fund category that is not
+  mapped, is **Unclassified** and shown as such.
+- **Event theme** says what kind of Kalshi event is linked to a holding. A holding is in every
+  theme it has an open event in through a Direct, Calculated or Measured link, so themes overlap
+  and do not add up to 100%. A theme is a tag from the fixed list, or `direct` for markets about
+  the holding itself. An unmeasured topic link carries no theme, as on the Overview.
+
+A group's value is the value of its holdings and its share is that over the whole portfolio,
+each holding counted once. That is reach, not an amount at risk. Because almost every security
+has some reliable link to almost every driver, a theme always names the holdings it matters
+most to: those linked by a Calculated link, and securities whose most important measured driver
+stands behind it. A group's next event is the soonest one reached by such a strong link.
+
+One category choice is shared by the Overview, Calendar and Moves
+(`web/app/screens/category-filter.ts`). The Moves response carries no categories; that screen
+reads them from the exposure data in the background so the moves are not kept waiting.
 
 ## Odds chart
 
@@ -283,7 +311,8 @@ Every response includes `asOf` (when the data was last updated).
 Seven screens, matching the designs in `/design` (screenshots or exports from the canvas):
 
 1. Add holdings
-2. Exposure map (events × holdings, every linked holding shown in its event's row, plus a
+2. Exposure map (category cards in one row that scrolls sideways, then events × holdings with
+   every linked holding shown in its event's row, plus a
    "By holding" view)
 3. Event calendar (next two weeks by Kalshi event date, filter All / Company / Other)
 4. Event page (odds distribution, odds chart over 1 day / 1 week / 1 month / all time, trust
@@ -294,7 +323,9 @@ Seven screens, matching the designs in `/design` (screenshots or exports from th
 
 Design tokens: background `#0E1116`, card `#151A21`, border `#2A313C`, text `#E8ECF1`,
 secondary text `#A3ADBA`, accent `#5AA2FF`, up `#7DB6FF`, down `#FF9F45`. Fonts: Space Grotesk
-(headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). Link chips use one vocabulary
+(headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). A chip that names a link type
+opens an explanation beside it when pointed at (what it means, what it rests on, what it does
+not tell you); the wording lives in `linkMeaning` in `web/app/common.tsx`. Link chips use one vocabulary
 on every screen, set by the Overview: Direct = `#f87171` (red); Measured links are labelled
 "Related" = `#5aa2ff` (blue); Calculated = `#34d399` (green); unmeasured links are labelled "Topic" = dashed border. Touch targets ≥ 44 px; real `<button>` and
 `<a>` elements; works at phone width. Footer on every screen: "Not financial advice. Odds from

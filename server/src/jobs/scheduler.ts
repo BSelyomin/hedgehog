@@ -10,6 +10,7 @@ import { backfill } from './backfill.ts';
 import { syncBrokerages } from '../brokerages/service.ts';
 import { earningsDates } from './earnings-dates.ts';
 import { oddsCandles } from './odds-candles.ts';
+import { profiles } from './profiles.ts';
 const reportDates = () => earningsDates().catch(() => console.warn('Earnings report dates unavailable'));
 export async function runJob(name: string, job: () => Promise<void>) {
     const client = await pool.connect();
@@ -44,7 +45,7 @@ export function scheduler() {
     void runJob('poll', poll).then(() => runJob('odds-candles', () => oddsCandles()));
     // Price/measurement availability must not wait for optional AI tagging.
     const priceHistory = async () => {
-        await runJob('price-history', async () => { await prices(); await measure(); });
+        await runJob('price-history', async () => { await prices(); await measure(); await profiles(); });
         void runJob('briefings', briefings);
     };
     tasks.push(cron.schedule('10 * * * *', priceHistory));

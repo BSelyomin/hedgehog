@@ -158,6 +158,8 @@ export interface HoldingLink extends Holding {
     lead?: DriverRank | null;
     /** Present on Calculated links. */
     calculation?: Calculation | null;
+    /** The themes this link holds through (see Categories). Empty for an unmeasured topic link. */
+    themes?: string[];
 }
 export interface Trust {
     total: number | null;
@@ -196,10 +198,48 @@ export interface ExposureEvent {
     links: HoldingLink[];
     markets: Market[];
     mutuallyExclusive: boolean;
+    /** Every theme one of its links holds through. */
+    themes?: string[];
+}
+/** What a holding is. Each holding has exactly one class. */
+export type AssetClass = 'stocks' | 'bonds' | 'cash' | 'property' | 'commodities' | 'crypto' | 'mixed' | 'unclassified';
+export interface HoldingCategory {
+    symbol: string;
+    valueUsd: number;
+    assetClass: AssetClass;
+    /** What the class rests on: a company's sector or a fund's category from Yahoo, or the type the user entered. Null when unknown. */
+    detail: string | null;
+    /** Themes with an open event linked to this holding by a Direct, Calculated or Measured link. */
+    themes: string[];
+}
+export interface CategoryGroup {
+    key: string;
+    label: string;
+    /** Holdings in the group, largest first. Each is counted once. */
+    symbols: string[];
+    valueUsd: number;
+    /** valueUsd as a share of the whole portfolio. Theme groups overlap, so their shares do not add up to 100%. */
+    share: number;
+    /** Open events linked to a holding in the group; for a theme, through that theme. Unmeasured topic links are not counted. */
+    events: number;
+    /** The soonest of those events. */
+    next: Pick<ExposureEvent, 'ticker' | 'title' | 'eventTime' | 'eventTimeSource'> | null;
+    /** Theme groups: the holdings the theme matters most to, largest first. A holding linked by a Calculated link, or a security whose most important measured driver stands behind the theme. */
+    lead: string[];
+}
+/** The portfolio grouped two ways, for the category cards and the filters every screen shares. */
+export interface Categories {
+    totalValue: number;
+    holdings: HoldingCategory[];
+    /** What you own. Every holding is in exactly one. */
+    assetClasses: CategoryGroup[];
+    /** What kind of event is linked to it. A holding can be in several. */
+    themes: CategoryGroup[];
 }
 export interface ExposureResponse extends Freshness {
     holdings: Holding[];
     totalValue: number;
+    categories: Categories;
     byHolding: {
         symbol: string;
         events: {
@@ -215,6 +255,7 @@ export interface ExposureResponse extends Freshness {
 export interface CalendarResponse extends Freshness {
     days: number;
     events: ExposureEvent[];
+    categories: Categories;
 }
 /** How far back the event chart looks. */
 export type OddsRange = 'day' | 'week' | 'month' | 'all';

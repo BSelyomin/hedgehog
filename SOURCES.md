@@ -51,6 +51,22 @@ On 2026-10-09, `HEDGEHOG.REPORTING.EVENT_SOURCES` was provisioned with 21 dated 
 - Kalshi lists no company revenue or earnings-per-share markets. Company results markets are
   ladders of "above X" levels on operating metrics (232 open) and earnings-call word markets.
 
+# Security profiles for asset classes (October 10, 2026)
+
+- Yahoo `quoteSummary` was called for about 150 tickers and the replies inspected.
+  `quoteType.quoteType` was EQUITY, ETF, MUTUALFUND, MONEYMARKET, CRYPTOCURRENCY or INDEX, and
+  NONE for a symbol that is not a security. `assetProfile.sector` and `.industry` are present for
+  companies; `fundProfile.categoryName` for ETFs and most mutual funds (null for one, FCNTX).
+- Every fund category in `server/seed/fund_classes.json` is a name one of those replies
+  contained, except the two prefix entries: `Target-Date *` (observed as Target-Date 2055) and
+  `Allocation--*` (observed as Allocation--50% to 70% Equity). Categories seen and deliberately
+  left unmapped: Trading--Leveraged Equity, Trading--Inverse Equity, Trading--Miscellaneous,
+  Single Currency, Systematic Trend, Preferred Stock and Convertibles.
+- yahoo-finance2 3.15.4 rejects every mutual fund's `fundProfile` against its own schema and
+  prints a debug line per field while doing so. The profile job therefore reads replies without
+  schema validation, checks each field it uses is text, and mutes `console.log` for the one
+  fund-profile call.
+
 # Candlesticks for the odds chart (October 10, 2026)
 
 - [Batch candlesticks](https://docs.kalshi.com/api-reference/market/batch-get-market-candlesticks):

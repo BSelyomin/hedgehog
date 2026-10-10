@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, FormEvent } from 'react';
 import type { AssetType, ExposureEvent, LinkType, Market } from '../../shared/types';
+import { Explain } from './explain';
 export const money = (n: number | null) => n === null ? 'Unavailable' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
 
 export const percent = (n: number | null) => n === null ? 'Unavailable' : `${(n * 100).toFixed(1)}%`;
@@ -30,10 +31,45 @@ export function EventDate({ event, showYear = false }: {
     showYear?: boolean;
 }) { return <><time dateTime={event.eventTime}>{event.eventTimeSource === 'stated' ? dayOnly(event.eventTime, showYear) : dateText(event.eventTime, showYear)}</time> · {eventTimeLabel(event.eventTimeSource)}{event.eventTimeSource !== 'close' && <> · market closes <time dateTime={event.closeTime}>{dateText(event.closeTime, showYear)}</time></>}</>; }
 
-export function LinkChip({ type, children }: {
+// What each link type means, opened beside its chip: what it is, what it rests on, and what it
+// does not tell you.
+export const linkMeaning: Record<LinkType, { means: string; basis: string; limit: string }> = {
+    Direct: {
+        means: 'A Kalshi market about this holding itself: a company’s earnings call or a number it reports, or a fund’s own price.',
+        basis: 'The market’s series carries this ticker as a reviewed tag.',
+        limit: 'It says the event concerns the holding. It gives no estimate of how far the price would move.',
+    },
+    Calculated: {
+        means: 'Exact arithmetic on the terms you entered for a holding without a ticker: cash, a Treasury or CD, a bond, or a property with an adjustable mortgage.',
+        basis: 'Yearly interest per point of rate on a cash or mortgage balance, or a bond’s price change from its duration. Nothing is estimated from price history.',
+        limit: 'It answers what one point of rate change would do, not whether the event will happen.',
+    },
+    Measured: {
+        means: 'The holding’s price has moved reliably with the driver behind this event: oil, Treasury yields, mortgage rates or the stock market.',
+        basis: 'Measured from the holding’s past daily price changes (weekly for mortgage rates). It counts only with at least 60 observations and a 95% range that excludes zero.',
+        limit: 'It describes the past, not what this event’s outcome will do. The link can be small: each one says which driver matters most to the holding.',
+    },
+    Related: {
+        means: 'The holding shares a reviewed topic with the event, and nothing more.',
+        basis: 'No reliable relationship showed up in price history, so no number is shown.',
+        limit: 'Worth knowing about, not a measured effect. The Overview leaves these out.',
+    },
+};
+
+// A chip that names a link type explains it when pointed at; `focusable` lets the keyboard reach
+// it too. A chip that carries a holding's symbol keeps its short label.
+export function LinkChip({ type, children, focusable = false }: {
     type: LinkType;
     children?: ReactNode;
-}) { return <span className={`chip ${type}`} title={children ? linkLabel(type) : undefined}>{children ?? linkLabel(type)}</span>; }
+    focusable?: boolean;
+}) {
+    if (children)
+        return <span className={`chip ${type}`} title={linkLabel(type)}>{children}</span>;
+    const meaning = linkMeaning[type];
+    return <Explain title={`${linkLabel(type)} link`} focusable={focusable} body={<><span>{meaning.means}</span><span><em>Based on</em> {meaning.basis}</span><span><em>Keep in mind</em> {meaning.limit}</span></>}>
+        <span className={`chip ${type}`}>{linkLabel(type)}</span>
+    </Explain>;
+}
 
 
 import { api } from '../lib/api-client';

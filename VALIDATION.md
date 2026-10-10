@@ -1,5 +1,44 @@
 # Validation and phase status
 
+## Categories, link explanations and the merge with brokerage sync (2026-10-10)
+
+Local main was merged with origin/main (brokerage sync, AI cache, reload buttons, hourly price
+job). Five files conflicted and each kept both sides; the merged code passed 327 tests and both
+TypeScript checks before anything else was added.
+
+On top of the merge: holdings are grouped by asset class and by event theme, the Overview shows
+the groups as cards in one row that scrolls sideways, one category choice is shared by the
+Overview, Calendar and Moves, and a chip naming a link type opens an explanation beside it.
+All 361 tests, both TypeScript checks and the production build pass.
+
+Live checks used the feature-tour portfolio in a temporary guest session, cleared afterwards,
+in headless Edge at 1440 and 390 pixels:
+
+- Asset classes: Property $300,000 (70.6%), Stocks $70,000 (16.5%, ten holdings), Bonds
+  $25,000, Cash $20,000, Commodities $10,000 (GLD, USO). Shares add up to 1.000000. Each
+  holding's basis came from Yahoo (XOM Energy, TLT Long Government fund, USO Commodities Focused
+  fund, SPY Large Blend fund) or from the type entered.
+- Event themes: seven groups. Oil holds eight holdings worth $55,000 and names XOM and USO as
+  the ones it matters most to; Mortgage rates names HOME; Fed rates names the cash and bonds.
+  The Bonds card's next event is a Treasury-yield market, not the sooner diesel-price market
+  TLT is only faintly tied to.
+- The cards sit in one row (same top edge for all); arrows and the note "scroll sideways for
+  more" appear only when cards are off to a side, and the arrow moved the row.
+- Choosing Oil on the Overview narrowed its table to 124 of 366 events and 8 of 17 holdings,
+  and the Calendar and Moves opened with the same choice and the same summary ($55,000, 12.9%).
+  On Moves the chosen holdings' move, $125.46, equals the sum of the eight rows shown, as do
+  its market ($214.09) and beyond-market (-$88.63) parts.
+- Pointing at Direct, Calculated and Related each opened one explanation below the chip,
+  wholly inside the window; keyboard focus opened it too. No browser errors; no sideways page
+  scroll at 390 pixels.
+
+One run made during the minute after a backend restart showed the Oil group with four, five
+and then six holdings on successive screens: the measurement job was rewriting its rows at
+that moment. A run after it finished showed eight on all three screens.
+
+Not verified: brokerage sync itself (no SnapTrade credentials are configured here), and
+holdings that arrive through it, which are classified by the same rule but were not exercised.
+
 ## Paginated outcomes and expandable history (2026-10-10)
 
 Event details show five outcomes per page. Each outcome independently opens its own history

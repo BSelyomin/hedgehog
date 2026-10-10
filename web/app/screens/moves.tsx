@@ -1,8 +1,10 @@
 'use client';
 import { useState } from 'react';
-import type { MovesResponse } from '../../../shared/types';
+import type { ExposureResponse, MovesResponse } from '../../../shared/types';
 import { money, percent, number, href, useData, assetLabel, Card, Fresh, Status, Empty, LinkChip, ReloadButton } from '../common';
 import { describeLeadMove, driverName } from './sensitivity';
+import { CategoryFilter } from './category-controls';
+import { selectEvents, selectedSymbols, selectionMove, useCategorySelection } from './category-filter';
 
 export function Moves() {
     const [search, setSearch] = useState('');
@@ -10,7 +12,18 @@ export function Moves() {
     const [date, setDate] = useState('');
     const { data, error, reload } = useData<MovesResponse>(date ? `/moves?date=${date}` : '/moves');
     const term = search.trim().toLowerCase();
-    const rows = data?.holdings.filter(h => h.symbol.toLowerCase().includes(term)) ?? [];
+    // The category chosen on any screen narrows the rows and the markets listed; the totals stay the
+    // whole portfolio's. Categories come with the exposure data, which loads in the background so
+    // that the moves themselves are never kept waiting for it.
+    const selection = useCategorySelection();
+    const exposure = useData<ExposureResponse>('/exposure').data;
+    const chosen = exposure ? selectedSymbols(exposure.categories, selection) : null;
+    const inCategory = data?.holdings.filter(h => !chosen || chosen.has(h.symbol)) ?? [];
+    const rows = inCategory.filter(h => h.symbol.toLowerCase().includes(term));
+    const part = selectionMove(inCategory);
+    // A market counts for the category when its event is linked to a chosen holding, through the chosen theme.
+    const linked = chosen && exposure ? new Set(selectEvents(exposure.events, exposure.categories, selection).flatMap(e => [e.ticker, ...e.markets.map(m => m.ticker)])) : null;
+    const oddsMoves = data?.oddsMoves.filter(m => !linked || linked.has(m.ticker)) ?? [];
     return <>
         <div className="row"><div><h1>What moved your portfolio</h1><p>Whole market, your individual stocks, and events that moved the same day</p></div><label>Price date<input type="date" value={date || data?.date || ''} onChange={e => setDate(e.target.value)}/></label></div>
         <div className="actions"><ReloadButton onReload={() => reload()}/><button disabled={!date} onClick={() => setDate('')}>Latest trading session</button></div>
@@ -26,12 +39,16 @@ export function Moves() {
             </div>
             <LeadDrivers data={data}/>
             <Card><h2>By holding</h2>
+                {exposure && <CategoryFilter categories={exposure.categories}/>}
+                {chosen && <p className="category-move">{part.securities === 0 ? 'None of the chosen holdings has a daily price, so they have no daily move.'
+                    : part.actual === null ? 'A dollar move for the chosen holdings is unavailable: at least one has no price for this date.'
+                    : <>The chosen holdings moved <strong className={`mono ${part.actual < 0 ? 'orange' : 'blue'}`}>{money(part.actual)}</strong>{part.fromMarket !== null && part.beyondMarket !== null && <>: <span className="mono">{money(part.fromMarket)}</span> from the market and <span className="mono">{money(part.beyondMarket)}</span> beyond it</>}. The totals above cover the whole portfolio.</>}</p>}
                 <label className="move-search">Search holdings<input type="search" placeholder="Ticker, e.g. AAPL" value={search} onChange={e => setSearch(e.target.value)}/></label>
                 <p className="note">Search filters the rows below. Totals above cover {data.unpricedValue > 0 ? `your listed securities; ${money(data.unpricedValue)} in cash, bonds held directly and property has no daily price and is left out` : 'your full portfolio'}.</p>
                 <div className="scroll"><table><thead><tr>{['Holding', 'Measured beta', 'Dollar move', 'From market', 'Beyond market', 'Biggest measured driver', 'Data availability'].map(t => <th key={t}>{t}</th>)}</tr></thead><tbody>
                     {rows.map(h => h.assetType && h.assetType !== 'security' ? <tr key={h.symbol}><td>{h.symbol}<span className="note"> · {assetLabel[h.assetType]}</span></td><td colSpan={6} className="note">No daily price, so no daily move. Worth {money(h.valueUsd)} as entered.</td></tr> : <tr key={h.symbol}><td>{h.symbol}</td><td className="amount">{number(h.beta, 3)}</td><td className="amount">{money(h.actual)}</td><td className="amount">{money(h.fromMarket)}</td><td className="amount">{money(h.beyondMarket)}</td>
                         <td className={h.drivers[0] && h.drivers[0].driver !== 'SPY' ? 'driver-cell lead' : 'driver-cell'}>{h.drivers[0] ? <>{driverName(h.drivers[0].driver)} <span className="mono">{money(h.drivers[0].contribution)}</span></> : 'Unavailable'}</td><td>{h.actual !== null && h.previousDate && <p className="note">Source closes: {h.previousDate} → {h.sourceDate}.</p>}{h.unavailableReasons.length ? h.unavailableReasons.join(' ') : 'Closing prices and measured beta available.'}</td></tr>)}
-                    {!rows.length && <tr><td colSpan={7}><Empty>No holdings match your search.</Empty></td></tr>}
+                    {!rows.length && <tr><td colSpan={7}><Empty>No holdings match your search{chosen ? ' in this category' : ''}.</Empty></td></tr>}
                 </tbody></table></div>
                 <p className="note">From market = measured beta × SPY return × entered holding value. Beyond market = actual move − market component. Price sources: Yahoo daily closes. Missing history leaves the result unavailable.</p>
                 {data.total === null && data.holdings.some(h => !h.assetType || h.assetType === 'security') && <p className="note">The listed-security total needs supported price moves over the same dates for every listed holding. Available individual moves are shown above.</p>}
@@ -39,10 +56,10 @@ export function Moves() {
             </Card>
             <h2>Kalshi markets that moved the same day</h2>
             <p>Moving together is not proof of cause. Historical associations appear only for Related links, which are backed by price measurements.</p>
-            {data.oddsMoves.length ? data.oddsMoves.map(m => <Card key={m.ticker}>
+            {oddsMoves.length ? oddsMoves.map(m => <Card key={m.ticker}>
                 <div className="row"><a className="event-title" href={href('event', m.ticker)}>{m.title}</a><strong className="mono blue">{number(m.changePoints)} pts</strong></div>
                 {m.links.map(l => <p key={l.symbol}><LinkChip type={l.type}/> {l.symbol} · {l.type === 'Measured' ? l.evidence : 'This event moved the same day; no connection to the holding’s move is inferred.'}</p>)}
-            </Card>) : <Card><Empty>No linked markets with a supported move of at least 3 points in this window.</Empty></Card>}
+            </Card>) : <Card><Empty>No linked markets with a supported move of at least 3 points in this window{chosen ? ' for this category' : ''}.</Empty></Card>}
         </>}
     </>;
 }

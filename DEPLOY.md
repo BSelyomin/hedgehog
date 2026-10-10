@@ -101,6 +101,14 @@ startup, then hourly and after midnight New York. To run it by hand:
 docker compose exec backend npm run job -- odds-candles
 ```
 
+Asset classes come from `security_profiles`, one small row per held ticker from Yahoo. The
+profiles job runs with the hourly price job and looks a ticker up when it is first held and
+again after thirty days. To classify newly added tickers at once:
+
+```powershell
+docker compose exec backend npm run job -- profiles
+```
+
 When the database is read-only the backend still starts. It serves stored data, skips migrations
 and scheduled jobs, reports `readOnly: true` from `/health` (the app shows a notice), and answers
 any attempt to save with a plain message. It checks every minute and applies migrations and starts

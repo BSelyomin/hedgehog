@@ -79,7 +79,9 @@ describe('figures calculated from a holding’s own terms', () => {
     });
     it('labels Calculated links and counts them as affected, ahead of measured ones', () => {
         expect(linkLabel('Calculated')).toBe('Calculated');
-        expect(renderToStaticMarkup(<LinkChip type="Calculated"/>)).toBe('<span class="chip Calculated">Calculated</span>');
+        // The chip is unchanged; it now sits beside an explanation that opens when pointed at.
+        expect(renderToStaticMarkup(<LinkChip type="Calculated"/>)).toContain('><span class="chip Calculated">Calculated</span><span role="tooltip"');
+        expect(renderToStaticMarkup(<LinkChip type="Calculated"/>).match(/class="chip /g)).toHaveLength(1);
         const event = { ticker: 'FED', title: 'Fed decision', category: 'Economics', closeTime: '2026-11-03T00:00:00Z', eventTime: '2026-11-03T00:00:00Z', eventTimeSource: 'close', linkedValue: 150, share: .5, mutuallyExclusive: false, markets: [],
             links: [{ symbol: 'TLT', valueUsd: 100, type: 'Measured', evidence: '', sensitivity: null }, { symbol: 'SAVINGS', valueUsd: 50, type: 'Calculated', evidence: '', sensitivity: null }] } as ExposureEvent;
         expect(filterCalendarEvents([event], { ...defaultCalendarFilters, link: 'Affected', holding: 'SAVINGS' })).toHaveLength(1);
@@ -93,7 +95,10 @@ describe('figures calculated from a holding’s own terms', () => {
 describe('link labels', () => {
     it('uses the Overview vocabulary on every screen', () => {
         expect([linkLabel('Direct'), linkLabel('Measured'), linkLabel('Related')]).toEqual(['Direct', 'Related', 'Topic']);
-        expect(renderToStaticMarkup(<LinkChip type="Measured"/>)).toBe('<span class="chip Measured">Related</span>');
+        expect(renderToStaticMarkup(<LinkChip type="Measured"/>)).toContain('><span class="chip Measured">Related</span><span role="tooltip"');
+        // The explanation names the link by the same word as the chip, never by the API's.
+        expect(renderToStaticMarkup(<LinkChip type="Measured"/>)).toContain('<strong>Related link</strong>');
+        expect(renderToStaticMarkup(<LinkChip type="Measured"/>)).not.toContain('Measured link');
         expect(renderToStaticMarkup(<LinkChip type="Direct">AAPL</LinkChip>)).toBe('<span class="chip Direct" title="Direct">AAPL</span>');
     });
     it('colours each linked holding by its connection in event lists', () => {

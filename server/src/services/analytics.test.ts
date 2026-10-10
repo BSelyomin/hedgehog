@@ -86,7 +86,8 @@ it('returns unavailable quote values and omits unsupported odds moves', async ()
 });
 it('returns an empty portfolio without scanning markets when no holdings exist', async () => {
     symbols = [];
-    assert.deepEqual(await exposure('guest'), { holdings: [], totalValue: 0, byHolding: [], events: [], asOf: null });
+    assert.deepEqual(await exposure('guest'), { holdings: [], totalValue: 0, byHolding: [], events: [], asOf: null,
+        categories: { totalValue: 0, holdings: [], assetClasses: [], themes: [] } });
     assert.equal(calls.length, 1);
 });
 

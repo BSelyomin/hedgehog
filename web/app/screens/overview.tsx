@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { ExposureTable } from './exposure-table';
+import { CategoryCards, CategoryFilter } from './category-controls';
 import type { ExposureResponse, CalendarResponse, BriefingResponse } from '../../../shared/types';
 import { money, percent, dateText, href, api, useData, Card, Fresh, Status, LinkChip, EventDate, ReloadButton } from '../common';
 
@@ -23,10 +24,12 @@ export function Overview() {
                 <Card><span className="muted">Linked events (all future dates)</span><strong className="number">{data.events.length}</strong><p className="note">Calendar defaults to the next 14 days.</p><a href="#calendar">Open calendar →</a></Card>
                 <Card><span className="muted">Daily price changes</span><h3>Understand your move</h3><a href="#moves">Open move explainer →</a></Card>
             </div>
+            <CategoryCards categories={data.categories}/>
             <Card className="exposure-map">
-                <div className="row exposure-map-heading"><div><h2>Which events touch which holdings</h2><p className="note">Expand an event for details. Use the wheel to scroll its holdings.</p></div>
-                    <div className="exposure-legend">{(['Direct', 'Calculated', 'Measured'] as const).map(type => <LinkChip key={type} type={type}/>)}</div>
+                <div className="row exposure-map-heading"><div><h2>Which events touch which holdings</h2><p className="note">Expand an event for details. Every linked holding is shown in its row.</p></div>
+                    <div className="exposure-legend">{(['Direct', 'Calculated', 'Measured'] as const).map(type => <LinkChip key={type} type={type} focusable/>)}</div>
                 </div>
+                <CategoryFilter categories={data.categories}/>
                 <ExposureTable data={data}/>
                 <details className="exposure-help"><summary>How to read this table</summary><p className="note">Red = Direct; green = Calculated from a holding’s own terms (cash, bonds, a mortgage); blue = Related, backed by historical measurements. Only connected holdings appear, strongest links first. Color describes the link, not the direction of a price move. Share and linked-holding counts use all source links, including those hidden by filters, and your full portfolio value. They show portfolio reach, not how much holdings would move.</p></details>
             </Card>
