@@ -13,7 +13,8 @@ and the UI says which. When the data can't support a number, show no number.
 
 - Never hard-code how much a stock moves when an event happens. Sensitivities come only from
   `measured_links`, computed from historical data.
-- A link that fails `checkSensitivity` is shown as **Related** with no number.
+- A link that fails `checkSensitivity` stays unmeasured (API type `Related`, labelled **Topic**
+  on screen) with no number.
 - Probabilities are the bid–ask midpoint, never the last trade.
 - AI-written text (Snowflake Cortex) never introduces a number that isn't in the data passed to it.
   Code checks this (see "Snowflake Cortex").
@@ -23,7 +24,7 @@ and the UI says which. When the data can't support a number, show no number.
 
 ## Stack
 
-npm workspaces monorepo, Node 20+, TypeScript everywhere.
+npm workspaces monorepo, Node 24+, TypeScript everywhere.
 
 ```
 /web      Next.js (App Router) + Tailwind — screens only, no business logic
@@ -37,6 +38,7 @@ npm workspaces monorepo, Node 20+, TypeScript everywhere.
 | Scheduling | `node-cron` inside the server process |
 | Stock and oil prices | `yahoo-finance2` (daily closes) |
 | 2-year Treasury yield | FRED API, series `DGS2` |
+| Past earnings-report dates | SEC EDGAR APIs via Node's built-in fetch |
 | Regression | `ml-matrix` (least squares) |
 | AI | Snowflake Cortex REST APIs via Node's built-in fetch |
 | Voice | ElevenLabs API, official JavaScript SDK |
@@ -48,6 +50,7 @@ Ask before adding any dependency not in this table.
 
 ```
 DATABASE_URL=
+COOKIE_SECURE=
 SNOWFLAKE_ACCOUNT_URL=
 SNOWFLAKE_PAT=
 SNOWFLAKE_CORTEX_MODEL=
@@ -57,13 +60,15 @@ SNOWFLAKE_SEARCH_SERVICE=
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
 FRED_API_KEY=
+SEC_USER_AGENT=
 ```
 
 Ship a `.env.example` with these names and no values. Never print keys in logs.
 
 ## Kalshi
 
-- Base URL: `https://api.elections.kalshi.com/trade-api/v2` (confirm on docs.kalshi.com).
+- Base URL: `https://external-api.kalshi.com/trade-api/v2`, the host in Kalshi's current docs
+  (confirm on docs.kalshi.com).
   Market-data endpoints are public; send no credentials.
 - Data hierarchy: series → events → markets.
 - Use the `*_dollars` price fields (`yes_bid_dollars`, `yes_ask_dollars`, …). The older cent
@@ -83,7 +88,8 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 
 | Table | Columns | Filled by |
 | --- | --- | --- |
-| `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result | poller |
+| `events` | ticker PK, series_ticker, title, description, category, mutually_exclusive, strike_date | poller |
+| `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result, strike_type, occurrence_time, expected_expiration_time | poller |
 | `odds_snapshots` | ts, ticker, yes_bid, yes_ask, mid, volume_24h, open_interest | poller, every 5 min |
 | `prices` | ts (date), symbol, close | price loader, daily |
 | `series_tags` | series_ticker, tag, source ('snowflake', legacy 'gemini', or 'manual'), reviewed boolean | tagging job |
@@ -92,6 +98,7 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | `settled_markets` | ticker, category, prob_24h_before, outcome (0/1), close_time | backfill |
 | `holdings` | session_id, symbol, value_usd | add-holdings screen |
 | `sector_tags` | sector, tag | seeded from `server/seed/sector_tags.json` (written by a human) |
+| `earnings_reports` | symbol, accession, filing_date, report_date, source_url | earnings-dates job (SEC EDGAR) |
 
 Tags come from a **fixed list** in `server/seed/tags.json`, for example: `fed-rates`,
 `inflation`, `oil`, `consumer-spending`, `recession`, `tariffs`, `sp500`, `jobs`, plus one tag
@@ -110,7 +117,7 @@ daily change in `DGS2`; `sp500` → SPY (this one is the stock's beta).
 
 Exposure for an event: `linkedValue` = sum of the values of holdings linked to it;
 `share` = `linkedValue / totalValue`. These show reach, not how much a holding would move.
-Sort links Direct → Measured → Related.
+Sort links Direct → Measured → Related. On screen these read Direct, Related and Topic (see UI).
 
 ## Math (port of `hedgehog_math.py`, in `server/src/math/`)
 
@@ -165,9 +172,9 @@ link is Measured; otherwise say it moved the same day, nothing more.
 ## Earnings preview
 
 For holdings with company markets: bracket ladders scaled so they sum to 100% (show the raw sum
-in a note), other KPI markets with their trust score, mention markets, and the stock's move after
-each of the last 8 reports (close before → close after). If you can't find a free source for past
-report dates, skip that card and say so in the PR.
+in a note), other KPI markets with their trust score, mention markets, and the stock's move across
+each of the last 8 reports. Report dates are the SEC EDGAR filing dates of 8-K filings carrying
+Item 2.02; the move runs from the last close before the filing date to the first close after it.
 
 ## Snowflake Cortex
 
@@ -206,7 +213,7 @@ Seven screens, matching the designs in `/design` (screenshots or exports from th
 
 1. Add holdings
 2. Exposure map (heatmap of holdings × events, plus a "By holding" view)
-3. Event calendar (next two weeks, filter All / Macro / Earnings)
+3. Event calendar (next two weeks by Kalshi event date, filter All / Company / Other)
 4. Event page (odds distribution, 1-week chart, trust score breakdown, linked holdings + evidence)
 5. Earnings preview
 6. Move explainer
@@ -214,8 +221,9 @@ Seven screens, matching the designs in `/design` (screenshots or exports from th
 
 Design tokens: background `#0E1116`, card `#151A21`, border `#2A313C`, text `#E8ECF1`,
 secondary text `#A3ADBA`, accent `#5AA2FF`, up `#7DB6FF`, down `#FF9F45`. Fonts: Space Grotesk
-(headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). Link chips: Direct = solid accent,
-Measured = `#24476E` fill, Related = dashed border. Touch targets ≥ 44 px; real `<button>` and
+(headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). Link chips use one vocabulary
+on every screen, set by the Overview: Direct = `#f87171` (red); Measured links are labelled
+"Related" = `#5aa2ff` (blue); unmeasured links are labelled "Topic" = dashed border. Touch targets ≥ 44 px; real `<button>` and
 `<a>` elements; works at phone width. Footer on every screen: "Not financial advice. Odds from
 Kalshi."
 
