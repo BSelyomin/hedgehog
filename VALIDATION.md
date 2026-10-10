@@ -1,5 +1,65 @@
 # Validation and phase status
 
+## Event history, frontend checks and storage (2026-10-10)
+
+The event chart now reads one selected market through `/odds/:ticker`, with day, week,
+month and all-time ranges. Migration 012 and the first candle backfill are present in the
+running database. All 254 tests and both workspace TypeScript checks pass in Node 24;
+the frontend production image builds successfully.
+
+### Browser checks
+
+Checked the rebuilt, running frontend in Chrome against the real API using an isolated
+guest session, then cleared its holdings. Importing `examples/feature-tour.csv` saved all
+17 positions (13 securities and four other asset types), totaling $425,000.
+
+- The overview renders the imported portfolio and wrapping holding tiles.
+- Earnings lists five dated calls (JPM, UAL, NFLX, TSLA and AAPL). Company search, outcome
+  search and pagination work. Apple's 23 outcomes span three pages at ten per page;
+  searching for iPhone reduces them to one. The page fits at 390 pixels wide.
+- The Apple monopoly event (`APPLEUS-29DEC31`) returns 93 day, 101 week, 31 month and
+  775 all-time readings. Its longest history starts March 27, 2024. The displayed latest
+  probability matches the response (26.5% at this check) on all four ranges. Paths use
+  horizontal/vertical steps, and pointer tooltips render.
+- Switching outcomes on the JPM CEO event loads the newly selected market's history.
+- Event details fit at 1440, 390 and 320 pixels wide, without horizontal page overflow.
+  A minimum chart canvas width had shrunk axis labels and offset hover coordinates on
+  the narrowest screen; it now follows the actual available width. After rebuilding and
+  recreating the frontend, its 238-pixel plot uses a 238-pixel canvas at a 320-pixel viewport.
+- No browser JavaScript errors occurred. Screenshots were inspected; temporary browser
+  artifacts stay in ignored `.cache/ui-tests`.
+
+### Measured storage
+
+Read-only queries against Tiger Data at **15:10 UTC on October 10** measured allocated
+table and index space, not a cloud bill. MiB means 1,048,576 bytes.
+
+| Data | Rows | Allocated storage, including indexes |
+| --- | ---: | ---: |
+| Hourly and daily candles (`odds_candles`) | 820,371 | 129.77 MiB |
+| Candle collection progress (`candle_progress`) | 15,818 | 2.15 MiB |
+| Five-minute snapshots, including all Timescale chunks | 540,526 | 142.86 MiB |
+| Whole database, including the tables above | — | 428.95 MiB |
+
+The candle table contains **413,911 hourly readings** across 7,186 markets and **406,460
+daily readings** across 7,008 markets. Daily history reaches October 24, 2023. All 7,909
+currently eligible markets have collection progress for both intervals; some return no
+usable quotes. The table itself occupies 60.30 MiB and its primary-key index 69.47 MiB.
+
+This is mainly an initial history load. Hourly readings roll off after eight days. Daily
+readings stay while a market remains eligible; cleanup allows a day after market close.
+The latest complete daily period contributed 5,966 readings. At the current allocated
+average of about 166 bytes per candle including its index, that is approximately **0.94
+MiB per day** of additional daily history before cleanup, or **1.25 MiB per day** if every
+one of the current 7,909 markets produced a daily candle. These are planning estimates,
+not measured net disk growth: new listings, quote activity, index occupancy, vacuum and
+reusable space can change the result. Deleting expired rows does not immediately shrink
+PostgreSQL's allocated files. No Tiger Data dollar price is inferred from these sizes.
+
+Sizes came from `pg_database_size`, `pg_table_size`, `pg_indexes_size`, and
+`pg_total_relation_size`. Snapshot storage used `hypertable_detailed_size('odds_snapshots')`
+so its chunks were included rather than just its small parent table.
+
 ## Earnings screen rebuilt to the design (2026-10-10)
 
 All 221 tests and strict TypeScript checks pass in a Node 24 container, and the Next.js production build succeeds. Migration 011 applied; one poll filled strike values for 75,638 markets.
@@ -13,7 +73,8 @@ Checked against the running app with the 25-holding example portfolio in a tempo
 - **Call topics.** Apple: 17 words, led by "iPhone 18" at 92.5%.
 - **Past moves.** Apple's typical move over its last eight reports is 3.1%, which is $310.82 on a $10,000 position.
 
-Not verified: the screen in a browser. Not built, as agreed: year-ago values from filings.
+Browser validation was completed in the event-history checks above. Not built, as agreed:
+year-ago values from filings.
 
 ## Full database, read-only mode and odds storage (2026-10-10)
 

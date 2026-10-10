@@ -44,6 +44,20 @@ it('orders holdings separately per event and applies affected-only to each row',
     expect(eventHoldings(mixed, portfolio, 'All').some(row => row.link?.type === 'Related')).toBe(false);
     expect(portfolio.map(h => h.symbol)).toEqual(['DAL', 'AAPL', 'JPM', 'MSFT']);
 });
+it('shows every linked holding in the row, with the holdings the event matters most to first', () => {
+    const sensitivity = (driver: string) => ({ b: .1, low: .05, high: .15, days: 250, driver, computedAt: '2026-10-09T00:00:00Z', typicalEffect: .01 });
+    const symbols = ['XOM', 'DAL', 'UAL', 'TLT', 'JPM', 'ITB', 'VNQ', 'GLD', 'AAPL', 'SPY', 'USO'];
+    const portfolio = symbols.map((symbol, index) => ({ symbol, valueUsd: 30000 - index * 1000 }));
+    // Oil is the main driver of the oil fund and the oil company only; for the rest something else matters more.
+    const oil: ExposureEvent = { ...events[0], links: portfolio.map(holding => ({ ...holding, type: 'Measured' as const, evidence: 'Test evidence', sensitivity: sensitivity('CL=F'),
+        lead: { driver: ['USO', 'XOM'].includes(holding.symbol) ? 'CL=F' : 'SPY', typicalEffect: .02 } })) };
+    expect(eventHoldings(oil, portfolio, 'All').map(row => row.holding.symbol)).toEqual(['XOM', 'USO', 'DAL', 'UAL', 'TLT', 'JPM', 'ITB', 'VNQ', 'GLD', 'AAPL', 'SPY']);
+    const html = renderToStaticMarkup(<ExposureTable data={{ events: [oil], holdings: portfolio, byHolding: [], totalValue: 275000, asOf: null }}/>);
+    for (const symbol of symbols)
+        expect(html, symbol).toContain(`aria-label="${symbol}: Oil, Related,`);
+    expect(html).toContain('aria-label="11 holdings for Oil, strongest links first"');
+    expect(html.indexOf('aria-label="USO: Oil')).toBeLessThan(html.indexOf('aria-label="DAL: Oil'));
+});
 it('sorts by full-portfolio reach without mutating or recalculating source data', () => {
     const sorted = filterExposure(events, { ...defaultExposureFilters, sort: 'reach-asc' });
     expect(sorted.map(e => e.share)).toEqual([.3, .6]);
@@ -69,7 +83,10 @@ it('renders compact event rows with outcome controls and accessible holding valu
     expect(html).not.toContain('no supported link');
     expect(html).not.toContain('cell blank');
     expect(html).not.toContain('holding-expander');
-    expect(html).toContain('scroll horizontally for more');
+    expect(html).toContain('aria-label="1 holding for Oil, strongest links first"');
+    // The tiles wrap; nothing tells the reader to scroll sideways for the rest.
+    expect(html).not.toContain('scroll to see more');
+    expect(html).not.toContain('scroll horizontally');
     expect(html).toContain('<strong>DAL</strong><span class="holding-value">$600.00</span>');
     expect(html).toContain('<strong>AAPL</strong><span class="holding-value">$300.00</span>');
     expect(html).toContain('aria-label="Show details for Oil"');

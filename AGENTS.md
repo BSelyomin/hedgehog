@@ -84,8 +84,8 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
   - `GET /events?status=open&with_nested_markets=true` (paginate with `cursor`)
   - `GET /series/{series_ticker}/markets/{ticker}/candlesticks` and batch `GET /markets/candlesticks`
   - settled markets via `GET /markets` with a status filter, for the track record
-- Only the poller and backfill jobs call Kalshi. Pages read from our database. Never call Kalshi
-  from the browser.
+- Only the poller, backfill and candlestick jobs call Kalshi. Pages read from our database. Never
+  call Kalshi from the browser.
 - Poll every 5 minutes. Back off on 429 and 5xx responses. Log and skip a bad market rather than
   failing the whole run.
 - Store every market's details, but odds history only for series a holding could link to. Storing
@@ -99,9 +99,11 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | Table | Columns | Filled by |
 | --- | --- | --- |
 | `events` | ticker PK, series_ticker, title, description, category, mutually_exclusive, strike_date | poller |
-| `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result, strike_type, occurrence_time, expected_expiration_time, floor_strike, cap_strike | poller |
+| `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result, strike_type, occurrence_time, expected_expiration_time, floor_strike, cap_strike, open_time | poller |
 | `odds_snapshots` | ts, ticker, yes_bid, yes_ask, mid, volume_24h, open_interest | poller, every 5 min, only for markets in `snapshot_series`; compressed after 1 day, dropped after 8 |
 | `snapshot_series` | series_ticker | poller: series a holding could link to (approved ticker, driver or asset-type tag) |
+| `odds_candles` | ticker, minutes (60 or 1440), ts (end of the period), mid | candlestick job: Kalshi's hourly closes for 8 days and daily closes since listing, for open markets in `snapshot_series` |
+| `candle_progress` | ticker, minutes, through | candlestick job: how far each market has been fetched |
 | `prices` | ts (date), symbol, close | price loader, daily |
 | `series_tags` | series_ticker, tag, source ('snowflake', legacy 'gemini', or 'manual'), reviewed boolean | tagging job |
 | `stock_tags` | symbol, tag, link_type ('direct', 'measured', 'related') | sector table + 10-K job |
@@ -184,6 +186,27 @@ For each category, take settled markets, read the odds **24 hours before close**
 calibration buckets. Headline example: "When Kalshi said 70%, it happened X% of the time" uses the
 65–75 bucket.
 
+## Odds chart
+
+The event page charts one market's bid–ask midpoint with titled axes and a choice of range.
+Every point is a reading from a source: one of our five-minute snapshots, or the close of a
+Kalshi candlestick (`GET /markets/candlesticks`, midpoint of `yes_bid.close_dollars` and
+`yes_ask.close_dollars` at `end_period_ts`). Ranges live in `server/src/services/odds-history.ts`:
+
+| Range | Kalshi closes | Our snapshots |
+| --- | --- | --- |
+| 1 day | hourly | every one |
+| 1 week | hourly | the last of each hour |
+| 1 month | daily | the latest only |
+| All time | daily, since the market's `open_time` | the latest only |
+
+Kalshi publishes no candlestick for most periods in which the quote did not change, so the line
+is stepped: it holds each reading until the next and never slopes between two readings. A
+candlestick or snapshot with no bid and no offer (0 and 1) is not a quote and is not drawn.
+The probability axis zooms to the readings on round levels, never to a span under ten points.
+The candlestick job (`server/src/jobs/odds-candles.ts`) runs hourly for hourly closes, after
+midnight New York for daily closes, and after the first poll at startup.
+
 ## Move explainer
 
 For a day: each holding's dollar move; `fromMarket = beta × SPY return × value`;
@@ -250,6 +273,7 @@ Every response type lives in `/shared/types.ts`. Write the types first; then the
 against mock data while the server is built.
 
 `POST /holdings` · `GET /exposure` · `GET /calendar?days=14` · `GET /event/:ticker` ·
+`GET /odds/:ticker?range=day|week|month|all` ·
 `GET /moves?date=` · `GET /earnings` · `GET /earnings/:symbol` · `GET /track-record` · `GET /briefing`
 
 Every response includes `asOf` (when the data was last updated).
@@ -259,9 +283,11 @@ Every response includes `asOf` (when the data was last updated).
 Seven screens, matching the designs in `/design` (screenshots or exports from the canvas):
 
 1. Add holdings
-2. Exposure map (heatmap of holdings × events, plus a "By holding" view)
+2. Exposure map (events × holdings, every linked holding shown in its event's row, plus a
+   "By holding" view)
 3. Event calendar (next two weeks by Kalshi event date, filter All / Company / Other)
-4. Event page (odds distribution, 1-week chart, trust score breakdown, linked holdings + evidence)
+4. Event page (odds distribution, odds chart over 1 day / 1 week / 1 month / all time, trust
+   score breakdown, linked holdings + evidence)
 5. Earnings preview
 6. Move explainer
 7. Track record (calibration chart, table by category, how trust is scored)

@@ -93,11 +93,6 @@ export async function eventDetail(session: string, ticker: string): Promise<Even
     const event = data.events.find(e => e.ticker === ticker || e.markets.some(m => m.ticker === ticker));
     if (!event)
         return null;
-    const rows = await query<{
-        ts: Date;
-        ticker: string;
-        mid: number;
-    }>(`SELECT ts,ticker,mid FROM odds_snapshots WHERE ticker=ANY($1) AND ts>=now()-interval '7 days' ORDER BY ts`, [event.markets.map(m => m.ticker)]);
     const saved = await query<{
         text: string;
         sources: {
@@ -109,5 +104,5 @@ export async function eventDetail(session: string, ticker: string): Promise<Even
     }>('SELECT * FROM summaries WHERE event_ticker=$1 AND updated_at>now()-interval \'24 hours\'', [event.ticker]);
     const s = saved[0];
     const sources = s ? safeSources(s.sources) : [];
-    return { event, asOf: data.asOf, history: rows.map(r => ({ ts: r.ts.toISOString(), ticker: r.ticker, probability: r.mid })), summary: s && sources.length && numbersSupported(s.text, s.input_data) ? { text: s.text, sources } : null };
+    return { event, asOf: data.asOf, summary: s && sources.length && numbersSupported(s.text, s.input_data) ? { text: s.text, sources } : null };
 }

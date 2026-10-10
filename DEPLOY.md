@@ -92,6 +92,15 @@ link to (about 7,000 markets), in daily chunks that are compressed after a day a
 eight. A trigger on `odds_snapshots` applies the same rule to any backend writing to the
 database, including one running older code.
 
+The event chart's longer ranges read `odds_candles`: Kalshi's hourly closes for the past eight
+days and its daily closes since each market was listed, one midpoint per period, for the same
+linkable markets while they are open. The candlestick job fills it after the first poll at
+startup, then hourly and after midnight New York. To run it by hand:
+
+```powershell
+docker compose exec backend npm run job -- odds-candles
+```
+
 When the database is read-only the backend still starts. It serves stored data, skips migrations
 and scheduled jobs, reports `readOnly: true` from `/health` (the app shows a notice), and answers
 any attempt to save with a plain message. It checks every minute and applies migrations and starts
@@ -105,8 +114,8 @@ SET default_transaction_read_only = off;
 TRUNCATE odds_snapshots;
 ```
 
-That removes the stored odds history (the one-week charts and day-over-day odds moves start
-again); current odds return with the next poll. Holdings, accounts, tags, prices, measurements
+That removes the stored five-minute odds history (the detail in the one-day chart and
+day-over-day odds moves start again; Kalshi's hourly and daily closes in `odds_candles` remain); current odds return with the next poll. Holdings, accounts, tags, prices, measurements
 and the track record are not touched.
 
 ## Asset types and drivers

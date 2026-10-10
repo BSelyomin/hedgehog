@@ -21,6 +21,11 @@ it('keeps valid markets when one market is invalid and retains fractional activi
     const timed = preparePollPage([{ ...event, strike_date: '2026-12-31T21:00:00Z', markets: [{ ...market, occurrence_datetime: '2026-10-29T21:00:00Z', expected_expiration_time: 'soon' }] }], new Date());
     expect(timed.events[0].strike_date).toBe('2026-12-31T21:00:00Z');
     expect(timed.markets[0]).toMatchObject({ occurrence_time: '2026-10-29T21:00:00Z', expected_expiration_time: null });
+    // The listing time is where a market's candlestick history starts. It is stored last,
+    // matching the column added last to the markets table.
+    expect(page.markets[0].open_time).toBeNull();
+    expect(preparePollPage([{ ...event, markets: [{ ...market, open_time: '2025-10-13T14:00:00Z' }] }], new Date()).markets[0].open_time).toBe('2025-10-13T14:00:00Z');
+    expect(Object.keys(page.markets[0]).at(-1)).toBe('open_time');
     const crossed = preparePollPage([{ ...event, markets: [{ ...market, yes_bid_dollars: '.80' }] }], new Date());
     expect(crossed.markets).toHaveLength(1);
     expect(crossed.quotes).toHaveLength(0);

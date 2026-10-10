@@ -51,6 +51,25 @@ On 2026-10-09, `HEDGEHOG.REPORTING.EVENT_SOURCES` was provisioned with 21 dated 
 - Kalshi lists no company revenue or earnings-per-share markets. Company results markets are
   ladders of "above X" levels on operating metrics (232 open) and earnings-call word markets.
 
+# Candlesticks for the odds chart (October 10, 2026)
+
+- [Batch candlesticks](https://docs.kalshi.com/api-reference/market/batch-get-market-candlesticks):
+  `GET /markets/candlesticks` with `market_tickers` (at most 100), `start_ts`, `end_ts` and
+  `period_interval` in minutes; at most 10,000 candlesticks per reply across all markets. The
+  reply is `markets[]` of `market_ticker` and `candlesticks[]`, each with `end_period_ts` (the
+  inclusive end of the period) and `yes_bid` / `yes_ask` objects holding `close_dollars`.
+- Live replies for five stored markets: daily periods end at midnight New York (04:00 UTC in
+  summer), only finished periods are returned, and `price` is empty when nothing traded.
+  Candlesticks are not published for every period: one Fed market listed 362 days earlier had
+  293 daily candlesticks, with gaps of up to 12 days.
+- What a missing candlestick means was checked against our own five-minute readings for 200
+  markets over 22 hours. Of 744 closely watched hours with no hourly candlestick, the quote
+  was unchanged in 741. Where a candlestick was published and we had a reading within five
+  minutes of the hour's end, its closing bid and ask equalled that reading in 199 of 214 hours.
+  The chart therefore holds each reading until the next one rather than sloping between them.
+- Nested markets in the events listing carry `open_time`, which is stored as the start of a
+  market's history.
+
 # Additional coverage validation (October 9, 2026)
 
 - [Kalshi historical data](https://docs.kalshi.com/getting_started/historical_data): older

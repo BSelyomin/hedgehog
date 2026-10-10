@@ -8,6 +8,7 @@ import { summaries } from './summaries.ts';
 import { briefings } from './briefing.ts';
 import { backfill } from './backfill.ts';
 import { earningsDates } from './earnings-dates.ts';
+import { oddsCandles } from './odds-candles.ts';
 // Report dates are optional context; a failed SEC request must not stop prices or measurements.
 const reportDates = () => earningsDates().catch(() => console.warn('Earnings report dates unavailable'));
 export async function runJob(name: string, job: () => Promise<void>) {
@@ -34,7 +35,11 @@ export function scheduler() {
         await query('DELETE FROM auth_sessions WHERE expires_at<=now()');
         await query('DELETE FROM auth_rate_limits WHERE resets_at<=now()');
     })));
-    void runJob('poll', poll);
+    // Kalshi's hourly closes each hour; its daily closes just after its day ends at midnight in New York.
+    tasks.push(cron.schedule('5 * * * *', () => runJob('odds-candles', () => oddsCandles(60))));
+    tasks.push(cron.schedule('20 0 * * *', () => runJob('odds-candles', () => oddsCandles(1440)), { timezone: 'America/New_York' }));
+    // The first poll after an upgrade records each market's listing time, which the candlesticks start from.
+    void runJob('poll', poll).then(() => runJob('odds-candles', () => oddsCandles()));
     void runJob('bootstrap', async () => { await prices(); await stockTags(); await measure(); await runJob('briefings', briefings); await reportDates(); await tagSeries(); });
     return tasks;
 }

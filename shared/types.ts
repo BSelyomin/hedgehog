@@ -152,10 +152,22 @@ export interface CalendarResponse extends Freshness {
     days: number;
     events: ExposureEvent[];
 }
-export interface OddsPoint {
+/** How far back the event chart looks. */
+export type OddsRange = 'day' | 'week' | 'month' | 'all';
+/** A bid–ask midpoint at one moment: a reading Hedgehog stored or the close of a Kalshi candlestick. */
+export interface OddsReading {
     ts: string;
-    ticker: string;
     probability: number;
+}
+export interface OddsHistoryResponse extends Freshness {
+    ticker: string;
+    range: OddsRange;
+    /** Start of the range. For 'all' it is when Kalshi listed the market, or the first reading if that is unknown. */
+    from: string | null;
+    to: string;
+    /** When Kalshi opened the market, if known. */
+    listed: string | null;
+    points: OddsReading[];
 }
 export interface Summary {
     text: string;
@@ -166,7 +178,6 @@ export interface Summary {
 }
 export interface EventResponse extends Freshness {
     event: ExposureEvent;
-    history: OddsPoint[];
     summary: Summary | null;
 }
 export interface CalibrationBucket {

@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
-import type { EventResponse, HoldingLink, Market, OddsPoint } from '../../../shared/types';
-import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip, EventDate } from '../common';
+import type { EventResponse, HoldingLink, Market } from '../../../shared/types';
+import { money, percent, number, dateText, useData, Card, Fresh, Status, TrustBadge, Progress, LinkChip, EventDate } from '../common';
+import { OddsChart } from './odds-chart';
 import { describeCalculation, describeImportance, describeSensitivity } from './sensitivity';
 
 export function EventPage({ ticker }: {
@@ -28,8 +29,7 @@ export function EventPage({ ticker }: {
                             <span className="note">Kalshi bid–ask midpoint</span> <TrustBadge market={m}/>
                         </div>)}
                         <p className="note">Each outcome shows its own midpoint. These quotes are not normalized.</p>
-                        <h3>Past week · {market?.subtitle || market?.title}</h3>
-                        <OddsChart points={data.history.filter(p => p.ticker === market?.ticker)}/>
+                        {market && <OddsChart ticker={market.ticker} name={market.subtitle || market.title}/>}
                     </Card>
                     <Card>
                         <div className="row"><h2>Your holdings linked to this event</h2><span className="mono">{money(data.event.linkedValue)} · {percent(data.event.share)}</span></div>
@@ -77,8 +77,3 @@ function TrustBreakdown({ market }: { market: Market }) {
         <a href="#track-record">How trust is scored →</a>
     </>;
 }
-
-export function OddsChart({ points }: {
-    points: OddsPoint[];
-}) { if (points.length < 2)
-    return <Empty>Not enough odds history for a chart.</Empty>; const start = Date.parse(points[0].ts), end = Date.parse(points.at(-1)!.ts); const coords = points.map(p => `${45 + (Date.parse(p.ts) - start) / Math.max(1, end - start) * 650},${255 - p.probability * 220}`).join(' '); return <><svg className="chart" viewBox="0 0 720 290" role="img" aria-label="One-week bid–ask midpoint history">{[0, .5, 1].map(p => <g key={p}><line x1="45" y1={255 - p * 220} x2="695" y2={255 - p * 220} stroke="#2A313C"/><text x="0" y={260 - p * 220} fill="#A3ADBA" fontSize="12">{percent(p)}</text></g>)}<polyline points={coords} fill="none" stroke="#5AA2FF" strokeWidth="3"/></svg><div className="row note"><span>{dateText(points[0].ts)}</span><span>{dateText(points.at(-1)!.ts)}</span></div></>; }

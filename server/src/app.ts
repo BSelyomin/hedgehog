@@ -4,6 +4,7 @@ import { loadSession, protectWrites } from './auth/session.ts';
 import { query, iso } from './db.ts';
 import { getHoldings, saveHoldings, validateHoldings } from './services/holdings.ts';
 import { exposure, calendar, eventDetail } from './services/exposure.ts';
+import { isOddsRange, oddsHistory } from './services/odds-history.ts';
 import { latestSession, moves } from './services/moves.ts';
 import { earnings, earningsList } from './services/earnings.ts';
 import { trackRecord } from './services/track-record.ts';
@@ -49,6 +50,14 @@ app.get('/calendar', async (req, res) => { const days = Number(req.query.days ??
 } res.json(await calendar(res.locals.session, days)); });
 app.get('/event/:ticker', async (req, res) => { const result = await eventDetail(res.locals.session, req.params.ticker); if (!result) {
     res.status(404).json({ error: 'No linked event found', asOf: null });
+    return;
+} res.json(result); });
+// One market's odds over a range, for the event chart. Odds are public data, so any stored market can be read.
+app.get('/odds/:ticker', async (req, res) => { const range = req.query.range ?? 'week'; if (!isOddsRange(range)) {
+    res.status(400).json({ error: 'range must be day, week, month or all', asOf: null });
+    return;
+} const result = await oddsHistory(req.params.ticker, range); if (!result) {
+    res.status(404).json({ error: 'Market not found', asOf: null });
     return;
 } res.json(result); });
 // With no date, show the latest completed session rather than a day whose close is not in yet.

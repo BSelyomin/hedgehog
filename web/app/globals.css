@@ -29,8 +29,8 @@
 
 
 .exposure-map .cell{font-family:'IBM Plex Mono',monospace;font-weight:500}
-.holding-tiles{display:flex;flex-wrap:nowrap;gap:6px;list-style:none;padding:3px 2px 8px;margin:0;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin}.holding-tiles li{flex:0 0 auto}
-.exposure-table .holding-tiles .cell{display:flex;align-items:center;justify-content:center;min-width:88px;min-height:44px;padding:8px 14px;font-size:15px;border-radius:7px;white-space:nowrap}.holding-tiles .holding-value{display:none}
+.holding-tiles{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:3px 2px;margin:0;max-width:100%}.holding-tiles li{flex:0 0 auto}
+.exposure-table .holding-tiles .cell{display:flex;align-items:center;justify-content:center;min-width:64px;min-height:44px;padding:8px 10px;font-size:15px;border-radius:7px;white-space:nowrap}.holding-tiles .holding-value{display:none}
 .holding-value{display:block;font-size:13px;margin-top:6px;white-space:nowrap}
 .overview-stats{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
 .portfolio-editor{min-width:0}
@@ -40,7 +40,7 @@
 .portfolio-actions{border-top:1px solid var(--border);padding-top:18px}
 .portfolio-actions .actions{margin-bottom:0;flex-wrap:wrap}
 .portfolio-actions button{flex:1}
-.holding-tiles:focus-visible,.portfolio-list:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.portfolio-list:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media(max-width:600px){.portfolio-list{max-height:220px}}
 @media(max-width:1000px){.exposure-detail-grid{grid-template-columns:1fr 1fr}.exposure-detail-grid section:last-child{grid-column:1/-1}.exposure-holding-details{max-height:180px}}
 @media(max-width:800px){
@@ -56,3 +56,4 @@
 .earnings-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px;align-items:start}.topic-chips{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}.topic-chip{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:8px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);text-decoration:none}.topic-chip .mono{color:var(--muted)}.topic-chip:hover{border-color:var(--accent)}.moves-chart{margin:8px 0 0}.moves-ends{margin:0 0 12px}.typical-move{padding:14px 0;border-top:1px solid var(--border);font-size:17px}.earnings-all-heading{margin:32px 0 16px}.earnings-metrics td{vertical-align:middle}
 @media(max-width:950px){.earnings-layout{grid-template-columns:minmax(0,1fr)}.earnings-upcoming{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}}
 @media(max-width:480px){.threshold{grid-template-columns:minmax(0,1fr) 64px}.threshold .bar{grid-column:1/-1;order:3}}
+.odds-chart-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 16px;margin-top:22px}.odds-chart-head h3{margin:0;min-width:0}.range-toggle button{min-width:52px;font-family:'IBM Plex Mono',monospace}.odds-chart-body{min-height:430px}.odds-plot{position:relative;margin:14px 0 8px;touch-action:pan-y;cursor:crosshair}.odds-plot svg{display:block;width:100%;height:auto;overflow:visible}.odds-plot text{font-size:12px;fill:var(--muted)}.odds-plot .tick{font-family:'IBM Plex Mono',monospace}.odds-plot .grid,.odds-plot .crosshair{stroke:var(--border);stroke-width:1}.odds-plot .crosshair{stroke:var(--muted);stroke-dasharray:3 3}.odds-plot .line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round}.odds-plot .area{fill:url(#odds-fill)}.odds-plot .dot{fill:var(--accent);stroke:var(--card);stroke-width:2}.odds-tip{position:absolute;pointer-events:none;transform:translate(-50%,-100%);margin-top:-12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;line-height:1.4;white-space:nowrap;color:var(--muted)}.odds-tip.below{transform:translate(-50%,0);margin-top:12px}.odds-tip strong{color:var(--text);margin-right:4px}.odds-stats{display:flex;flex-wrap:wrap;gap:4px 22px;list-style:none;padding:0;margin:0 0 8px;font-size:14px;color:var(--muted)}.odds-stats strong{color:var(--text);font-weight:500}

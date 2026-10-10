@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
 import type { ExposureEvent, ExposureResponse, Holding, HoldingLink } from '../../../shared/types';
 import { money, percent, dateText, href, linkLabel, Empty, Fresh, TrustBadge } from '../common';
 import { describeDrivers, describeImportance, driverName } from './sensitivity';
@@ -41,38 +41,22 @@ export function filterExposureHoldings(holdings: Holding[], events: ExposureEven
         && events.some(event => event.links.some(link => link.symbol === holding.symbol && matchesLink(link, filters.link))));
 }
 
+// Every holding linked to the event, strongest links first: by link type, then holdings whose
+// most important measured driver is this event's driver, then by value.
 export function eventHoldings(event: ExposureEvent, holdings: Holding[], filter: ExposureFilters['link']) {
     const rank = { Direct: 0, Calculated: 1, Measured: 2, Related: 3 };
+    const minor = (link: HoldingLink) => link.sensitivity && link.lead && link.lead.driver !== link.sensitivity.driver ? 1 : 0;
     return holdings.flatMap(holding => {
         const link = event.links.find(link => link.symbol === holding.symbol);
         return link && matchesLink(link, filter) ? [{ holding, link }] : [];
-    }).sort((a, b) => rank[a.link.type] - rank[b.link.type]
+    }).sort((a, b) => rank[a.link.type] - rank[b.link.type] || minor(a.link) - minor(b.link)
             || b.holding.valueUsd - a.holding.valueUsd || a.holding.symbol.localeCompare(b.holding.symbol));
 }
 
+// The tiles wrap onto further lines, so no linked holding is hidden off the edge of the row.
 function HoldingTiles({ event, holdings, linkFilter }: { event: ExposureEvent; holdings: Holding[]; linkFilter: ExposureFilters['link'] }) {
     const ordered = eventHoldings(event, holdings, linkFilter);
-    const strip = useRef<HTMLUListElement>(null);
-    useEffect(() => {
-        const element = strip.current;
-        if (!element) return;
-        const scrollWithWheel = (event: WheelEvent) => {
-            // Preserve pinch zoom and native horizontal trackpad/Shift-wheel gestures.
-            if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-            const remaining = element.scrollWidth - element.clientWidth;
-            const direction = Math.sign(event.deltaY);
-            // At either edge (or in a short row), let the page keep scrolling normally.
-            if (remaining <= 1 || (direction > 0 && element.scrollLeft >= remaining - 1)
-                || (direction < 0 && element.scrollLeft <= 1)) return;
-            const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientWidth : 1;
-            event.preventDefault();
-            element.scrollLeft += event.deltaY * unit;
-        };
-        // React delegates wheel events passively; this listener must be able to prevent page scrolling.
-        element.addEventListener('wheel', scrollWithWheel, { passive: false });
-        return () => element.removeEventListener('wheel', scrollWithWheel);
-    }, []);
-    return <ul ref={strip} className="holding-tiles" tabIndex={0} aria-label={`Holdings for ${event.title}, strongest links first; use the mouse wheel or scroll horizontally for more`}>
+    return <ul className="holding-tiles" aria-label={`${ordered.length} ${ordered.length === 1 ? 'holding' : 'holdings'} for ${event.title}, strongest links first`}>
             {ordered.map(({ holding, link }) => <li key={holding.symbol}>
                 <a href={href('event', event.ticker)} className={`cell ${link.type}`} title={`${holding.symbol} · ${money(holding.valueUsd)} · ${linkLabel(link.type)}: ${link.evidence}`} aria-label={`${holding.symbol}: ${event.title}, ${linkLabel(link.type)}, ${money(holding.valueUsd)}`}>
                     <strong>{holding.symbol}</strong><span className="holding-value">{money(holding.valueUsd)}</span>
@@ -145,7 +129,7 @@ export function ExposureTable({ data }: { data: ExposureResponse }) {
             <label>Closes within<select aria-label="Closes within" value={filters.days} onChange={e => update('days', Number(e.target.value))}><option value={0}>Any date</option><option value={14}>14 days</option><option value={30}>30 days</option><option value={90}>90 days</option></select></label>
         </div>
         <div className="exposure-result-bar"><p className="note" role="status">{events.length} of {data.events.length} events · {holdings.length} of {data.holdings.length} holdings{activeFilters > 0 ? ` · ${activeFilters} active ${activeFilters === 1 ? 'filter' : 'filters'}` : ''}</p>{changed && <button className="reset-filters" onClick={() => setFilters(defaultExposureFilters)}>Reset filters</button>}</div>
-        {events.length ? view === 'holding' ? <ByHolding events={events} holdings={holdings} linkFilter={filters.link} ranks={data.byHolding}/> : <div className="scroll exposure-scroll" tabIndex={0} role="region" aria-label="Exposure table"><table className="exposure-table"><caption className="sr-only">Events with portfolio reach, selected outcome odds and holdings ordered by connection. Expand an event for values, trust and evidence.</caption><thead><tr><th scope="col" className="event-column">Event / close date</th><th scope="col" className="reach-column">Portfolio share</th><th scope="col" className="outcome-column">Outcome</th><th scope="col" className="holdings-column">Holdings <span className="muted">· scroll to see more</span></th></tr></thead><tbody>{events.map(event => <ExposureRow key={event.ticker} event={event} holdings={holdings} linkFilter={filters.link}/>)}</tbody></table></div> : <Empty>{data.events.length ? 'No events match these filters. Try another search or reset filters.' : 'No reviewed market links available. Holdings need supported company tags, measured driver links or a reviewed sector mapping.'}</Empty>}
+        {events.length ? view === 'holding' ? <ByHolding events={events} holdings={holdings} linkFilter={filters.link} ranks={data.byHolding}/> : <div className="scroll exposure-scroll" tabIndex={0} role="region" aria-label="Exposure table"><table className="exposure-table"><caption className="sr-only">Events with portfolio reach, selected outcome odds and holdings ordered by connection. Expand an event for values, trust and evidence.</caption><thead><tr><th scope="col" className="event-column">Event / close date</th><th scope="col" className="reach-column">Portfolio share</th><th scope="col" className="outcome-column">Outcome</th><th scope="col" className="holdings-column">Holdings <span className="muted">· all linked, strongest first</span></th></tr></thead><tbody>{events.map(event => <ExposureRow key={event.ticker} event={event} holdings={holdings} linkFilter={filters.link}/>)}</tbody></table></div> : <Empty>{data.events.length ? 'No events match these filters. Try another search or reset filters.' : 'No reviewed market links available. Holdings need supported company tags, measured driver links or a reviewed sector mapping.'}</Empty>}
     </>;
 }
 

@@ -6,6 +6,7 @@ export interface KalshiMarket {
     subtitle?: string;
     yes_sub_title?: string;
     close_time: string;
+    open_time?: string;
     occurrence_datetime?: string;
     expected_expiration_time?: string;
     status: string;
