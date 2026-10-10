@@ -8,7 +8,10 @@ import { summaries } from './summaries.ts';
 import { briefings } from './briefing.ts';
 import { riskFactors } from './risk.ts';
 const jobs: Record<string, () => Promise<void>> = { poll, prices, measure, backfill, 'history-metadata': historyMetadata, 'stock-tags': stockTags, 'tag-series': tagSeries, 'review-tags': reviewTags, summaries, briefings, 'sample-markets': async () => { console.table(await query(`SELECT m.ticker,m.title,s.yes_bid,s.yes_ask,s.mid,s.ts FROM markets m JOIN LATERAL(SELECT * FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON true LIMIT 3`)); }, 'sample-links': async () => { console.table(await query(`(SELECT * FROM measured_links WHERE reliable=true LIMIT 1) UNION ALL (SELECT * FROM measured_links WHERE reliable=false LIMIT 1)`)); }, 'approve-tag': async () => { const [series, tag] = process.argv.slice(3); if (!series || !tag)
-        throw new Error('series ticker and tag required'); await query(`UPDATE series_tags SET reviewed=true WHERE series_ticker=$1 AND tag=$2`, [series, tag]); }, 'risk-factors': async () => { const [symbol, path, url] = process.argv.slice(3); if (!symbol || !path || !url)
+        throw new Error('series ticker and tag required'); await query(`UPDATE series_tags SET reviewed=true WHERE series_ticker=$1 AND tag=$2`, [series, tag]); },
+    // Withdraws approval but keeps the row, so the classifier does not propose the pair again.
+    'reject-tag': async () => { const [series, tag] = process.argv.slice(3); if (!series || !tag)
+        throw new Error('series ticker and tag required'); await query(`UPDATE series_tags SET reviewed=false WHERE series_ticker=$1 AND tag=$2`, [series, tag]); }, 'risk-factors': async () => { const [symbol, path, url] = process.argv.slice(3); if (!symbol || !path || !url)
         throw new Error('symbol filing-path source-url required'); await riskFactors(symbol, path, url); } };
 try {
     const job = jobs[process.argv[2]];

@@ -117,3 +117,54 @@ Validation: 107 tests passed, backend build and type check passed, and a browser
 rendered the 622-event approved dataset with working search, filter reset, Earnings
 selection and mobile layout. Bulk approval does not validate each AI classification;
 the known incorrect links described above remain approved as requested.
+
+## Incorrect mappings withdrawn — October 10, 2026
+
+The user asked for the known-incorrect links to be removed. All 311 approved company-ticker
+mappings and all 272 approved mappings for the four measured driver tags were read against
+their live event titles. Migration `005_withdraw_incorrect_mappings.sql` sets
+`reviewed = false` for the 103 pairs below. Rows and provenance are kept, so the classifier
+does not propose them again. To withdraw or restore a single pair:
+
+```powershell
+docker compose exec backend npm run job -- reject-tag SERIES_TICKER TAG
+docker compose exec backend npm run job -- approve-tag SERIES_TICKER TAG
+```
+
+Only mappings that plainly break the rules above were withdrawn. Tags apply to a whole series,
+so a series covering many subjects cannot carry one company's tag.
+
+| Tag | Series withdrawn | Reason |
+| --- | --- | --- |
+| BAC | KXNASCARPOLE, KXNASCARTOP20, KXNASCARTOP5, KXNASCARTOPTEAM | Race sponsorship, not the bank |
+| COST | KXSBUX, KXSBUXA | Starbucks metrics |
+| DAL | KXAAL, KXAALA, KXAALCC, KXEARNINGSMENTIONAAL, KXALK, KXALKA, KXEARNINGSMENTIONALK, KXLUV, KXLUVA, KXLUVCC | American, Alaska and Southwest are other airlines |
+| DAL | KXCHNL1SPREAD, KXCHNL1TOTAL, KXHIGHTDAL | Chinese football and Dallas temperature (name collisions) |
+| DAL | KXFLYCANCJFK, KXORDPAX | Airport-wide statistics, not Delta |
+| DIS | KXMOVIEDELAY | Series covers films from several studios |
+| JPM | KXEARNINGSMENTIONWFC | Wells Fargo earnings call |
+| MSFT | KXMC | Metacritic series; five of six games are not Microsoft's |
+| NFLX | KXMAYOROFKINGSTOWN | Not a Netflix series |
+| TLT | KXTOKENUST, KXUSTHOLDERS | Neither the fund nor a Treasury yield |
+| TSLA | KXMUSKBLUESKY, KXMUSKCHALLENGERS, KXMUSKCHARGE, KXMUSKNW, KXMUSKPRIMARY, KXMUSKSPORTS, KXNEURALINKCOUNT | An executive's personal activities, and a separate company |
+| XOM | KXSCOTUSCASE | Supreme Court series; one of 24 cases involves Exxon |
+| fed-rates | KXBRRATECUT, KXCANCUTS, KXCANOREOY, 26 KXCBD… rate-decision series, KXNEXTECBPRES | Other countries' central banks; the driver is the US 2-year Treasury yield |
+| fed-rates | KXDJTATTACKWARSH, KXFEDEND, KXFEDFREQ, KXFEDGOVNOM, KXFEDMENTION, KXFEDREFORM, KXLEAVELISACOOK, KXLEAVEPOWELLGOV, KXNEXTATLFED, KXSUEPOWELL, KXTRUMPVISITFED, KXTRYFIRECOOK, KXTRYFIREPOWELL, KXTRYFIREWARSH, KXWARSHOUT | People and politics, not the policy rate |
+| inflation | KXARMOMINF, KXBRAZILINF, KXBRINFHIGH, KXCANEUINFL, KXCOWAGE, KXJPSGINFL, KXSAMOMINF, KXUKEAINFL | Other countries' inflation |
+| inflation | KXM2GROWTH | Money supply, not prices |
+| oil | KXNATGAS15M, KXNATGASMON, KXNATGASW, KXNGASMAX, KXNGASMIN, KXMARCELLUSGAS, KXPAGAS, KXIAETHANOL, KXNORDSTREAM2, KXPRIMEENGCONSUMPTION | Natural gas, ethanol, a gas pipeline and the 2030 energy mix; the driver is crude oil |
+| sp500 | KXDJI, KXDJIA, KXDJIAREMOVE, KXME | The Dow and Mexico's S&P/BMV IPC are other indexes |
+
+The exact pairs are in the migration. These debatable groups were **left approved** and still
+need a decision from a person:
+
+- **oil:** about 70 retail gasoline price series (national and per state), nine diesel series,
+  production, inventory and rig counts, Strait of Hormuz traffic, export bans and gas-tax
+  proposals, and company items (Shell card spend, Petrobras production, Keystone XL).
+- **fed-rates:** Treasury yields and spreads, mortgage rates, SOFR, the Fed balance sheet,
+  dissent counts and "which central banks will hike".
+- **inflation:** single menu prices (Big Mac, Baconator), egg prices, health-insurance costs.
+- **sp500:** S&P 500 additions and removals, the NYSE circuit breaker.
+- **Company tags:** S&P 500 index series on SPY and Treasury yield series on TLT (the rules ask
+  for the fund itself to be the subject), Spotify chart and Netflix ranking markets, Google
+  Year in Search, NVIDIA GPU rental prices, and markets naming several companies at once.

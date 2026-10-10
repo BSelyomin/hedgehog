@@ -32,7 +32,7 @@ export function Calendar() {
         listHeading.current?.scrollIntoView({ block: 'start' });
     }
     return <>
-        <h1>Event calendar</h1><p>Explore the events linked to your holdings by closing date and portfolio reach.</p>
+        <h1>Event calendar</h1><p>Explore the events linked to your holdings by event date and portfolio reach.</p>
         <Card className="calendar-filters">
             <div className="calendar-toolbar">
                 <label>Search events or holdings<input type="search" placeholder="Event, outcome, category or ticker…" value={filters.search} onChange={event => update('search', event.target.value)}/></label>
@@ -40,7 +40,7 @@ export function Calendar() {
                     <option value={1}>Next 24 hours</option><option value={7}>Next 7 days</option><option value={14}>Next 14 days</option><option value={30}>Next 30 days</option><option value={90}>Next 90 days</option><option value={0}>All future dates</option>
                 </select></label>
                 <label>Sort events<select value={filters.sort} onChange={event => update('sort', event.target.value as CalendarFilters['sort'])}>
-                    <option value="date">Soonest close</option><option value="date-desc">Latest close</option><option value="reach">Most portfolio reach</option><option value="holdings">Most linked holdings</option><option value="name">Event name: A–Z</option>
+                    <option value="date">Soonest event</option><option value="date-desc">Latest event</option><option value="reach">Most portfolio reach</option><option value="holdings">Most linked holdings</option><option value="name">Event name: A–Z</option>
                 </select></label>
             </div>
             <div className="calendar-filter-actions">
@@ -50,17 +50,17 @@ export function Calendar() {
             <div className="calendar-filter-grid" id={filtersId} hidden={!filtersOpen}>
                 <label>Holding<select value={filters.holding} onChange={event => update('holding', event.target.value)}><option value="">All holdings</option>{holdings.map(symbol => <option key={symbol}>{symbol}</option>)}</select></label>
                 <label>Category<select value={filters.category} onChange={event => update('category', event.target.value)}><option value="">All categories</option>{categories.map(category => <option key={category}>{category}</option>)}</select></label>
-                <label>Connection type<select value={filters.link} onChange={event => update('link', event.target.value as CalendarFilters['link'])}><option value="All">All links</option><option value="Affected">Affected only</option><option value="Direct">Direct</option><option value="Measured">Related (measured)</option></select></label>
+                <label>Connection type<select value={filters.link} onChange={event => update('link', event.target.value as CalendarFilters['link'])}><option value="All">All links</option><option value="Affected">Affected only</option><option value="Direct">Direct</option><option value="Measured">Related</option></select></label>
                 <label>Minimum portfolio share<select value={filters.minShare} onChange={event => update('minShare', Number(event.target.value))}><option value={0}>Any share</option><option value={0.1}>At least 10%</option><option value={0.25}>At least 25%</option><option value={0.5}>At least 50%</option><option value={0.75}>At least 75%</option></select></label>
                 <label>Outcome trust<select value={filters.trust} onChange={event => update('trust', event.target.value as CalendarFilters['trust'])}><option value="All">Any trust score</option><option>High</option><option>Medium</option><option>Low</option><option value="Unavailable">Trust unavailable</option></select></label>
-                <p className="note calendar-filter-help">Affected only includes Direct and measured Related links. With a holding selected, its own link must match. Trust matches when at least one outcome has that rating; open the event to see each outcome’s score.</p>
+                <p className="note calendar-filter-help">Red = Direct; blue = Related, backed by historical measurements. Affected only includes both. With a holding selected, its own link must match. Trust matches when at least one outcome has that rating; open the event to see each outcome’s score.</p>
             </div>
             <div className="calendar-results">
                 <p className="note" role="status">{data ? `Showing ${events.length} of ${data.events.length} linked events in ${windowLabel}.${activeFilters ? ` ${activeFilters} additional ${activeFilters === 1 ? 'filter' : 'filters'} active.` : ''}` : `Date range: ${windowLabel}.`}</p>
                 {changed && <button className="reset-filters" onClick={reset}>Reset filters</button>}
             </div>
         </Card>
-        <p className="note">Overview counts all future dates. Choose All future dates here to use the same range. Company events have a direct holding link; other events include macro, politics and other categories. Portfolio share always uses your full portfolio.</p>
+        <p className="note">Events are placed on the date Kalshi expects them to happen; when it gives none, on the market close. Overview counts all future dates. Choose All future dates here to use the same range. Company events have a direct holding link; other events include macro, politics and other categories. Portfolio share always uses your full portfolio.</p>
         <Status error={error} loading={!data && !error}/><Fresh asOf={data?.asOf ?? null}/>
         <div className="split calendar-content">
             <Card className="calendar-events"><h2 ref={listHeading} tabIndex={-1}>Upcoming events</h2>
@@ -72,9 +72,9 @@ export function Calendar() {
                 {pageCount > 1 && <CalendarPagination page={currentPage} pageCount={pageCount} onPageChange={changePage} position="bottom"/>}
             </Card>
             <Card className="calendar-biggest"><h2>Biggest events for you</h2><p className="note">Ranked by share of portfolio linked, using your current filters.</p>
-                {[...events].sort((a, b) => b.share - a.share || Date.parse(a.closeTime) - Date.parse(b.closeTime)).slice(0, 6).map(event => <div className="event-row" key={event.ticker}><a href={href('event', event.ticker)}>{event.title}</a><p className="mono">{percent(event.share)}</p><Progress value={event.share}/></div>)}
+                {[...events].sort((a, b) => b.share - a.share || Date.parse(a.eventTime) - Date.parse(b.eventTime)).slice(0, 6).map(event => <div className="event-row" key={event.ticker}><a href={href('event', event.ticker)}>{event.title}</a><p className="mono">{percent(event.share)}</p><Progress value={event.share}/></div>)}
                 {data && !events.length && <Empty>No matching events to rank.</Empty>}
-                <p className="note">Times come from Kalshi market close times.</p>
+                <p className="note">Dates use Kalshi’s own event time where it gives one, otherwise the market close. Each event says which.</p>
             </Card>
         </div>
     </>;

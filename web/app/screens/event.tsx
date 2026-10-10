@@ -1,12 +1,78 @@
 'use client';
-import { useEffect, useState } from 'react';
-import type { ReactNode, FormEvent } from 'react';
-import type { Holding, HoldingsResponse, ExposureResponse, ExposureEvent, Market, CalendarResponse, EventResponse, MovesResponse, EarningsResponse, TrackRecordResponse, BriefingResponse, CategoryRecord, OddsPoint } from '../../../shared/types';
-import { money, percent, number, dateText, href, api, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, EventList } from '../common';
+import { useState } from 'react';
+import type { EventResponse, HoldingLink, Market, OddsPoint } from '../../../shared/types';
+import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip, EventDate } from '../common';
+import { describeSensitivity } from './sensitivity';
 
 export function EventPage({ ticker }: {
     ticker: string;
-}) { const { data, error } = useData<EventResponse>(`/event/${encodeURIComponent(ticker)}`); const [selection, setSelection] = useState(''); const market = data?.event.markets.find(m => m.ticker === selection) ?? data?.event.markets[0]; return <>{!data && <h1>Event details</h1>}<a href="#calendar">Calendar</a><Status error={error} loading={!data && !error}/>{data && <><h1>{data.event.title}</h1><p>{dateText(data.event.closeTime)} · Kalshi close time</p><Fresh asOf={data.asOf}/><div className="split"><div><Card><h2>What the market expects</h2>{data.event.markets.map(m => <div className="event-row" key={m.ticker}><div className="row"><button onClick={() => setSelection(m.ticker)} aria-pressed={market?.ticker === m.ticker}>{m.subtitle || m.title}</button><span className="mono">{percent(m.probability)}</span></div>{m.probability !== null && <Progress value={m.probability}/>}<span className="note">Kalshi bid–ask midpoint</span> <TrustBadge market={m}/></div>)}<p className="note">Each outcome shows its own midpoint. These quotes are not normalized.</p><h3>Past week · {market?.subtitle || market?.title}</h3><OddsChart points={data.history.filter(p => p.ticker === market?.ticker)}/></Card><Card><div className="row"><h2>Your holdings linked to this event</h2><span className="mono">{money(data.event.linkedValue)} · {percent(data.event.share)}</span></div>{data.event.links.map(l => <div key={l.symbol} className="event-row"><div className="row"><strong>{l.symbol} · <span className="mono">{money(l.valueUsd)}</span></strong><span className={`chip ${l.type}`}>{l.type}</span></div><p>{l.evidence}</p>{l.sensitivity && <p className="note mono">b {number(l.sensitivity.b, 4)} · 95% range [{number(l.sensitivity.low, 4)}, {number(l.sensitivity.high, 4)}] · {l.sensitivity.days} aligned days · driver {l.sensitivity.driver}<br />Measured {dateText(l.sensitivity.computedAt)}</p>}</div>)}<p className="note">Sensitivity is measured against the underlying driver, not against the probability of this event.</p></Card></div><div><Card><h2>Why this trust score</h2>{market && <><TrustBadge market={market}/>{([['Spread', market.trust.spread, 30], ['Activity', market.trust.activity, 25], ['Depth', market.trust.depth, 20], ['Track record', market.trust.trackRecord, 25]] as const).map(([label, value, max]) => <div className="event-row" key={label}><div className="row"><strong>{label}</strong><span className="mono">{value === null ? 'Unavailable' : `${number(value)} / ${max}`}</span></div>{value !== null && <Progress value={value / max}/>}</div>)}<p className="note">Spread: {number(market.trust.spreadCents)} cents. {market.trust.trackRecord === null ? 'No track record yet; available quote components are rescaled.' : `${market.trust.categoryCount} settled markets in this category.`}</p><a href="#track-record">How trust is scored →</a></>}</Card>{data.summary && <Card><h2>Why the odds moved</h2><span className="chip Related">AI summary</span><p>{data.summary.text}</p>{data.summary.sources.map(s => <p key={s.url}><a href={s.url} target="_blank" rel="noreferrer">{s.title}</a></p>)}<p className="note">Generated from linked reporting. Check the sources.</p></Card>}</div></div></>}</>; }
+}) {
+    const { data, error } = useData<EventResponse>(`/event/${encodeURIComponent(ticker)}`);
+    const [selection, setSelection] = useState('');
+    const market = data?.event.markets.find(m => m.ticker === selection) ?? data?.event.markets[0];
+    return <>
+        {!data && <h1>Event details</h1>}
+        <a href="#calendar">Calendar</a>
+        <Status error={error} loading={!data && !error}/>
+        {data && <>
+            <h1>{data.event.title}</h1>
+            <p><EventDate event={data.event} showYear/></p>
+            <Fresh asOf={data.asOf}/>
+            <div className="split">
+                <div>
+                    <Card>
+                        <h2>What the market expects</h2>
+                        {data.event.markets.map(m => <div className="event-row" key={m.ticker}>
+                            <div className="row"><button onClick={() => setSelection(m.ticker)} aria-pressed={market?.ticker === m.ticker}>{m.subtitle || m.title}</button><span className="mono">{percent(m.probability)}</span></div>
+                            {m.probability !== null && <Progress value={m.probability}/>}
+                            <span className="note">Kalshi bid–ask midpoint</span> <TrustBadge market={m}/>
+                        </div>)}
+                        <p className="note">Each outcome shows its own midpoint. These quotes are not normalized.</p>
+                        <h3>Past week · {market?.subtitle || market?.title}</h3>
+                        <OddsChart points={data.history.filter(p => p.ticker === market?.ticker)}/>
+                    </Card>
+                    <Card>
+                        <div className="row"><h2>Your holdings linked to this event</h2><span className="mono">{money(data.event.linkedValue)} · {percent(data.event.share)}</span></div>
+                        {data.event.links.map(l => <LinkedHolding key={l.symbol} link={l}/>)}
+                        <p className="note">Related links are measured against the underlying driver (oil, the 2-year Treasury yield or the S&P 500), not against the probability of this event. They describe past daily moves, not a forecast.</p>
+                    </Card>
+                </div>
+                <div>
+                    <Card><h2>Why this trust score</h2>{market && <TrustBreakdown market={market}/>}</Card>
+                    {data.summary && <Card>
+                        <h2>Why the odds moved</h2><span className="chip plain">AI summary</span>
+                        <p>{data.summary.text}</p>
+                        {data.summary.sources.map(s => <p key={s.url}><a href={s.url} target="_blank" rel="noreferrer">{s.title}</a></p>)}
+                        <p className="note">Generated from linked reporting. Check the sources.</p>
+                    </Card>}
+                </div>
+            </div>
+        </>}
+    </>;
+}
+
+export function LinkedHolding({ link }: { link: HoldingLink }) {
+    const sentence = link.sensitivity && describeSensitivity(link.symbol, link.sensitivity);
+    return <div className="event-row">
+        <div className="row"><strong>{link.symbol} · <span className="mono">{money(link.valueUsd)}</span></strong><LinkChip type={link.type}/></div>
+        {sentence && <p className="sensitivity-text">{sentence}</p>}
+        <p>{link.evidence}</p>
+        {link.sensitivity && <p className="note mono">b {number(link.sensitivity.b, 4)} · 95% range [{number(link.sensitivity.low, 4)}, {number(link.sensitivity.high, 4)}] · {link.sensitivity.days} aligned days · driver {link.sensitivity.driver}<br/>Measured {dateText(link.sensitivity.computedAt)}</p>}
+    </div>;
+}
+
+function TrustBreakdown({ market }: { market: Market }) {
+    const parts = [['Spread', market.trust.spread, 30], ['Activity', market.trust.activity, 25], ['Depth', market.trust.depth, 20], ['Track record', market.trust.trackRecord, 25]] as const;
+    return <>
+        <TrustBadge market={market}/>
+        {parts.map(([label, value, max]) => <div className="event-row" key={label}>
+            <div className="row"><strong>{label}</strong><span className="mono">{value === null ? 'Unavailable' : `${number(value)} / ${max}`}</span></div>
+            {value !== null && <Progress value={value / max}/>}
+        </div>)}
+        <p className="note">Spread: {number(market.trust.spreadCents)} cents. {market.trust.trackRecord === null ? 'No track record yet; available quote components are rescaled.' : `${market.trust.categoryCount} settled markets in this category.`}</p>
+        <a href="#track-record">How trust is scored →</a>
+    </>;
+}
 
 export function OddsChart({ points }: {
     points: OddsPoint[];

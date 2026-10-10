@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ExposureEvent, ExposureResponse, Holding, HoldingLink } from '../../../shared/types';
-import { money, percent, dateText, href, Empty, Fresh, TrustBadge } from '../common';
+import { money, percent, dateText, href, linkLabel, Empty, Fresh, TrustBadge } from '../common';
 
 export interface ExposureFilters {
     search: string;
@@ -16,9 +16,6 @@ export const defaultExposureFilters: ExposureFilters = { search: '', holding: ''
 function matchesLink(link: HoldingLink, filter: ExposureFilters['link']) {
     return link.type !== 'Related' && (filter === 'All' || filter === 'Affected' || link.type === filter);
 }
-
-// The API's Measured classification remains the source of historically supported links.
-const linkLabel = (type: HoldingLink['type']) => type === 'Measured' ? 'Related' : type;
 
 // View controls only: reach, probabilities and link classifications come from the API.
 export function filterExposure(events: ExposureEvent[], filters: ExposureFilters, now = Date.now()) {

@@ -77,6 +77,9 @@ export interface ExposureEvent {
     title: string;
     category: string;
     closeTime: string;
+    /** When the event happens according to Kalshi; the market close when Kalshi gives no later date. */
+    eventTime: string;
+    eventTimeSource: 'occurrence' | 'strike' | 'expected' | 'close';
     linkedValue: number;
     share: number;
     links: HoldingLink[];

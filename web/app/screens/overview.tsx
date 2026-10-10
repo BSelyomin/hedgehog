@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { ExposureTable } from './exposure-table';
 import type { ExposureResponse, CalendarResponse, BriefingResponse } from '../../../shared/types';
-import { money, percent, dateText, href, api, useData, Card, Fresh, Status } from '../common';
+import { money, percent, dateText, href, api, useData, Card, Fresh, Status, LinkChip, EventDate } from '../common';
 
 export function Overview() {
     const { data, error } = useData<ExposureResponse>('/exposure');
@@ -24,7 +24,7 @@ export function Overview() {
             </div>
             <Card className="exposure-map">
                 <div className="row exposure-map-heading"><div><h2>Which events touch which holdings</h2><p className="note">Expand an event for details. Use the wheel to scroll its holdings.</p></div>
-                    <div className="exposure-legend">{(['Direct', 'Measured'] as const).map(type => <span key={type} className={`chip ${type}`}>{type === 'Measured' ? 'Related' : type}</span>)}</div>
+                    <div className="exposure-legend">{(['Direct', 'Measured'] as const).map(type => <LinkChip key={type} type={type}/>)}</div>
                 </div>
                 <ExposureTable data={data}/>
                 <details className="exposure-help"><summary>How to read this table</summary><p className="note">Red = Direct; blue = Related, backed by historical measurements. Only connected holdings appear, strongest links first. Color describes the link, not the direction of a price move. Share and linked-holding counts use all source links, including those hidden by filters, and your full portfolio value. They show portfolio reach, not how much holdings would move.</p></details>
@@ -37,10 +37,10 @@ export function Overview() {
 function EndingSoon() {
     const { data, error } = useData<CalendarResponse>('/calendar?days=14');
     const next = data?.events[0];
-    return <Card className="ending-soon"><span className="muted">Events ending soon</span>
+    return <Card className="ending-soon"><span className="muted">Events coming up</span>
         {error ? <p className="note">Upcoming events unavailable.</p> : !data ? <p className="note" role="status">Loading upcoming events…</p> : <>
             <strong className="number">{data.events.length}</strong><p className="note">In the next 14 days</p>
-            {next ? <><a href={href('event', next.ticker)}>{next.title}</a><p className="note">Next close: <time dateTime={next.closeTime}>{dateText(next.closeTime, true)}</time></p></> : <p className="note">No linked events close in this window.</p>}
+            {next ? <><a href={href('event', next.ticker)}>{next.title}</a><p className="note">Next: <EventDate event={next} showYear/></p></> : <p className="note">No linked events fall in this window.</p>}
         </>}
         <a href="#calendar">View upcoming events →</a>
     </Card>;
