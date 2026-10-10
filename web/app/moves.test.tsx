@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { DriverChange, HoldingMove, MoveLink, MovedEvent, MovesResponse, SettledEvent } from '../../shared/types';
 import { money } from './common';
 import { MoveView } from './screens/moves';
-import { RANGES, describeChange, eventLines, scopeDrivers, scopeEvents, scopeRows } from './screens/move-scope';
+import { RANGES, describeChange, driverEvents, eventLines, scopeDrivers, scopeEvents, scopeRows } from './screens/move-scope';
 
 const moved = (symbol: string, startValue: number, endValue: number, fromMarket: number, drivers: [string, number][], extra: Partial<HoldingMove> = {}): HoldingMove => {
     const actual = Math.round((endValue - startValue) * 100) / 100;
@@ -66,6 +66,25 @@ describe('what a Moves view covers', () => {
         expect(tickers(new Set(['USO']), 'fed-rates', true)).toEqual([]);
         expect(scopeEvents(settledEvents, new Set(['USO']), '', false).map(event => event.ticker)).toEqual(['BRENT']);
     });
+    it('narrows to the events linked through one driver, by a measured link only', () => {
+        const tickers = (driver: string, topics = false) => scopeEvents(movedEvents, null, '', topics, driver).map(event => `${event.ticker}:${event.shown.map(shown => shown.symbol).join('+')}`);
+        expect(tickers('CL=F')).toEqual(['WTI:XOM+USO']);
+        // A topic link names no driver, so asking for topic links adds nothing here.
+        expect(tickers('CL=F', true)).toEqual(['WTI:XOM+USO']);
+        // The calculated link to SAVINGS does not run through a yield.
+        expect(tickers('DGS10')).toEqual(['FED:TLT']);
+        expect(tickers('SPY')).toEqual([]);
+    });
+    it('finds the events behind a holding’s driver, the biggest odds move first', () => {
+        const found = (symbol: string, driver: string) => { const events = driverEvents(data, symbol, driver); return [events.moved.map(event => event.ticker), events.settled.map(event => event.ticker)]; };
+        expect(found('USO', 'CL=F')).toEqual([['WTI'], ['BRENT']]);
+        expect(found('TLT', 'DGS10')).toEqual([['FED'], []]);
+        // XOM's biggest driver is the stock market, and no event here is linked to it through that.
+        expect(found('XOM', 'SPY')).toEqual([[], []]);
+        // TLT shares only a topic with the oil event.
+        expect(found('TLT', 'CL=F')).toEqual([[], []]);
+        expect(driverEvents({ movedEvents: [...movedEvents].reverse(), settledEvents: [] }, 'XOM', 'CL=F').moved[0].ticker).toBe('WTI');
+    });
 });
 
 describe('a driver’s own change in words', () => {
@@ -124,7 +143,7 @@ describe('the Moves screen', () => {
         expect(html).toContain('<strong class="number">+$322.23</strong>');
         expect(html).toContain('<option value="" selected="">Whole portfolio</option><option value="XOM">XOM</option>');
         expect(html).toContain('<h2>What mattered most</h2>');
-        expect(html).toContain('<h2>Kalshi events over this window</h2>');
+        expect(html).toContain('<h2 class="events-head">Kalshi events over this window</h2>');
         expect(html).toContain('Settled in this window <span class="note">· 2 events</span>');
         expect(html).toContain('Odds that moved <span class="note">· 2 events</span>');
         // The only topic link belongs to an event that is listed anyway.
@@ -133,9 +152,33 @@ describe('the Moves screen', () => {
     it('lists every holding with its value at each close and lets one be picked', () => {
         const html = view();
         expect(html).toContain('<tr class=""><td><button class="holding-pick" aria-pressed="false">XOM</button></td><td class="amount">1.000</td><td class="amount">$9,708.18</td><td class="amount">$10,000.00</td><td class="amount blue">+$291.82<span class="note"> +3.01%</span></td><td class="amount">$43.74</td><td class="amount">$248.08</td>');
-        expect(html).toContain('<td class="driver-cell lead">Crude oil <span class="mono">$28.51</span></td>');
+        // The biggest driver comes with the Kalshi events behind it: the one whose odds moved most, and a way to list them all.
+        expect(html).toContain('<td class="driver-cell lead">Crude oil <span class="mono">$28.51</span><span class="driver-event">Biggest odds move among its Kalshi events: <a href="#event/WTI-100">WTI price at year end?</a> <span class="mono">-18.5 pts</span></span><button class="reset-filters">See all 2 events</button></td>');
+        expect(html).toContain('<td class="driver-cell">Stock market (S&amp;P 500) <span class="mono">$43.74</span><span class="driver-event">No Kalshi event linked through it moved or settled in this window.</span></td>');
         expect(html).toContain('<button class="holding-pick" aria-pressed="false">SAVINGS</button><span class="note"> · Cash or savings</span></td><td colSpan="8" class="note">No daily price, so no move over a window. Worth $50,000.00 as entered.</td>');
         expect(view('XOM')).toContain('<tr class="picked"><td><button class="holding-pick" aria-pressed="true">XOM</button>');
+    });
+    it('explains every column from an “i” beside its name', () => {
+        const html = view();
+        expect(html.match(/<th scope="col">/g)).toHaveLength(9);
+        expect(html.match(/<button type="button" class="info"/g)).toHaveLength(9);
+        // The "i" stays with the last word of the name, and its explanation is tied to it.
+        const [, described] = /<th scope="col">Measured <span class="th-end">beta<span class="explained" aria-describedby="[^"]+"><button type="button" class="info" aria-label="What “Measured beta” means" aria-describedby="([^"]+)"><span aria-hidden="true">i<\/span><\/button>/.exec(html)!;
+        expect(html).toContain(`<span role="tooltip" id="${described}" class="explain-pop" hidden=""><strong>Measured beta</strong><span>How far this holding has moved with the stock market`);
+        expect(html).toContain('<th scope="col"><span class="th-end">Holding<span class="explained"');
+        for (const [name, text] of [['At the first close', 'as if you had held the same amount throughout'], ['At the last close', 'this is the value you entered'], ['Change', 'as a percentage of the value at the first close'],
+            ['From market', 'measured beta × the S&amp;P 500’s return over the window × the value at the first close'], ['Beyond market', 'The two always add up to the change.'],
+            ['Biggest measured driver', 'A driver is a price or a yield, not an event'], ['Data availability', 'what is missing when a figure is unavailable']])
+            expect(html, name).toMatch(new RegExp(`<strong>${name}</strong><span>[^<]*${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    });
+    it('counts the Kalshi events behind each driver that mattered', () => {
+        const html = view();
+        expect(html).toContain('<strong class="mono blue">$49.48</strong><button class="reset-filters">2 Kalshi events</button>');
+        // Nothing here is linked through the stock market, so that bar offers no events.
+        expect(html).toContain('<strong class="mono blue">$61.71</strong></div>');
+        // For one holding, the count is its own.
+        expect(view('TLT')).not.toContain('Kalshi events</button>');
+        expect(view('USO')).toContain('<strong class="mono blue">$28.51</strong><button class="reset-filters">2 Kalshi events</button>');
     });
     it('looks at one holding alone: its values, its drivers and the events linked to it', () => {
         const html = view('XOM');
@@ -146,7 +189,7 @@ describe('the Moves screen', () => {
         expect(html).toContain('<strong class="number blue">+$291.82</strong><span class="note mono">+3.01%</span>');
         expect(html).toContain('<h2>What mattered most for XOM</h2>');
         expect(html).toContain('Stock market (S&amp;P 500) mattered most: about $43.74 of XOM’s move');
-        expect(html).toContain('<h2>Kalshi events over this window, linked to XOM</h2>');
+        expect(html).toContain('<h2 class="events-head">Kalshi events over this window, linked to XOM</h2>');
         expect(html).toContain('Settled in this window <span class="note">· 2 events</span>');
         expect(html).toContain('Odds that moved <span class="note">· 1 event</span>');
         expect(html).not.toContain('Fed funds rate after Dec 2026 meeting?');
@@ -177,7 +220,8 @@ describe('the Moves screen', () => {
         const html = view('TLT');
         expect(html).toContain('Also show 1 linked only by a shared topic, with no measured connection');
         expect(html).toContain('Odds that moved <span class="note">· 1 event</span>');
-        expect(html).not.toContain('WTI price at year end?');
+        // The oil event is named in USO's row of the table, but is not among TLT's events.
+        expect(html.slice(html.indexOf('class="events-head"'))).not.toContain('WTI price at year end?');
     });
     it('shows a moved market with both readings and how many more of its event moved', () => {
         const html = view();

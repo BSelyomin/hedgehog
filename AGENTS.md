@@ -295,6 +295,10 @@ screen narrows it (`web/app/screens/move-scope.ts`).
   Direct link states the holding's move and that nothing measured ties them; a Calculated or
   Topic link states no figure. Never say an event caused a move.
 - Events linked only by an unmeasured topic are hidden until asked for, as on the Overview.
+- **From a driver to its events.** A driver is a price or a yield, not an event, and many events
+  sit behind each one. Wherever a driver is named with an estimate, it leads to them: the
+  holdings table names the linked event whose odds moved most and lists the rest on request
+  (`driverEvents`), and each bar under "What mattered most" counts them.
 
 ## Earnings preview
 
@@ -375,8 +379,10 @@ Seven screens, matching the designs in `/design` (screenshots or exports from th
 
 Design tokens: background `#0E1116`, card `#151A21`, border `#2A313C`, text `#E8ECF1`,
 secondary text `#A3ADBA`, accent `#5AA2FF`, up `#7DB6FF`, down `#FF9F45`. Fonts: Space Grotesk
-(headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). A chip that names a link type
-opens an explanation beside it when pointed at (what it means, what it rests on, what it does
+(headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). A column name can
+carry a small "i" button that opens what the column means when pointed at, focused or tapped
+(`Info` in `web/app/explain.tsx`); the Moves holdings table has one on every column. A chip that
+names a link type opens an explanation beside it when pointed at (what it means, what it rests on, what it does
 not tell you); the wording lives in `linkMeaning` in `web/app/common.tsx`. Link chips use one vocabulary
 on every screen, set by the Overview: Direct = `#f87171` (red); Measured links are labelled
 "Related" = `#5aa2ff` (blue); Calculated = `#34d399` (green); unmeasured links are labelled "Topic" = dashed border. Touch targets ≥ 44 px; real `<button>` and

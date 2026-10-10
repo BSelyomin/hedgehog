@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LinkChip, linkLabel, linkMeaning } from './common';
-import { Explain } from './explain';
+import { Explain, Info } from './explain';
 import type { LinkType } from '../../shared/types';
 
 describe('link chips that explain themselves', () => {
@@ -34,6 +34,13 @@ describe('link chips that explain themselves', () => {
         expect(renderToStaticMarkup(<LinkChip type="Direct"/>)).not.toContain('tabindex');
         expect(renderToStaticMarkup(<LinkChip type="Direct" focusable/>)).toContain('class="explained" tabindex="0"');
         expect(renderToStaticMarkup(<LinkChip type="Direct">AAPL</LinkChip>)).toBe('<span class="chip Direct" title="Direct">AAPL</span>');
+    });
+    it('offers an “i” button that says what it explains and is tied to the explanation', () => {
+        const html = renderToStaticMarkup(<Info title="Beyond market">The change minus the market estimate.</Info>);
+        const [, described] = /<button type="button" class="info" aria-label="What “Beyond market” means" aria-describedby="([^"]+)"><span aria-hidden="true">i<\/span><\/button>/.exec(html)!;
+        expect(html).toContain(`<span role="tooltip" id="${described}" class="explain-pop" hidden=""><strong>Beyond market</strong><span>The change minus the market estimate.</span></span>`);
+        // A real button: the keyboard reaches it without the wrapper being made focusable too.
+        expect(html).not.toContain('tabindex');
     });
     it('wraps any label with a titled explanation', () => {
         const html = renderToStaticMarkup(<Explain title="Trust" body={<span>How far to rely on the odds.</span>}>Trust 82</Explain>);

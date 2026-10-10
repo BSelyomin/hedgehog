@@ -1,4 +1,4 @@
-import type { DriverChange, DriverMove, HoldingMove, LinkType, MoveLink, MoveRange } from '../../../shared/types';
+import type { DriverChange, DriverMove, HoldingMove, LinkType, MoveLink, MoveRange, MovedEvent, SettledEvent } from '../../../shared/types';
 import { driverPhrase } from './sensitivity';
 
 // The windows the Moves screen offers, each ending on the chosen close.
@@ -25,12 +25,22 @@ export function scopeDrivers(rows: HoldingMove[]): DriverMove[] {
 // An event with the links that fall inside the view.
 export type Scoped<T> = T & { shown: MoveLink[] };
 // The events linked to the holdings in view, through the chosen theme. An event tied to them
-// only by an unmeasured topic is kept when `topics` asks for it, as on the Calendar.
-export function scopeEvents<T extends { links: MoveLink[] }>(events: T[], symbols: Set<string> | null, theme: string, topics: boolean): Scoped<T>[] {
+// only by an unmeasured topic is kept when `topics` asks for it, as on the Calendar. With a
+// `driver`, only the measured links that run through that driver count.
+export function scopeEvents<T extends { links: MoveLink[] }>(events: T[], symbols: Set<string> | null, theme: string, topics: boolean, driver = ''): Scoped<T>[] {
     return events.flatMap(event => {
-        const shown = event.links.filter(link => (!symbols || symbols.has(link.symbol)) && (!theme || link.themes.includes(theme)) && (topics || link.type !== 'Related'));
+        const shown = event.links.filter(link => (!symbols || symbols.has(link.symbol)) && (!theme || link.themes.includes(theme)) && (topics || link.type !== 'Related')
+            && (!driver || (link.type === 'Measured' && link.driver === driver)));
         return shown.length ? [{ ...event, shown }] : [];
     });
+}
+
+// A driver is a price or a yield, not an event: many Kalshi events sit behind each one. These
+// are the ones linked to a holding through a driver, in the order the lists show them, so the
+// first whose odds moved is the one that moved most.
+export function driverEvents(data: { movedEvents: MovedEvent[]; settledEvents: SettledEvent[] }, symbol: string, driver: string) {
+    const only = new Set([symbol]);
+    return { moved: scopeEvents(data.movedEvents, only, '', false, driver), settled: scopeEvents(data.settledEvents, only, '', false, driver) };
 }
 
 export const signed = (value: number, money: (value: number) => string) => `${value > 0 ? '+' : ''}${money(value)}`;
