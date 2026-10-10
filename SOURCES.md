@@ -11,12 +11,46 @@
 - [Cortex Search queries](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service): the database/schema/service REST query path, selected columns and `results` rows. Hedgehog defines an index contract of `TITLE`, `URL`, `TEXT` and a `PUBLISHED_AT` timestamp attribute. Requests restrict publication times to the preceding 90 days.
 - [Cortex Search creation](https://docs.snowflake.com/en/sql-reference/sql/create-cortex-search): provisioning and maintaining the optional reporting index. This is not an automatic open-web search integration.
 - Public primary-source seed feeds: [Federal Reserve monetary policy](https://www.federalreserve.gov/feeds/press_monetary.xml), [EIA Today in Energy](https://www.eia.gov/rss/todayinenergy.xml), and [BLS latest releases](https://www.bls.gov/feed/bls_latest.rss). The collector preserves original titles, descriptions, source URLs and publication dates; it skips inaccessible feeds and malformed dates.
+- [Kalshi market fields](https://docs.kalshi.com/api-reference/market/get-market): `occurrence_datetime` ("the recorded datetime when the underlying event occurred, if available"), `expected_expiration_time` and `latest_expiration_time`. `expiration_time` is deprecated. Event `strike_date` is not described on that page; it was taken from live event responses.
+- [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces): `https://www.sec.gov/files/company_tickers.json` (entries with `cik_str`, `ticker`, `title`) and `https://data.sec.gov/submissions/CIK##########.json` (`filings.recent` parallel arrays including `accessionNumber`, `filingDate`, `reportDate`, `form`, `items`; older lists named in `filings.files`). Requests must carry an identifying User-Agent.
 - [Tiger Data service setup](https://www.tigerdata.com/docs/get-started/quickstart/create-service): PostgreSQL service with TimescaleDB for the application's existing `pg` connection.
 - [ElevenLabs official SDK](https://github.com/elevenlabs/elevenlabs-js) and [speech conversion API](https://elevenlabs.io/docs/api-reference/text-to-speech/convert): convert, model and MP3 output.
 
 Snowflake contracts were checked against official documentation during migration. On 2026-10-09, a live PAT-authenticated Cortex request using `claude-sonnet-4-5` returned HTTP 200 and JSON content with an empty `finish_reason` and populated `usage.completion_tokens`. The parser accepts that observed variant only below the requested token limit and still rejects explicit truncation, refusals and invalid JSON; callers continue validating the task data. Regression tests cover this response shape. This inference check does not verify Cortex Search or all AI jobs. Yahoo history loading has worked locally, while Kalshi connections have reset in this environment. Do not treat mocks or successful compilation as proof of live provider compatibility.
 
 On 2026-10-09, `HEDGEHOG.REPORTING.EVENT_SOURCES` was provisioned with 21 dated Federal Reserve and EIA feed excerpts. BLS was unreachable and skipped. A live REST search with the publication-date filter returned five source passages; a Cortex-generated context sentence passed the application's number and source-ID checks. This validates retrieval and guarded generation, not the availability of summaries for a portfolio: those still need holdings, relevant reporting and human-reviewed market tags. Refresh the feed collection explicitly using the commands in DEPLOY.md.
+# Event dates and earnings-report dates (October 10, 2026)
+
+- Kalshi timing fields were read from live responses for five events before use. Apple's
+  earnings-call market has `occurrence_datetime` 2026-10-29T21:00Z and `close_time`
+  2026-11-12T15:00Z; an S&P 500 year-end event carries `strike_date`. After one full poll,
+  421 of 425 linked events in the 25-holding test portfolio had a Kalshi event date.
+- EDGAR's ticker file, Apple's filing list, an older filing-list page and one filing index
+  page were fetched and inspected. The filing-list `acceptanceDateTime` for Apple's 8-K of
+  2026-07-30 reads 2026-07-31T00:30:28Z, while the filing page shows it accepted at 16:30:28
+  Eastern on 2026-07-30. Because the two disagree by eight hours, Hedgehog does not infer
+  pre-market or after-close timing; it measures across the filing date instead.
+- The earnings-dates job ran against EDGAR for the 25 held symbols on 2026-10-10. Apple and
+  JPMorgan each returned eight reports whose dates match their quarterly results days; the
+  banks needed the older filing lists. SPY returned none and TLT is not in the ticker file.
+- XOM returned one report. Its ticker now maps to a new registrant, ExxonMobil Holdings Corp
+  (CIK 2115436), whose filings begin on 2026-07-01. Reports filed by a predecessor registrant
+  are not followed, so a company that changes registrant starts with a short history.
+
+# Earnings-call dates and strike values (October 10, 2026)
+
+- All 62 open earnings-call events state their date in the event subtitle ("On Oct 20, 2026").
+  The markets' `occurrence_datetime` agreed with it for 39 and held another date for 23: later
+  by one day or by about two weeks, or equal to the market close (United: March 31, 2027).
+  Thirty-one carried exactly 10:00 am New York time. Hedgehog therefore dates a call by the
+  stated day, and reports a time of day only from an occurrence time on that day that is not
+  10:00 am.
+- `floor_strike` and `cap_strike` are numbers on live market responses (Apple headcount:
+  164000, 166000, ...). `product_metadata.competition_scope` names the metric on some events;
+  it is not stored.
+- Kalshi lists no company revenue or earnings-per-share markets. Company results markets are
+  ladders of "above X" levels on operating metrics (232 open) and earnings-call word markets.
+
 # Additional coverage validation (October 9, 2026)
 
 - [Kalshi historical data](https://docs.kalshi.com/getting_started/historical_data): older

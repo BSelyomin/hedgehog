@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 export async function stockTags() {
     const symbols = new Set([...(await seedFile<string[]>('demo_symbols')), ...(await query<{
             symbol: string;
-        }>('SELECT DISTINCT symbol FROM holdings')).map(r => r.symbol)]);
+        }>("SELECT DISTINCT symbol FROM holdings WHERE asset_type='security'")).map(r => r.symbol)]);
     const allowed = await seedFile<string[]>('tags');
     for (const symbol of symbols) {
         if (allowed.includes(symbol))
@@ -74,6 +74,6 @@ export async function tagSeries() {
     console.log('Series classification complete; new mappings', added);
 }
 export async function reviewTags() {
-    const symbols = [...new Set([...(await seedFile<string[]>('demo_symbols')), ...(await query<{symbol:string}>('SELECT DISTINCT symbol FROM holdings')).map(h => h.symbol)])];
+    const symbols = [...new Set([...(await seedFile<string[]>('demo_symbols')), ...(await query<{symbol:string}>("SELECT DISTINCT symbol FROM holdings WHERE asset_type='security'")).map(h => h.symbol)])];
     console.table(await query(`SELECT DISTINCT ON(st.series_ticker,st.tag) st.series_ticker,e.title,st.tag,st.source,st.reviewed FROM series_tags st JOIN events e ON e.series_ticker=st.series_ticker WHERE st.tag=ANY($1) OR st.tag IN(SELECT tag FROM stock_tags WHERE symbol=ANY($1)) ORDER BY st.series_ticker,st.tag,e.updated_at DESC`, [symbols]));
 }

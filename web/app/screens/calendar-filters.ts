@@ -5,7 +5,7 @@ export interface CalendarFilters {
     type: 'All' | 'Company' | 'Other';
     holding: string;
     category: string;
-    link: 'All' | 'Affected' | 'Direct' | 'Measured';
+    link: 'All' | 'Affected' | 'Direct' | 'Calculated' | 'Measured';
     minShare: number;
     trust: 'All' | 'Unavailable' | NonNullable<Trust['band']>;
     sort: 'date' | 'date-desc' | 'reach' | 'holdings' | 'name';
@@ -17,7 +17,7 @@ export const defaultCalendarFilters: CalendarFilters = {
 };
 
 function matchesLink(link: HoldingLink, filter: CalendarFilters['link']) {
-    return filter === 'All' || (filter === 'Affected' ? link.type === 'Direct' || link.type === 'Measured' : link.type === filter);
+    return filter === 'All' || (filter === 'Affected' ? link.type !== 'Related' : link.type === filter);
 }
 
 export function filterCalendarEvents(events: ExposureEvent[], filters: CalendarFilters): ExposureEvent[] {
@@ -38,7 +38,7 @@ export function filterCalendarEvents(events: ExposureEvent[], filters: CalendarF
             .some(text => text.toLowerCase().includes(search))) return false;
         return true;
     }).sort((a, b) => {
-        const dateOrder = Date.parse(a.closeTime) - Date.parse(b.closeTime);
+        const dateOrder = Date.parse(a.eventTime) - Date.parse(b.eventTime);
         switch (filters.sort) {
             case 'date-desc': return -dateOrder || a.ticker.localeCompare(b.ticker);
             case 'reach': return b.share - a.share || dateOrder || a.ticker.localeCompare(b.ticker);

@@ -6,8 +6,8 @@ export interface KalshiMarket {
     subtitle?: string;
     yes_sub_title?: string;
     close_time: string;
-    // When the underlying event happened; absent for many markets.
     occurrence_datetime?: string;
+    expected_expiration_time?: string;
     status: string;
     result?: string;
     yes_bid_dollars?: string;
@@ -15,6 +15,8 @@ export interface KalshiMarket {
     volume_24h_fp?: string;
     open_interest_fp?: string;
     strike_type?: string;
+    floor_strike?: number;
+    cap_strike?: number;
 }
 export interface KalshiEvent {
     event_ticker: string;
@@ -23,6 +25,7 @@ export interface KalshiEvent {
     sub_title?: string;
     category: string;
     mutually_exclusive: boolean;
+    strike_date?: string;
     markets?: KalshiMarket[];
 }
 export interface Candle {
@@ -57,6 +60,65 @@ export async function kalshi<T>(path: string, params: Record<string, string> = {
         await new Promise(resolve => setTimeout(resolve, Math.min(30000, Math.max(1000 * 2 ** attempt, Number.isFinite(retry) ? retry * 1000 : 0))));
     }
     throw new Error('Kalshi request failed');
+}
+// Strike types observed in stored Kalshi markets. A range ladder is an exclusive event of
+// 'between' buckets plus optional open-ended end caps ("86° or below", "95° or above").
+const rangeStrikes = ['between', 'less', 'less_or_equal', 'greater', 'greater_or_equal'];
+export function isRangeLadder(mutuallyExclusive: boolean, strikeTypes: (string | null)[]) {
+    return mutuallyExclusive && strikeTypes.includes('between') && strikeTypes.every(type => type !== null && rangeStrikes.includes(type));
+}
+// Kalshi files earnings-call word markets under its 'Mentions' category; their titles do not say "mention".
+export function marketKind(strikeType: string | null, category: string, title: string, inRangeLadder: boolean): 'bracket' | 'kpi' | 'mention' {
+    if (strikeType === 'between' || inRangeLadder)
+        return 'bracket';
+    return category === 'Mentions' || /mention/i.test(title) ? 'mention' : 'kpi';
+}
+export type EventTimeSource = 'occurrence' | 'stated' | 'strike' | 'expected' | 'close';
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+// Kalshi states the date of some events in the subtitle, for example "On Oct 29, 2026" on an
+// earnings call. Returns it as YYYY-MM-DD, or null when the subtitle is not such a date.
+export function statedDate(description: string | null | undefined): string | null {
+    const match = /^On ([A-Za-z]{3})[a-z]* (\d{1,2}), (\d{4})\b/.exec(description ?? '');
+    const month = match ? MONTHS.indexOf(match[1].toLowerCase()) : -1;
+    if (!match || month < 0)
+        return null;
+    const date = `${match[3]}-${String(month + 1).padStart(2, '0')}-${match[2].padStart(2, '0')}`;
+    const parsed = Date.parse(`${date}T00:00:00Z`);
+    return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === date ? date : null;
+}
+export const newYorkDate = (time: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(time);
+// Noon in New York on a calendar date, as an instant: a neutral time for an event dated by day only.
+export function newYorkNoon(date: string): Date {
+    const summer = new Date(`${date}T16:00:00Z`);
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hourCycle: 'h23' }).format(summer) === '12' ? summer : new Date(`${date}T17:00:00Z`);
+}
+// When the underlying event happens, from Kalshi's own fields, most specific first: the market's
+// occurrence_datetime, the event's strike_date, then expected_expiration_time. A time that has
+// already passed is skipped, because the next date that matters is then the market close.
+//
+// When Kalshi states the event's date in its subtitle, that day wins. For about a third of
+// earnings-call markets the occurrence time holds a later administrative date instead (Netflix's
+// call "On Oct 20" carried an occurrence time of Nov 4), so a precise time is kept only when it
+// falls on the stated day; otherwise the event is dated by day alone.
+export function eventTime(now: number, closeTime: Date, occurrence: Date | null, strike: Date | null, expected: Date | null, stated: string | null = null): { time: Date; source: EventTimeSource } {
+    const upcoming = (time: Date | null): time is Date => time !== null && Number.isFinite(time.getTime()) && time.getTime() > now;
+    if (stated) {
+        const exact: [EventTimeSource, Date | null][] = [['occurrence', occurrence], ['strike', strike]];
+        const onDay = exact.filter(([, time]) => time !== null && Number.isFinite(time.getTime()) && newYorkDate(time) === stated);
+        for (const [source, time] of onDay)
+            if (upcoming(time))
+                return { time, source };
+        const noon = newYorkNoon(stated);
+        if (!onDay.length && noon.getTime() + 12 * 3600000 > now)
+            return { time: noon, source: 'stated' };
+        // The stated day has passed: what is still ahead is the market's own end.
+        return upcoming(expected) ? { time: expected, source: 'expected' } : { time: closeTime, source: 'close' };
+    }
+    const candidates: [EventTimeSource, Date | null][] = [['occurrence', occurrence], ['strike', strike], ['expected', expected]];
+    for (const [source, time] of candidates)
+        if (time && Number.isFinite(time.getTime()) && time.getTime() > now)
+            return { time, source };
+    return { time: closeTime, source: 'close' };
 }
 export function quote(bid: unknown, ask: unknown) {
     const b = numberField(bid), a = numberField(ask);

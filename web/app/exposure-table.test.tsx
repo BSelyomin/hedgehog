@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ExposureTable, filterExposure, filterExposureHoldings, eventHoldings, defaultExposureFilters } from './screens/exposure-table';
 import type { ExposureEvent, ExposureResponse, LinkType } from '../../shared/types';
 const event = (title: string, share: number, symbol: string, type: LinkType): ExposureEvent => ({
-    ticker: title, title, share, linkedValue: share * 1000, closeTime: '2026-10-20T12:00:00Z', category: 'Economics', mutuallyExclusive: true,
+    ticker: title, title, share, linkedValue: share * 1000, closeTime: '2026-10-20T12:00:00Z', eventTime: '2026-10-20T12:00:00Z', eventTimeSource: 'close', category: 'Economics', mutuallyExclusive: true,
     links: [{ symbol, valueUsd: share * 1000, type, sensitivity: null, evidence: 'Test evidence' }],
     markets: ['Above', 'Below'].map(subtitle => ({ ticker: `${title}-${subtitle}`, title, subtitle, probability: .5, spread: .02, kind: 'bracket', asOf: null,
         trust: { total: 50, band: 'Low', spread: 20, activity: 10, depth: 7.5, trackRecord: null, categoryCount: 0, spreadCents: 2 } }))

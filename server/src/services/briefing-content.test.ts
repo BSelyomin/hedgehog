@@ -20,7 +20,7 @@ describe('morning briefing', () => {
         expect(morningReady(new Date('2026-11-02T13:00:00Z'))).toBe(true);
     });
     it('reports the supplied completed session and reconciled move components', () => {
-        const text = buildBriefing(portfolio([]), {date:'2026-10-09',total:-12.5,fromMarket:-10,beyondMarket:-2.5,oddsMoves:[],spyReturn:0,holdings:[],asOf:now.toISOString()} as MovesResponse, now);
+        const text = buildBriefing(portfolio([]), {date:'2026-10-09',total:-12.5,fromMarket:-10,beyondMarket:-2.5,oddsMoves:[],spyReturn:0,holdings:[],drivers:[],missingDrivers:[],unpricedValue:0,asOf:now.toISOString()} as MovesResponse, now);
         expect(text).toContain('October 9, 2026'); expect(text).toContain('down 12.50 dollars'); expect(text).toContain('down 2.50 dollars');
     });
     it('includes events beyond seven days, earliest first, and omits closed events', () => {

@@ -83,6 +83,66 @@ Open Add holdings at http://localhost:3000 and import `examples/fake-portfolio.c
 
 `FRED_API_KEY`, `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` retain their existing roles. Without Snowflake configuration, AI jobs skip generation while the rest of the application can run. No credentials belong in Git or browser environment variables.
 
+## Database storage and read-only mode
+
+Kalshi lists about 145,000 open markets. Storing a five-minute odds row for each wrote roughly
+500 MB an hour and filled a Tiger Data service in 17 hours, after which the service turned
+read-only. Migration `010_odds_storage.sql` keeps odds history only for series a holding could
+link to (about 7,000 markets), in daily chunks that are compressed after a day and dropped after
+eight. A trigger on `odds_snapshots` applies the same rule to any backend writing to the
+database, including one running older code.
+
+When the database is read-only the backend still starts. It serves stored data, skips migrations
+and scheduled jobs, reports `readOnly: true` from `/health` (the app shows a notice), and answers
+any attempt to save with a plain message. It checks every minute and applies migrations and starts
+the jobs by itself once writes are accepted again.
+
+To get a full service writable again, either raise its storage in the Tiger Data console or free
+space. Odds history is the only large table and it is rebuilt by the poller:
+
+```sql
+SET default_transaction_read_only = off;
+TRUNCATE odds_snapshots;
+```
+
+That removes the stored odds history (the one-week charts and day-over-day odds moves start
+again); current odds return with the next poll. Holdings, accounts, tags, prices, measurements
+and the track record are not touched.
+
+## Asset types and drivers
+
+Migration `008_asset_classes.sql` adds the holding type and its terms, and a typical effect to
+every measurement. After upgrading, load the new yield series and re-measure so drivers can be
+ranked:
+
+```powershell
+docker compose exec backend npm run job -- prices
+docker compose exec backend npm run job -- measure
+```
+
+`prices` loads `DGS2`, `DGS10` and `MORTGAGE30US` from FRED and needs `FRED_API_KEY`. Both jobs
+also run nightly and at startup. Only listed securities are priced and measured; cash,
+Treasuries, bonds and property are entered with their terms on the Add holdings screen and need
+no job. The CSV import takes symbol,valueUsd for securities and optional columns for the other types; `examples/feature-tour.csv` uses them and `examples/README.md` says what each row shows. FRED publishes yields a day late,
+so Moves names the yield drivers it could not yet compare for the latest session.
+
+## Past earnings-report dates (SEC EDGAR)
+
+Set `SEC_USER_AGENT` in the root `.env` to a string that identifies you, for example
+`Hedgehog you@example.com`. SEC's fair-access policy requires a contact in the User-Agent;
+without it the job sends no request and the Earnings screen says report dates are unavailable.
+Then recreate the backend and load the dates:
+
+```powershell
+docker compose up -d
+docker compose exec backend npm run job -- earnings-dates
+```
+
+The job looks up each held symbol in EDGAR's ticker file, reads its filing list and stores the
+filing dates of 8-K filings carrying Item 2.02. It also runs after the nightly price load and at
+startup. Funds such as SPY and TLT file no such reports and show none. A move needs a close on
+both sides of the filing date, so run `prices` first for newly added holdings.
+
 ## Validation on a networked machine
 
 ```
@@ -119,9 +179,11 @@ Briefing wording follows a conversational sequence: the last completed session, 
 Use **Refresh briefing** on the overview to regenerate today’s text and MP3 immediately, including before the automatic morning run. POST `/briefing/refresh` uses the current guest or authenticated account session and replaces the saved briefing only after successful generation. Failed requests keep existing audio. Audio responses disable browser caching so playback reflects the refreshed version.
 # Coverage and portfolio review
 
-Overview includes linked events at all future dates. Calendar includes only those closing in
-the next 14 days, using Kalshi close times. Company tabs in Earnings require reviewed direct
-links; they are not a list of every stock in the portfolio or a complete earnings calendar.
+Overview includes linked events at all future dates. Calendar includes only those whose event
+date falls in the next 14 days. The event date is Kalshi's occurrence time, strike date or
+expected expiration, whichever is first still in the future, and otherwise the market close.
+These fields fill in as markets are next polled after migration `006_event_times.sql`.
+Company choices in Earnings require reviewed direct links; they are not a list of every stock in the portfolio or a complete earnings calendar.
 
 The fixed company catalog includes all 25 tickers in `examples/fake-portfolio-large.csv`.
 Other symbols can be imported and measured when Yahoo has sufficient history, but company
