@@ -6,6 +6,8 @@ export interface KalshiMarket {
     subtitle?: string;
     yes_sub_title?: string;
     close_time: string;
+    // When the underlying event happened; absent for many markets.
+    occurrence_datetime?: string;
     status: string;
     result?: string;
     yes_bid_dollars?: string;

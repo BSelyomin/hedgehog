@@ -14,7 +14,7 @@ it('uses verified outcomes, retains evidence timestamps, and does not treat a sm
 });
 it('limits examples without limiting statistics and applies the shared trust threshold',async()=>{
  query.mockResolvedValueOnce(Array.from({length:30},(_,i)=>row(String(i),.5,i%2))).mockResolvedValueOnce([{count:'1'}]);
- const d=await trackRecord();expect(d.categories[0].examples).toHaveLength(12);expect(d.categories[0].count).toBe(30);expect(d.categories[0].eligibleForTrust).toBe(true);expect(d.categories[0].brier).toBe(.25);expect(query).toHaveBeenCalledTimes(3);
+ const d=await trackRecord();expect(d.categories[0].examples).toHaveLength(12);expect(d.categories[0].count).toBe(30);expect(d.categories[0].eligibleForTrust).toBe(true);expect(d.categories[0].brier).toBe(.25);expect(query).toHaveBeenCalledTimes(4);
 });
 
 it('groups history by verified subject tags without changing category statistics',async()=>{
@@ -30,4 +30,9 @@ it('groups history by verified subject tags without changing category statistics
 it('reports the 65-75% rate with a range only once enough markets support it',async()=>{
  query.mockResolvedValueOnce(Array.from({length:10},(_,i)=>row(String(i),.7,i<7?1:0))).mockResolvedValueOnce([{count:'1'}]);
  const h=(await trackRecord()).categories[0].headline70!;expect(h.count).toBe(10);expect(h.observedRate).toBe(.7);expect(h.low).toBeCloseTo(.397,2);expect(h.high).toBeCloseTo(.892,2);
+});
+
+it('reports markets that could not be scored so coverage is visible',async()=>{
+ query.mockResolvedValueOnce([row('a',.7,1)]).mockResolvedValueOnce([{count:'1'}]).mockResolvedValueOnce([]).mockResolvedValueOnce([{category:'Economics',series_ticker:'S',reason:'no_quote'},{category:'Economics',series_ticker:'S',reason:'outcome_known'},{category:'Politics',series_ticker:'S',reason:'no_quote'}]);
+ const c=(await trackRecord()).categories[0];expect(c.coverage).toEqual({scored:1,noQuote:1,outcomeKnown:1});
 });

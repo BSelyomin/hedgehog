@@ -143,6 +143,8 @@ export interface CategoryRecord {
     eligibleForTrust: boolean;
     relevantHoldings: string[];
     examples: SettledExample[];
+    // Settled markets in this sample that could not be scored, by reason.
+    coverage: {scored: number; noQuote: number; outcomeKnown: number};
     // Distinct Kalshi events behind `count`; contracts in one event are not independent.
     eventCount: number;
     // Brier score of always predicting this sample's own Yes rate; the score to beat.
@@ -171,6 +173,8 @@ export interface TrackRecordResponse extends Freshness {
     reviewedSeries: number;
     relevantCategories: {category: string; holdings: string[]}[];
     minSettled: number;
+    // Trust-score weights and bands, read from server config so this page cannot drift from the formula.
+    trustScoring: {spread: number; activity: number; depth: number; trackRecord: number; high: number; medium: number};
 }
 export interface HoldingMove extends Holding {
     actual: number | null;

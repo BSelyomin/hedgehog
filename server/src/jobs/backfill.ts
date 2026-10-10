@@ -30,6 +30,14 @@ export function oddsBeforeClose(candles: Candle[], closeTime: string) {
     const q = quote(candle.yes_bid.close_dollars, candle.yes_ask.close_dollars);
     return q ? { probability: q.mid, ts: candle.end_period_ts } : null;
 }
+// A quote taken after the underlying event happened is not a forecast, so it never enters the record.
+export function outcomeAlreadyKnown(m: Pick<KalshiMarket, 'occurrence_datetime'>, quoteTs: number) {
+    const occurred = m.occurrence_datetime ? Date.parse(m.occurrence_datetime) : NaN;
+    return Number.isFinite(occurred) && occurred <= quoteTs * 1000;
+}
+async function recordSkip(m: KalshiMarket, s: { series_ticker: string; category: string }, reason: 'no_quote' | 'outcome_known') {
+    await query(`INSERT INTO backfill_skips(ticker,series_ticker,category,reason,close_time) VALUES($1,$2,$3,$4,$5) ON CONFLICT(ticker) DO UPDATE SET reason=excluded.reason,recorded_at=now()`, [m.ticker, s.series_ticker, s.category, reason, m.close_time]);
+}
 export async function backfill() {
     const series = await query<{
         series_ticker: string;
@@ -49,7 +57,14 @@ export async function backfill() {
             for (const m of page.markets) {
                 if (m.result !== 'yes' && m.result !== 'no')
                     continue;
-                if ((await query('SELECT ticker FROM settled_markets WHERE ticker=$1', [m.ticker])).length) {
+                const stored = await query<{ odds_time: Date }>('SELECT odds_time FROM settled_markets WHERE ticker=$1', [m.ticker]);
+                if (stored.length) {
+                    // Re-check earlier rows: a stored quote that turns out to postdate the event is removed and counted as a skip.
+                    if (outcomeAlreadyKnown(m, stored[0].odds_time.getTime() / 1000)) {
+                        await query('DELETE FROM settled_markets WHERE ticker=$1', [m.ticker]);
+                        await recordSkip(m, s, 'outcome_known');
+                        continue;
+                    }
                     await query('UPDATE settled_markets SET series_ticker=$2,event_ticker=$3,title=$4 WHERE ticker=$1', [m.ticker,s.series_ticker,m.event_ticker??null,m.title??null]);
                     continue;
                 }
@@ -59,9 +74,16 @@ export async function backfill() {
                     const odds = oddsBeforeClose(await loadCandles(s.series_ticker, m.ticker, params, historical), m.close_time);
                     if (!odds) {
                         console.warn('No exact 24-hour bid/ask history', m.ticker);
+                        await recordSkip(m, s, 'no_quote');
+                        continue;
+                    }
+                    if (outcomeAlreadyKnown(m, odds.ts)) {
+                        console.warn('Outcome known before the 24-hour quote', m.ticker);
+                        await recordSkip(m, s, 'outcome_known');
                         continue;
                     }
                     await query(`INSERT INTO settled_markets(ticker,category,prob_24h_before,outcome,close_time,odds_time,series_ticker,event_ticker,title) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`, [m.ticker, s.category, odds.probability, m.result === 'yes' ? 1 : 0, m.close_time, new Date(odds.ts * 1000),s.series_ticker,m.event_ticker??null,m.title??null]);
+                    await query('DELETE FROM backfill_skips WHERE ticker=$1', [m.ticker]);
                 }
                 catch {
                     failed = true;
