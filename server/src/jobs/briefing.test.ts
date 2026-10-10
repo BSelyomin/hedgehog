@@ -26,7 +26,7 @@ beforeEach(() => {
     });
     mocks.holdings.mockResolvedValue(portfolio());
     mocks.exposure.mockResolvedValue({ holdings: portfolio().holdings, events: [], asOf: portfolio().asOf });
-    mocks.moves.mockResolvedValue({ date: '2026-10-09', total: 10, fromMarket: 5, beyondMarket: 5, oddsMoves: [], unpricedValue: 0, asOf: portfolio().asOf });
+    mocks.moves.mockResolvedValue({ date: '2026-10-09', total: 10, fromMarket: 5, beyondMarket: 5, movedEvents: [], unpricedValue: 0, asOf: portfolio().asOf });
     mocks.convert.mockResolvedValue((async function* () { yield new Uint8Array([1, 2, 3]); })());
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
@@ -76,7 +76,7 @@ it('explicit refresh prepares a missing snapshot before the cutoff and preserves
 });
 it('market changes reuse audio while changed holding terms generate a new snapshot', async () => {
     await briefing('session', true);
-    mocks.moves.mockResolvedValue({ date: '2026-10-09', total: 20, fromMarket: 10, beyondMarket: 10, oddsMoves: [], unpricedValue: 0, asOf: portfolio().asOf });
+    mocks.moves.mockResolvedValue({ date: '2026-10-09', total: 20, fromMarket: 10, beyondMarket: 10, movedEvents: [], unpricedValue: 0, asOf: portfolio().asOf });
     await briefing('session', true); expect(mocks.convert).toHaveBeenCalledTimes(1);
     const changed = portfolio(); changed.holdings[0].valueUsd = 200; changed.manualHoldings[0].valueUsd = 200;
     mocks.holdings.mockResolvedValue(changed);

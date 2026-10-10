@@ -1,7 +1,7 @@
 # Hedgehog — instructions for coding agents
 
 Hedgehog links a user's stock holdings to Kalshi prediction markets. It shows which real-world
-events a portfolio depends on, what's coming up, what moved today, and how far to trust each number.
+events a portfolio depends on, what's coming up, what moved and which events moved with it, and how far to trust each number.
 
 **Hedgehog never trades.** Do not add order placement, Kalshi authentication, wallets, or any
 endpoint that sends money anywhere.
@@ -114,7 +114,7 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result, strike_type, occurrence_time, expected_expiration_time, floor_strike, cap_strike, open_time | poller |
 | `odds_snapshots` | ts, ticker, yes_bid, yes_ask, mid, volume_24h, open_interest | poller, every 5 min, only for markets in `snapshot_series`; compressed after 1 day, dropped after 8 |
 | `snapshot_series` | series_ticker | poller: series a holding could link to (approved ticker, driver or asset-type tag) |
-| `odds_candles` | ticker, minutes (60 or 1440), ts (end of the period), mid | candlestick job: Kalshi's hourly closes for 8 days and daily closes since listing, for open markets in `snapshot_series` |
+| `odds_candles` | ticker, minutes (60 or 1440), ts (end of the period), mid, spread | candlestick job: Kalshi's hourly closes for 12 days and daily closes since listing, with the closing bid–ask spread, for open markets in `snapshot_series` |
 | `candle_progress` | ticker, minutes, through | candlestick job: how far each market has been fetched |
 | `security_profiles` | symbol PK, quote_type, name, sector, industry, fund_category, updated_at | profiles job: Yahoo's description of each held ticker |
 | `prices` | ts (date), symbol, close | price loader, daily |
@@ -264,13 +264,37 @@ midnight New York for daily closes, and after the first poll at startup.
 
 ## Move explainer
 
-For a day: each holding's dollar move; `fromMarket = beta × SPY return × value`;
-`beyondMarket = actual − fromMarket`. The totals must add up exactly and cover listed securities;
-state the value of holdings with no daily price. Also compare each measured driver's estimated part
-of the day (sensitivity × the driver's change × value) and highlight the largest. Those estimates
-overlap, so they are compared and never summed; name any driver whose change is not published yet. List linked markets whose
-midpoint moved 3+ points in the last 24 hours. Connect a market to a holding's move only when the
-link is Measured; otherwise say it moved the same day, nothing more.
+Compares the portfolio at two closes and sets the Kalshi events of the same window beside it.
+The window ends on a session (the latest by default) and opens a day, a week, a month or three
+months earlier, on the last session at or before that date (`MOVE_RANGES` in
+`server/src/services/move-data.ts`). The view is the whole portfolio, the shared category
+choice, or one holding picked on the screen; the server sends the whole portfolio and the
+screen narrows it (`web/app/screens/move-scope.ts`).
+
+- **Today's holdings at both closes.** No history of what was held is stored, so the amount held
+  now is assumed held throughout: the value entered is read as the worth at the latest stored
+  close and scaled by the price to each end (`valueAt`). The screen says so. Change =
+  value at the last close − value at the first.
+- **Split.** `fromMarket = beta × SPY's return over the window × value at the first close`;
+  `beyondMarket = change − fromMarket`. The totals must add up exactly and cover listed
+  securities; state the value of holdings with no daily price.
+- **Drivers.** Compare each measured driver's estimated part of the window (sensitivity × the
+  driver's change × value at the first close) and highlight the largest. A sensitivity under
+  the link floor gives no estimate. Those estimates overlap, so they are compared and never
+  summed; name any driver with no published reading at both ends.
+- **Kalshi over the same window**, close to close (4:00 pm New York):
+  - *Settled*: markets that closed inside it, from `settled_markets`, with the odds a day
+    before each closed; an event leads with the result furthest from those odds.
+  - *Odds that moved*: markets open at the last close whose midpoint moved 3+ points between
+    the quote standing at each close. That quote is the newest candlestick close or snapshot at
+    or before the instant, no more than seven days old, and each reading is shown with its
+    time. Only quotes at most `MAX_MOVE_SPREAD` (10 cents) wide at both ends are compared: a
+    wider quote's midpoint jumps when one side of the book steps back.
+- **What an event has to do with a move.** Only a Measured link is set beside a holding's move,
+  and then through its driver: the driver's own change and the holding's estimate from it. A
+  Direct link states the holding's move and that nothing measured ties them; a Calculated or
+  Topic link states no figure. Never say an event caused a move.
+- Events linked only by an unmeasured topic are hidden until asked for, as on the Overview.
 
 ## Earnings preview
 
@@ -329,7 +353,7 @@ against mock data while the server is built.
 
 `POST /holdings` · `GET /exposure` · `GET /calendar?days=14` · `GET /event/:ticker` ·
 `GET /odds/:ticker?range=day|week|month|all` ·
-`GET /moves?date=` · `GET /earnings` · `GET /earnings/:symbol` · `GET /track-record` · `GET /briefing`
+`GET /moves?date=&range=day|week|month|quarter` · `GET /earnings` · `GET /earnings/:symbol` · `GET /track-record` · `GET /briefing`
 
 Every response includes `asOf` (when the data was last updated).
 
@@ -345,7 +369,8 @@ Seven screens, matching the designs in `/design` (screenshots or exports from th
 4. Event page (odds distribution, odds chart over 1 day / 1 week / 1 month / all time, trust
    score breakdown, linked holdings + evidence)
 5. Earnings preview
-6. Move explainer
+6. Move explainer (a window of 1 day / 1 week / 1 month / 3 months; the whole portfolio, a
+   category or one holding; events that settled and odds that moved in the window)
 7. Track record (calibration chart, table by category, how trust is scored)
 
 Design tokens: background `#0E1116`, card `#151A21`, border `#2A313C`, text `#E8ECF1`,

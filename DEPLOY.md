@@ -92,9 +92,12 @@ link to (about 7,000 markets), in daily chunks that are compressed after a day a
 eight. A trigger on `odds_snapshots` applies the same rule to any backend writing to the
 database, including one running older code.
 
-The event chart's longer ranges read `odds_candles`: Kalshi's hourly closes for the past eight
-days and its daily closes since each market was listed, one midpoint per period, for the same
-linkable markets while they are open. The candlestick job fills it after the first poll at
+The event chart's longer ranges and the Moves screen read `odds_candles`: Kalshi's hourly closes
+for the past twelve days and its daily closes since each market was listed, one midpoint and
+its bid–ask spread per period, for the same linkable markets while they are open. A backend
+running code from before 2026-10-10 stores candlesticks without the spread and drops hourly
+ones after eight days; the current job fetches a market again when it finds readings without a
+spread, but the pruned days come back only as time passes. The candlestick job fills it after the first poll at
 startup, then hourly and after midnight New York. To run it by hand:
 
 ```powershell
@@ -282,7 +285,9 @@ instance; it is not an offline browser copy of the portfolio.
 Moves opens with `GET /moves`, selecting the latest stored completed SPY session
 (or latest holding session if SPY history is absent). The UI shows the actual date
 and each holding's source close dates. Choosing a date calls `GET /moves?date=YYYY-MM-DD`
-and never substitutes another date. Use **Latest trading session** to return to the
+and never substitutes another date. `range=day|week|month|quarter` sets how far back the
+window opens: on the last session at or before that date. A close more than 30 days older
+than the date wanted is not used. Use **Latest trading session** to return to the
 automatic view; Reload reads the newest stored results.
 
 Price loading and measurement now run on startup and hourly, independently of AI
@@ -314,10 +319,11 @@ SnapTrade mode or convert simulated positions into live accounts.
 
 ### Timing a slow Moves request in your browser
 
-Moves now has a dedicated query path: it reads the holdings, two relevant closes
-per symbol, stored sensitivities, reviewed tags, and only markets with a supported
-3+ point odds move. It no longer builds the exposure map, calculates trust scores,
-reads all settled markets, or scans the entire prices table for freshness. On the
+Moves now has a dedicated query path: it reads the holdings, the closes at the two
+ends of the window per symbol, stored sensitivities, reviewed tags, markets with a
+supported 3+ point odds move, and the markets that settled inside the window. It does
+not build the exposure map, calculate trust scores, read settled markets outside the
+window, or scan the entire prices table for freshness. On the
 profiled signed-in account, SQL calls fell from 13 to 7. Independent holding reads
 and price/measurement/tag reads run concurrently; the default session and its
 closing prices are resolved in one query.
@@ -336,7 +342,8 @@ and select the `/api/moves` request. Under Response Headers, inspect `Server-Tim
 - `holdings`: manual and brokerage holdings reads, performed concurrently.
 - `prices`: default-date selection and recent closing-price reads.
 - `measurements` / `tags`: sensitivity and stock-tag reads, concurrent with prices.
-- `odds`: finding linked markets with supported 24-hour odds changes.
+- `odds`: finding linked markets whose odds moved between the window's two closes.
+- `settled`: reading the linked markets that settled inside the window.
 - `sql_count`: number of database queries; `sql_total` is cumulative query time,
   including waits. Parallel queries overlap, so do not add the durations together
   or compare `sql_total` to wall-clock request time as if they were equivalent.

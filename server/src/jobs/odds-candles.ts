@@ -6,9 +6,11 @@ import type { Candle } from '../services/kalshi.ts';
 // across all of them.
 export const MAX_TICKERS = 100;
 export const MAX_CANDLES = 10000;
-// Hourly closes serve the chart's day and week ranges and are dropped after eight days; daily
-// closes serve the month and all-time ranges and stay while the market is listed.
-export const CANDLE_SERIES = [{ minutes: 60, keepDays: 8 }, { minutes: 1440, keepDays: null }] as const;
+// Hourly closes serve the chart's day and week ranges and the Moves screen's week. They are
+// dropped after twelve days: a week that ended on the last close opens seven days before it, and
+// is still being looked at over the weekend and a holiday after. Daily closes serve the longer
+// ranges and stay while the market is listed.
+export const CANDLE_SERIES = [{ minutes: 60, keepDays: 12 }, { minutes: 1440, keepDays: null }] as const;
 export type CandleMinutes = typeof CANDLE_SERIES[number]['minutes'];
 
 export interface CandleNeed {
@@ -36,13 +38,14 @@ export function planCandleRequests(needs: CandleNeed[], end: number, minutes: nu
     return requests;
 }
 
-// One reading per finished period: the midpoint of its closing bid and ask.
+// One reading per finished period: the midpoint of its closing bid and ask, and the spread
+// between them in whole hundredths of a cent, which says how much the midpoint can be trusted.
 export function candleReadings(ticker: string, minutes: number, candles: Candle[], end: number) {
     return candles.flatMap(candle => {
         const q = quote(candle.yes_bid?.close_dollars, candle.yes_ask?.close_dollars);
         if (!q || emptyBook(q.bid, q.ask) || !Number.isInteger(candle.end_period_ts) || candle.end_period_ts > end)
             return [];
-        return [{ ticker, minutes, ts: new Date(candle.end_period_ts * 1000).toISOString(), mid: q.mid }];
+        return [{ ticker, minutes, ts: new Date(candle.end_period_ts * 1000).toISOString(), mid: q.mid, spread: Math.round((q.ask - q.bid) * 10000) / 10000 }];
     });
 }
 
@@ -50,8 +53,10 @@ async function storeCandles(readings: ReturnType<typeof candleReadings>, tickers
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        // A finished period does not change, so a reading already stored is left alone.
-        await client.query(`INSERT INTO odds_candles(ticker,minutes,ts,mid) SELECT ticker,minutes,ts,mid FROM jsonb_to_recordset($1::jsonb) AS r(ticker text,minutes integer,ts timestamptz,mid double precision) ON CONFLICT DO NOTHING`, [JSON.stringify(readings)]);
+        // A finished period does not change, so a reading already stored is left alone, except
+        // to add the spread to a row stored before spreads were kept.
+        await client.query(`INSERT INTO odds_candles(ticker,minutes,ts,mid,spread) SELECT ticker,minutes,ts,mid,spread FROM jsonb_to_recordset($1::jsonb) AS r(ticker text,minutes integer,ts timestamptz,mid double precision,spread real)
+            ON CONFLICT(ticker,minutes,ts) DO UPDATE SET spread=excluded.spread WHERE odds_candles.spread IS NULL`, [JSON.stringify(readings)]);
         await client.query(`INSERT INTO candle_progress(ticker,minutes,through) SELECT unnest($1::text[]),$2,$3 ON CONFLICT(ticker,minutes) DO UPDATE SET through=excluded.through`, [tickers, minutes, through]);
         await client.query('COMMIT');
     } catch (error) {
@@ -61,13 +66,16 @@ async function storeCandles(readings: ReturnType<typeof candleReadings>, tickers
 }
 
 // Fetches Kalshi's candlestick closes for every open market that can link to a holding. With no
-// argument both series are refreshed; the first run for a market reaches back to its listing.
+// argument both series are refreshed; the first run for a market reaches back to its listing, and
+// so does a run that finds stored readings without a spread (`unsized`), whoever stored them.
 export async function oddsCandles(only?: CandleMinutes) {
     for (const { minutes, keepDays } of CANDLE_SERIES.filter(series => only === undefined || series.minutes === only)) {
         const end = Math.floor(Date.now() / 1000), period = minutes * 60, oldest = keepDays === null ? 0 : end - keepDays * 86400;
-        const markets = await query<{ ticker: string; open_time: Date; through: Date | null }>(`SELECT m.ticker,m.open_time,p.through FROM markets m JOIN snapshot_series s USING(series_ticker)
+        const markets = await query<{ ticker: string; open_time: Date; through: Date | null; unsized: boolean }>(`SELECT m.ticker,m.open_time,p.through,
+                EXISTS(SELECT 1 FROM odds_candles c WHERE c.ticker=m.ticker AND c.minutes=$1 AND c.spread IS NULL) AS unsized
+            FROM markets m JOIN snapshot_series s USING(series_ticker)
             LEFT JOIN candle_progress p ON p.ticker=m.ticker AND p.minutes=$1 WHERE m.status='active' AND m.close_time>now() AND m.open_time IS NOT NULL`, [minutes]);
-        const needs = markets.map(m => ({ ticker: m.ticker, start: Math.max(oldest, Math.floor((m.through ?? m.open_time).getTime() / 1000)) }));
+        const needs = markets.map(m => ({ ticker: m.ticker, start: Math.max(oldest, Math.floor((m.unsized ? m.open_time : m.through ?? m.open_time).getTime() / 1000)) }));
         let stored = 0, failed = 0;
         for (const request of planCandleRequests(needs, end, minutes)) {
             try {

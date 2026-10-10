@@ -10,7 +10,7 @@
 | Overview | Category basis (sector, fund category) | security_profiles from Yahoo quoteSummary: assetProfile.sector, fundProfile.categoryName; or the asset type the user entered |
 | Overview | Category linked events and next event | Open events with a Direct, Calculated or Measured link to a holding in the group (for a theme, through that theme). Next is the soonest reached by a Direct or Calculated link or through a holding's most important measured driver; with none, the soonest linked event |
 | Overview / Calendar / Moves | Category filter summary | Count and summed value of the chosen holdings / total holding value |
-| Moves | Chosen holdings' move | Sum, in whole cents, of the rows shown: dollar move, from market, beyond market. Withheld when a chosen security lacks the figure |
+| Moves | Figures for a category or one holding | Sum, in whole cents, of the rows in view: value at each close, change, from market, beyond market, and each driver's estimate. Withheld when a security in view lacks the figure |
 | Overview / Calendar | Event and market counts | Database events and markets after reviewed-tag matching |
 | All data screens | asOf | Max relevant source update timestamp; null means no source data |
 | Calendar / Event / Earnings | Event date | A date Kalshi states in the event subtitle ("On Oct 29, 2026") wins, with a precise time only when one falls on that day. Otherwise the first of these still in the future: Kalshi market occurrence_datetime, event strike_date, market expected_expiration_time; otherwise markets.close_time. The screen names the field used and shows the market close beside it |
@@ -27,14 +27,18 @@
 | Overview / Event | Typical effect and "moves most with" | measured_links.effect = \|b\| × the sample standard deviation of the driver's daily change, in the holding's return units; drivers ranked by it. Weekly drivers are not ranked against daily ones |
 | Event / Overview | Calculated interest per point of rate | Entered cash balance × 0.01 a year; adjustable mortgage balance × 0.01 a year |
 | Event / Overview | Calculated bond price change | −modified duration × 0.01 × entered value. Duration from the entered maturity and coupon, discounted at the latest DGS2 (five years or less) or DGS10 yield, or at the coupon when neither is loaded |
-| Moves | Driver estimates and "what mattered most" | measured_links b × the driver's change that session × entered holding value, summed over holdings per driver; compared, never added to the total |
+| Moves | Driver estimates and "what mattered most" | measured_links b × the driver's change over the window × the holding's value at the first close, summed over holdings per driver; compared, never added to the total. A sensitivity under the link floor gives none |
+| Moves | A driver's own change | Close on the window's last session against its close on the first: a return for SPY and crude oil, a difference in percentage points for yields. Named as missing when either reading is unpublished |
 | Moves | Value with no daily price | Sum of entered values for cash, bonds held directly and property |
 | Moves | Beta | Nightly measured_links SPY regression over available trailing five-year history; reliable range and minimum 60 observations required |
-| Moves | Actual dollar move | Aligned daily-close return × entered holding value |
-| Moves | Market component | Beta × SPY daily return × entered holding value |
+| Moves | Value at each close | Entered value × that close ÷ the latest stored close (the amount held now, held throughout), in whole cents |
+| Moves | Change over the window | Value at the last close − value at the first close; needs the holding's own close on both sessions |
+| Moves | Market component | Beta × SPY's return over the window × value at the first close |
 | Moves | Beyond-market component | Actual dollar move minus market component, in integer cents |
 | Moves | Portfolio totals | Holding sums in integer cents; beyond-market total = actual total − market total |
-| Moves | Odds changes in points | Supported midpoint samples about 24 hours apart; only absolute changes ≥ 3 points |
+| Moves | Odds changes in points | Midpoint of the quote standing at the window's last close − that at its first (4:00 pm New York): the newest odds_candles close or odds_snapshots reading at or before each, at most 7 days old. Only quotes no wider than 10 cents at both ends, markets open at the last close, and absolute changes ≥ 3 points |
+| Moves | Settled results and odds a day before | settled_markets.outcome and prob_24h_before for markets whose close fell inside the window; each event ordered by \|outcome − odds\| |
+| Moves | Estimate beside an event | The Measured link's driver: that driver's change over the window and the linked holdings' estimates for it, summed in whole cents |
 | Earnings | Normalized bracket probability | Midpoints of a complete exclusive range ladder (buckets and open-ended end caps) divided by their raw sum |
 | Earnings / Calendar | Call date and countdown | The date Kalshi states in the call event's subtitle. The time, and before the open / after the close by the New York clock, only when the market's occurrence_datetime falls on that day and is not Kalshi's 10:00 am default |
 | Earnings | Position and share of portfolio | Entered holding value; value ÷ total entered value |

@@ -14,6 +14,8 @@ const drivers: Record<string, { name: string; step: number; stepText: string; co
 // Short names for tables and comparisons. An unknown driver shows its series key.
 const short: Record<string, string> = { 'CL=F': 'Crude oil', 'DGS2': '2-year Treasury yield', 'DGS10': '10-year Treasury yield', 'MORTGAGE30US': '30-year mortgage rate', 'SPY': 'Stock market (S&P 500)' };
 export const driverName = (key: string) => short[key] ?? key;
+// The driver as it reads inside a sentence: "crude oil futures", "the 10-year Treasury yield".
+export const driverPhrase = (key: string) => drivers[key]?.name ?? key;
 
 const share = (value: number) => `${(value * 100).toFixed(2)}%`;
 
@@ -72,7 +74,7 @@ export function describeDrivers(ranks: DriverRank[]): string | null {
         + (rest.length ? `; then ${rest.map(rank => `${driverName(rank.driver).toLowerCase()} ${share(rank.typicalEffect)}`).join(', ')}` : '') + '.';
 }
 
-// The day's biggest driver for the portfolio, with the runner-up for scale.
+// The window's biggest driver for the holdings in view, with the runner-up for scale.
 export function describeLeadMove(moves: DriverMove[], money: (value: number) => string): string | null {
     if (!moves.length)
         return null;

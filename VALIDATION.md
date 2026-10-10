@@ -1,5 +1,44 @@
 # Validation and phase status
 
+## Moves over a window, for the portfolio, a category or one holding (2026-10-10)
+
+All 420 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390
+pixels with the feature-tour portfolio in a temporary guest session, cleared afterwards: no
+browser errors, no sideways page scroll, no control under 44 pixels.
+
+- **Windows.** For the latest session (2026-10-09) the windows open on 10-08, 10-02, 09-09 and
+  07-09. On the 13 listed securities ($90,000 now): +$152.27, +$651.70, −$870.78 and +$140.82.
+  In each, the rows add up to the totals, change = value at the last close − value at the first,
+  and market + beyond = change, to the cent.
+- **The value entered is read as of the latest close.** This replaces return × entered value: on
+  a 10% rise a $1,000 holding was worth $909.09 before and gained $90.91, not $100. The two
+  agree to within the square of the return, so a day's figures move by cents.
+- **One holding.** XOM over the week: $9,708.18 to $10,000.00 (+$291.82), $43.74 from the stock
+  market, $20.97 the estimate through crude oil (+0.81%); 25 settled events and 91 with odds
+  that moved are linked to it.
+- **Wide quotes are not compared.** Before the rule, the day's biggest "moves" were a MacBook
+  price market at 96% to 45% and a mortgage-rate market at 4.5% to 57.5%: one side of an empty
+  book stepping back. Over one day of our own snapshots, 10 of 3,952 markets quoted within ten
+  cents at both ends moved 20 points or more, against 95 of 1,966 with a wider quote at either
+  end. With the rule the day lists 84 events (203 markets) instead of 160 (802), led by diesel,
+  WTI and CPI markets.
+- **Candlestick spreads.** Migration 014 adds the column; the job refetched every stored
+  candlestick with its spread in about four minutes (420,766 hourly, 406,460 daily, none left
+  without). Hourly closes are now kept twelve days, and the four extra days were fetched once
+  (192,615 readings), so a week's first reading is the 4:00 pm close and not the midnight
+  before. The database grew from 459 MB to 510 MB.
+- **Settled odds are not filtered by spread** (the backfill keeps only the midpoint). Across
+  the 12,539 settled markets they are well calibrated at the extremes: 13 of 5,362 given 3% or
+  less happened, and 1,775 of 1,788 given 97% or more did.
+- **Speed.** A request takes 0.6 to 0.8 s once connections are warm, most of it the odds
+  lookup. Bounding each close lookup to 30 days cut the price query from about 1 s to 0.045 s:
+  the prices table has 523 weekly chunks and an unbounded lookup opened all of them. The
+  response is 108 kB for a day and 571 kB for three months (382 settled events).
+- **Not available.** The 2-year and 10-year yields for 10-09 are not published yet, so rate
+  links show no estimate for windows ending that day. For a window that ends before the latest
+  session the market split is unavailable, as before: measurements that include later prices
+  are not used.
+
 ## Link floor at a tenth, and job locks that cannot be left behind (2026-10-10)
 
 All 378 tests and both TypeScript checks pass. The password-hashing test again exceeded its

@@ -67,11 +67,11 @@ export function selectEvents(events: ExposureEvent[], categories: Categories, se
     return symbols ? events.filter(event => event.links.some(link => (topicLinks || link.type !== 'Related') && linkSelected(link, symbols, theme))) : events;
 }
 
-// The chosen holdings' part of a day's move: sums of the rows shown, in whole cents. A figure is
-// left out when any chosen security lacks it, as the portfolio totals are.
+// The chosen holdings' part of a window's move: sums of the rows shown, in whole cents. A figure
+// is left out when any chosen security lacks it, as the portfolio totals are.
 export function selectionMove(rows: HoldingMove[]) {
     const priced = rows.filter(row => !row.assetType || row.assetType === 'security');
-    const sum = (field: 'actual' | 'fromMarket' | 'beyondMarket') => priced.length && priced.every(row => row[field] !== null)
+    const sum = (field: 'startValue' | 'endValue' | 'actual' | 'fromMarket' | 'beyondMarket') => priced.length && priced.every(row => row[field] !== null)
         ? priced.reduce((total, row) => total + Math.round(row[field]! * 100), 0) / 100 : null;
-    return { securities: priced.length, actual: sum('actual'), fromMarket: sum('fromMarket'), beyondMarket: sum('beyondMarket') };
+    return { securities: priced.length, startValue: sum('startValue'), endValue: sum('endValue'), actual: sum('actual'), fromMarket: sum('fromMarket'), beyondMarket: sum('beyondMarket') };
 }

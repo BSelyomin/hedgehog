@@ -10,6 +10,7 @@ import { getHoldings, saveHoldings, validateHoldings } from './services/holdings
 import { exposure, calendar, eventDetail } from './services/exposure.ts';
 import { isOddsRange, oddsHistory } from './services/odds-history.ts';
 import { moves } from './services/moves.ts';
+import { isMoveRange } from './services/move-data.ts';
 import { earnings, earningsList } from './services/earnings.ts';
 import { trackRecord } from './services/track-record.ts';
 // What a failed request tells the browser. Postgres reports 25006 when a write reaches a
@@ -66,7 +67,10 @@ app.get('/odds/:ticker', async (req, res) => { const range = req.query.range ?? 
 app.get('/moves', async (req, res) => { const input = req.query.date ?? req.query.day; const date = input === undefined ? undefined : String(input); if (date !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date)) {
     res.status(400).json({ error: 'Use a valid YYYY-MM-DD date', asOf: null });
     return;
-} res.json(await moves(res.locals.session, date)); });
+} const range = req.query.range ?? 'day'; if (!isMoveRange(range)) {
+    res.status(400).json({ error: 'range must be day, week, month or quarter', asOf: null });
+    return;
+} res.json(await moves(res.locals.session, date, undefined, range)); });
 app.get('/earnings', async (_req, res) => { res.json(await earningsList(res.locals.session)); });
 app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase())); });
 app.get('/track-record', async (_req, res) => { res.json(await trackRecord(res.locals.session)); });

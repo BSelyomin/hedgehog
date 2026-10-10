@@ -145,10 +145,16 @@ export interface DriverRank {
     driver: string;
     typicalEffect: number;
 }
-/** One driver's estimated part of a holding's or the portfolio's move on a day, in dollars. */
+/** One driver's estimated part of a holding's or the portfolio's move over a window, in dollars. */
 export interface DriverMove {
     driver: string;
     contribution: number;
+}
+/** How far a driver itself moved over a window: a return for prices, percentage points for yields. */
+export interface DriverChange {
+    driver: string;
+    kind: 'return' | 'difference';
+    change: number;
 }
 export interface HoldingLink extends Holding {
     type: LinkType;
@@ -335,37 +341,96 @@ export interface TrackRecordResponse extends Freshness {
     relevantCategories: {category: string; holdings: string[]}[];
     minSettled: number;
 }
+/** How far back a Moves window opens from its last close. */
+export type MoveRange = 'day' | 'week' | 'month' | 'quarter';
 export interface HoldingMove extends Holding {
     unavailableReasons: string[];
+    /** What the holding was worth at the window's first and last close, holding today's amount throughout. */
+    startValue: number | null;
+    endValue: number | null;
+    /** endValue − startValue. */
     actual: number | null;
     beta: number | null;
     fromMarket: number | null;
     beyondMarket: number | null;
     sourceDate: string | null;
     previousDate: string | null;
-    /** Each measured driver's estimated part of the day's move, largest first. They overlap and do not add up to the move. */
+    /** Each measured driver's estimated part of the window's move, largest first. They overlap and do not add up to the move. */
     drivers: DriverMove[];
 }
+/** A holding's link to an event on the Moves screen, without the evidence the event page carries. */
+export interface MoveLink {
+    symbol: string;
+    type: LinkType;
+    /** For a Measured link, the driver under which the holding's estimate for the window is listed. */
+    driver: string | null;
+    /** The themes this link holds through (see Categories). Empty for an unmeasured topic link. */
+    themes: string[];
+}
+/** One market's odds at the two ends of a window. Each is a reading from a source, with its time. */
 export interface OddsMove {
     ticker: string;
     title: string;
+    from: number;
+    to: number;
+    fromTime: string;
+    toTime: string;
     changePoints: number;
-    links: HoldingLink[];
+}
+/** An event with at least one market whose odds moved three points or more over the window. */
+export interface MovedEvent {
+    ticker: string;
+    title: string;
+    links: MoveLink[];
+    /** The markets that moved most, biggest first; `moved` counts all that moved. */
+    markets: OddsMove[];
+    moved: number;
+}
+export interface SettledMarket {
+    ticker: string;
+    title: string;
+    outcome: 0 | 1;
+    /** Kalshi's odds 24 hours before the market closed (see Track record). */
+    probabilityBefore: number;
+    closeTime: string;
+}
+/** An event whose markets closed inside the window and have settled. */
+export interface SettledEvent {
+    ticker: string;
+    /** Kalshi's event title when we hold it; otherwise the markets' own questions say what it was. */
+    title: string | null;
+    closeTime: string;
+    links: MoveLink[];
+    /** The markets furthest from what Kalshi expected, first; `settled` and `yes` count all of them. */
+    markets: SettledMarket[];
+    settled: number;
+    yes: number;
 }
 export interface MovesResponse extends Freshness {
-    /** Effective price session; an explicit request never falls back to another date. */
+    /** Effective price session, the window's last close; an explicit request never falls back to another date. */
     date: string;
     requestedDate: string | null;
+    range: MoveRange;
+    /** Session of the window's first close; null when no earlier close is stored. */
+    startDate: string | null;
     notes: string[];
     spyReturn: number | null;
     holdings: HoldingMove[];
+    /** Listed securities at the window's first and last close, and the difference. */
+    startValue: number | null;
+    endValue: number | null;
     total: number | null;
     fromMarket: number | null;
     beyondMarket: number | null;
-    oddsMoves: OddsMove[];
-    /** Driver estimates summed over holdings, largest first; the first is what mattered most that day. */
+    /** The instants Kalshi's odds are compared at: 4:00 pm New York on the two sessions. */
+    oddsWindow: { from: string; to: string } | null;
+    movedEvents: MovedEvent[];
+    settledEvents: SettledEvent[];
+    /** Driver estimates summed over holdings, largest first; the first is what mattered most over the window. */
     drivers: DriverMove[];
-    /** Daily drivers with no published change for this date yet, so they could not be compared. */
+    /** How far each compared driver itself moved over the window. */
+    driverChanges: DriverChange[];
+    /** Daily drivers with no published reading at both ends of the window, so they could not be compared. */
     missingDrivers: string[];
     /** Value of holdings with no daily price (cash, bonds held directly, property); the totals leave them out. */
     unpricedValue: number;

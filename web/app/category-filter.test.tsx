@@ -67,11 +67,12 @@ describe('category selection', () => {
         expect(linkSelected(events[0].links[2], new Set(['TLT']), 'oil')).toBe(false);
     });
     it('adds up the chosen holdings’ move in whole cents and withholds a figure a holding lacks', () => {
-        const row = (symbol: string, actual: number | null, fromMarket: number | null, extra: Partial<HoldingMove> = {}): HoldingMove => ({ symbol, valueUsd: 1000, actual, beta: 1, fromMarket, beyondMarket: actual === null || fromMarket === null ? null : Math.round((actual - fromMarket) * 100) / 100, sourceDate: null, previousDate: null, unavailableReasons: [], drivers: [], ...extra });
-        expect(selectionMove([row('XOM', 10.1, 4.05), row('USO', -3.33, 1.11), row('HOME', null, null, { assetType: 'property' })])).toEqual({ securities: 2, actual: 6.77, fromMarket: 5.16, beyondMarket: 1.61 });
-        expect(selectionMove([row('XOM', 10.1, 4.05), row('NEW', 2, null)])).toEqual({ securities: 2, actual: 12.1, fromMarket: null, beyondMarket: null });
-        expect(selectionMove([row('XOM', 10.1, 4.05), row('GAP', null, null)]).actual).toBeNull();
-        expect(selectionMove([row('HOME', null, null, { assetType: 'property' })])).toEqual({ securities: 0, actual: null, fromMarket: null, beyondMarket: null });
+        // Each holding is worth 1,000 at the last close; what it was worth at the first follows from its move.
+        const row = (symbol: string, actual: number | null, fromMarket: number | null, extra: Partial<HoldingMove> = {}): HoldingMove => ({ symbol, valueUsd: 1000, startValue: actual === null ? null : Math.round((1000 - actual) * 100) / 100, endValue: actual === null ? null : 1000, actual, beta: 1, fromMarket, beyondMarket: actual === null || fromMarket === null ? null : Math.round((actual - fromMarket) * 100) / 100, sourceDate: null, previousDate: null, unavailableReasons: [], drivers: [], ...extra });
+        expect(selectionMove([row('XOM', 10.1, 4.05), row('USO', -3.33, 1.11), row('HOME', null, null, { assetType: 'property' })])).toEqual({ securities: 2, startValue: 1993.23, endValue: 2000, actual: 6.77, fromMarket: 5.16, beyondMarket: 1.61 });
+        expect(selectionMove([row('XOM', 10.1, 4.05), row('NEW', 2, null)])).toEqual({ securities: 2, startValue: 1987.9, endValue: 2000, actual: 12.1, fromMarket: null, beyondMarket: null });
+        expect(selectionMove([row('XOM', 10.1, 4.05), row('GAP', null, null)])).toMatchObject({ startValue: null, endValue: null, actual: null });
+        expect(selectionMove([row('HOME', null, null, { assetType: 'property' })])).toEqual({ securities: 0, startValue: null, endValue: null, actual: null, fromMarket: null, beyondMarket: null });
     });
 });
 
