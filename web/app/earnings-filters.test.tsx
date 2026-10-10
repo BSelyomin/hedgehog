@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { EarningsResponse, ExposureEvent, ExposureResponse, Market } from '../../shared/types';
 import { defaultEarningsFilters, earningsCompanies, earningsRows, filterEarningsRows, type EarningsFilters } from './screens/earnings-filters';
-import { EarningsMarkets, EarningsOutcome } from './screens/earnings';
+import { EarningsHistory, EarningsMarkets, EarningsOutcome } from './screens/earnings';
 
 function market(ticker: string, kind: Market['kind'], probability: number | null, band: Market['trust']['band'], total: number | null): Market {
     return { ticker, title: `Test ${ticker}`, subtitle: ticker, kind, probability, spread: null, asOf: null,
@@ -11,7 +11,7 @@ function market(ticker: string, kind: Market['kind'], probability: number | null
 const range: ExposureEvent = { ticker: 'RANGE', title: 'Apple revenue ranges', category: 'Companies', closeTime: '2026-11-03T00:00:00Z', eventTime: '2026-11-03T00:00:00Z', eventTimeSource: 'close', share: .5, linkedValue: 100,
     links: [{ symbol: 'AAPL', valueUsd: 100, type: 'Direct', evidence: 'Company tag', sensitivity: null }], mutuallyExclusive: true,
     markets: [market('LOWER', 'bracket', .2, 'Low', 0), market('UPPER', 'bracket', .4, 'High', 85)] };
-const calls: ExposureEvent = { ...range, ticker: 'CALL', title: 'Apple call topics', category: 'Mentions', closeTime: '2026-12-01T00:00:00Z', mutuallyExclusive: false,
+const calls: ExposureEvent = { ...range, ticker: 'CALL', title: 'Apple call topics', category: 'Mentions', closeTime: '2026-12-15T00:00:00Z', eventTime: '2026-12-01T00:00:00Z', eventTimeSource: 'occurrence', mutuallyExclusive: false,
     markets: [market('AI', 'mention', null, 'High', 90), market('GROWTH', 'kpi', 0, null, null)] };
 const data: EarningsResponse = { symbol: 'AAPL', events: [range, calls], asOf: null,
     ladders: [{ eventTicker: range.ticker, rawSum: .6, outcomes: [{ ticker: 'LOWER', title: 'LOWER', probability: 1 / 3 }, { ticker: 'UPPER', title: 'UPPER', probability: 2 / 3 }] }],
@@ -37,7 +37,7 @@ describe('earnings filters', () => {
         expect(tickers({ quotes: 'Available', trust: 'Unavailable' })).toEqual(['GROWTH']);
         expect(tickers({ trust: 'Low' })).toEqual(['LOWER']);
     });
-    it('filters event close windows and category together', () => {
+    it('filters event date windows and category together, using the event date rather than the later market close', () => {
         expect(tickers({ days: 7 })).toEqual(['LOWER', 'UPPER']);
         expect(tickers({ days: 7, category: 'Mentions' })).toEqual([]);
         expect(tickers({ days: 30, category: 'Mentions' })).toEqual(['AI', 'GROWTH']);
@@ -80,5 +80,23 @@ describe('earnings filters', () => {
         expect(paged).toContain('25 total across 1 event<');
         expect(paged).toContain('Earnings page (top)');
         expect(paged).toContain(data.historyNote);
+    });
+    it('shows past report moves with their SEC source, and only the note when none are loaded', () => {
+        const history = [
+            { filingDate: '2026-07-30', sourceUrl: 'https://www.sec.gov/Archives/edgar/data/320193/000032019326000018/0000320193-26-000018-index.htm', beforeDate: '2026-07-29', closeBefore: 200, afterDate: '2026-07-31', closeAfter: 210, move: .05 },
+            { filingDate: '2026-04-30', sourceUrl: 'https://www.sec.gov/Archives/edgar/data/320193/000032019326000011/0000320193-26-000011-index.htm', beforeDate: '2026-04-29', closeBefore: 200, afterDate: '2026-05-01', closeAfter: 190, move: -.05 },
+            { filingDate: '2026-10-09', sourceUrl: 'https://www.sec.gov/Archives/edgar/data/320193/pending/pending-index.htm', beforeDate: '2026-10-08', closeBefore: 220, afterDate: null, closeAfter: null, move: null },
+        ];
+        const html = renderToStaticMarkup(<EarningsHistory data={{ ...data, history, historyNote: 'Report dates are SEC filing dates.' }}/>);
+        expect(html).toContain('href="https://www.sec.gov/Archives/edgar/data/320193/000032019326000018/0000320193-26-000018-index.htm"');
+        expect(html).toContain('+5.0%');
+        expect(html).toContain('-5.0%');
+        expect(html).toContain('$210.00');
+        // A report with no later close yet shows no move rather than a guess.
+        expect(html.match(/Unavailable/g)!.length).toBeGreaterThanOrEqual(3);
+        expect(html).toContain('Report dates are SEC filing dates.');
+        const empty = renderToStaticMarkup(<EarningsHistory data={data}/>);
+        expect(empty).not.toContain('<table');
+        expect(empty).toContain(data.historyNote);
     });
 });

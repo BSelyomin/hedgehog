@@ -1,7 +1,7 @@
 'use client';
 import { useRef, useState } from 'react';
 import type { ExposureResponse, EarningsResponse } from '../../../shared/types';
-import { percent, dateText, href, useData, Card, Fresh, Status, Empty, TrustBadge, Progress } from '../common';
+import { money, percent, dateText, href, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, EventDate } from '../common';
 import { EarningsControls } from './earnings-controls';
 import { defaultEarningsFilters, earningsCompanies, earningsRows, filterEarningsRows, type EarningsFilters, type EarningsRow } from './earnings-filters';
 
@@ -58,9 +58,9 @@ export function EarningsMarkets({ data }: { data: EarningsResponse }) {
             {pages > 1 && <EarningsPagination page={current} pages={pages} onChange={changePage} position="top"/>}
             {shown.length ? shown.map(row => <EarningsOutcome key={row.market.ticker} row={row}/>) : <Empty>{rows.length ? 'No outcomes match these filters. Try resetting the filters or widening the date range.' : 'No active company outcomes are available for this holding.'}</Empty>}
             {pages > 1 && <EarningsPagination page={current} pages={pages} onChange={changePage} position="bottom"/>}
-            <details className="earnings-help"><summary>How to read these outcomes</summary><p className="note">Ordinary odds are Kalshi bid–ask midpoints. Eligible mutually exclusive bracket outcomes also show a share scaled across the full ladder. Search, filters and page changes never rescale those shares. Probability sorting uses raw midpoints for every outcome. Event close is the earliest active market close in the event, not a verified earnings-report date. Quote availability does not imply that a quote is recent; check its timestamp.</p></details>
+            <details className="earnings-help"><summary>How to read these outcomes</summary><p className="note">Ordinary odds are Kalshi bid–ask midpoints. Eligible mutually exclusive bracket outcomes also show a share scaled across the full ladder. Search, filters and page changes never rescale those shares. Probability sorting uses raw midpoints for every outcome. Event dates are Kalshi’s own event time where it gives one, otherwise the market close; each outcome says which. Past report dates in the table below come from SEC filings. Quote availability does not imply that a quote is recent; check its timestamp.</p></details>
         </Card>
-        <Card><h2>Past earnings-report moves</h2><p className="note">{data.historyNote}</p></Card>
+        <EarningsHistory data={data}/>
     </>;
 }
 
@@ -68,12 +68,28 @@ export function EarningsOutcome({ row: { event, market, ladder, scaledProbabilit
     const probability = scaledProbability ?? market.probability;
     return <article className="earnings-outcome" data-ticker={market.ticker}>
         <div className="earnings-outcome-main"><p className="note earnings-event-title">{event.title}</p><h3><a href={href('event', market.ticker)}>{market.subtitle || market.title}</a></h3>
-            <p className="note"><span className="chip plain">{market.kind === 'mention' ? 'Call mention' : market.kind === 'bracket' ? 'Bracket / range' : 'Company market'}</span> · {event.category}<br/>Event closes <time dateTime={event.closeTime}>{dateText(event.closeTime, true)}</time></p>
+            <p className="note"><span className="chip plain">{market.kind === 'mention' ? 'Call mention' : market.kind === 'bracket' ? 'Bracket / range' : 'Company market'}</span> · {event.category}<br/><EventDate event={event} showYear/></p>
             {ladder && scaledProbability !== null && <p className="note">Full ladder: {ladder.outcomes.length} outcomes · raw midpoint sum {percent(ladder.rawSum)}. Shares are scaled to 100% across that full ladder.</p>}
         </div>
         <div className="earnings-odds"><strong className="mono">{percent(probability)}</strong><p className="note">{scaledProbability !== null ? 'Scaled bracket share' : 'Yes · Kalshi midpoint'}</p>{probability !== null && <Progress value={probability}/>}{scaledProbability !== null && <p className="note">Raw midpoint: {percent(market.probability)}</p>}</div>
         <div className="earnings-trust"><TrustBadge market={market}/><p className="note">{market.asOf ? <>Quote updated <time dateTime={market.asOf}>{dateText(market.asOf, true)}</time></> : 'No quote timestamp available'}</p></div>
     </article>;
+}
+
+const dayText = (date: string | null) => date ? new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : 'Unavailable';
+
+export function EarningsHistory({ data }: { data: EarningsResponse }) {
+    return <Card className="earnings-history"><h2>Past earnings-report moves</h2>
+        {data.history && <div className="scroll"><table><thead><tr><th>Results filed with the SEC</th><th>Close before</th><th>Close after</th><th>Move</th></tr></thead><tbody>
+            {data.history.map(report => <tr key={report.sourceUrl}>
+                <td><a href={report.sourceUrl} target="_blank" rel="noreferrer">{dayText(report.filingDate)}</a></td>
+                <td className="amount">{money(report.closeBefore)}<span className="note"> · {dayText(report.beforeDate)}</span></td>
+                <td className="amount">{money(report.closeAfter)}<span className="note"> · {dayText(report.afterDate)}</span></td>
+                <td className={`amount ${report.move !== null && report.move < 0 ? 'orange' : 'blue'}`}>{report.move !== null && report.move > 0 ? '+' : ''}{percent(report.move)}</td>
+            </tr>)}
+        </tbody></table></div>}
+        <p className="note">{data.historyNote}</p>
+    </Card>;
 }
 
 function EarningsPagination({ page, pages, onChange, position }: { page: number; pages: number; onChange: (page: number) => void; position: 'top' | 'bottom' }) {

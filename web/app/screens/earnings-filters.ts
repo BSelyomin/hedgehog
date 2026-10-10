@@ -42,10 +42,10 @@ export function filterEarningsRows(rows: EarningsRow[], filters: EarningsFilters
         if (filters.trust !== 'All' && (filters.trust === 'Unavailable' ? market.trust.total !== null : market.trust.total === null || market.trust.band !== filters.trust)) return false;
         if (filters.quotes !== 'All' && (filters.quotes === 'Available') !== (market.probability !== null)) return false;
         if (filters.category && event.category !== filters.category) return false;
-        if (filters.days && !(Date.parse(event.closeTime) >= now && Date.parse(event.closeTime) <= now + filters.days * 86400000)) return false;
+        if (filters.days && !(Date.parse(event.eventTime) >= now && Date.parse(event.eventTime) <= now + filters.days * 86400000)) return false;
         return !term || [event.title, event.ticker, event.category, market.title, market.subtitle, market.ticker].some(text => text.toLowerCase().includes(term));
     }).sort((a, b) => {
-        const date = Date.parse(a.event.closeTime) - Date.parse(b.event.closeTime);
+        const date = Date.parse(a.event.eventTime) - Date.parse(b.event.eventTime);
         let order = 0;
         // Missing values always come last, including when sorting ascending.
         const compareNullable = (x: number | null, y: number | null, descending = true) => x === null ? y === null ? 0 : 1 : y === null ? -1 : descending ? y - x : x - y;

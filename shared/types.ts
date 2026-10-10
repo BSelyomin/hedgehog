@@ -190,6 +190,17 @@ export interface MovesResponse extends Freshness {
     beyondMarket: number | null;
     oddsMoves: OddsMove[];
 }
+/** The stock's move across one past results announcement. Null fields mean the closes were not available. */
+export interface EarningsReportMove {
+    /** SEC filing date (YYYY-MM-DD) of the 8-K carrying Item 2.02. */
+    filingDate: string;
+    sourceUrl: string;
+    beforeDate: string | null;
+    closeBefore: number | null;
+    afterDate: string | null;
+    closeAfter: number | null;
+    move: number | null;
+}
 export interface EarningsResponse extends Freshness {
     symbol: string;
     events: ExposureEvent[];
@@ -202,7 +213,7 @@ export interface EarningsResponse extends Freshness {
             probability: number;
         }[];
     }[];
-    history: null;
+    history: EarningsReportMove[] | null;
     historyNote: string;
 }
 export interface BriefingResponse extends Freshness {
