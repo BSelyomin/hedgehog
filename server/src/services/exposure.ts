@@ -44,7 +44,10 @@ export async function exposure(session: string): Promise<ExposureResponse> {
         (t.tag=ANY($1) OR t.tag IN(SELECT tag FROM stock_tags WHERE symbol=ANY($1)) OR t.tag=ANY($2))`;
     const [events, markets, seriesTags, stockTags, measurements, record] = await Promise.all([
         query<EventRow>(`SELECT e.* FROM events e WHERE e.series_ticker IN(${linkedSeries}) AND EXISTS(SELECT 1 FROM markets m WHERE m.event_ticker=e.ticker AND m.status='active' AND m.close_time>now())`, [symbols, assetTags]),
-        query<MarketRow>(`SELECT m.*,s.ts,s.yes_bid,s.yes_ask,s.mid,s.volume_24h,s.open_interest FROM markets m LEFT JOIN LATERAL(SELECT * FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON true WHERE m.series_ticker IN(${linkedSeries}) AND m.status='active' AND m.close_time>now()`, [symbols, assetTags]),
+        // Pick the linked markets first, then look up each one's latest snapshot. Left to itself the
+        // planner looked up a snapshot for every market in the table before filtering.
+        query<MarketRow>(`WITH linked AS MATERIALIZED (SELECT m.* FROM markets m WHERE m.series_ticker IN(${linkedSeries}) AND m.status='active' AND m.close_time>now())
+            SELECT m.*,s.ts,s.yes_bid,s.yes_ask,s.mid,s.volume_24h,s.open_interest FROM linked m LEFT JOIN LATERAL(SELECT * FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON true`, [symbols, assetTags]),
         query<{
             series_ticker: string;
             tag: string;
