@@ -1,7 +1,7 @@
 'use client';
 import { useId, useRef, useState } from 'react';
 import type { CalendarResponse, ExposureResponse } from '../../../shared/types';
-import { percent, href, useData, Card, Fresh, Status, Empty, Progress, EventList } from '../common';
+import { percent, href, useData, Card, Fresh, Status, Empty, Progress, EventList, ReloadButton } from '../common';
 import { defaultCalendarFilters, filterCalendarEvents, type CalendarFilters } from './calendar-filters';
 
 export function Calendar() {
@@ -12,7 +12,7 @@ export function Calendar() {
     const [pageSize, setPageSize] = useState(10);
     const listHeading = useRef<HTMLHeadingElement>(null);
     const filtersId = useId();
-    const { data, error } = useData<CalendarResponse | ExposureResponse>(days ? `/calendar?days=${days}` : '/exposure');
+    const { data, error, reload } = useData<CalendarResponse | ExposureResponse>(days ? `/calendar?days=${days}` : '/exposure');
     const events = filterCalendarEvents(data?.events ?? [], filters);
     const pageCount = Math.max(1, Math.ceil(events.length / pageSize));
     const currentPage = Math.min(page, pageCount);
@@ -32,7 +32,7 @@ export function Calendar() {
         listHeading.current?.scrollIntoView({ block: 'start' });
     }
     return <>
-        <h1>Event calendar</h1><p>Explore the events linked to your holdings by event date and portfolio reach.</p>
+        <div className="row"><h1>Event calendar</h1><ReloadButton onReload={() => reload()}/></div><p>Explore the events linked to your holdings by event date and portfolio reach.</p>
         <Card className="calendar-filters">
             <div className="calendar-toolbar">
                 <label>Search events or holdings<input type="search" placeholder="Event, outcome, category or ticker…" value={filters.search} onChange={event => update('search', event.target.value)}/></label>

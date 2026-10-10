@@ -1,25 +1,25 @@
 'use client';
 import { useId, useState } from 'react';
 import type { EventResponse, HoldingLink, Market } from '../../../shared/types';
-import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip, EventDate } from '../common';
+import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip, EventDate, ReloadButton } from '../common';
 import { OddsChart } from './odds-chart';
 import { describeCalculation, describeImportance, describeSensitivity } from './sensitivity';
 
 export function EventPage({ ticker }: {
     ticker: string;
 }) {
-    const { data, error } = useData<EventResponse>(`/event/${encodeURIComponent(ticker)}`);
+    const { data, error, reload } = useData<EventResponse>(`/event/${encodeURIComponent(ticker)}`);
     return <>
         {!data && <h1>Event details</h1>}
-        <a href="#calendar">Calendar</a>
+        <div className="row"><a href="#calendar">Calendar</a><ReloadButton onReload={() => reload()}/></div>
         <Status error={error} loading={!data && !error}/>
-        {data && <EventDetail key={ticker} data={data} requestedTicker={ticker}/>}
+        {data && <EventDetail key={ticker} data={data} requestedTicker={ticker} onReloadReporting={() => reload(`/event/${encodeURIComponent(ticker)}/reload`)}/>}
     </>;
 }
 
 const OUTCOMES_PER_PAGE = 5;
 
-export function EventDetail({ data, requestedTicker }: { data: EventResponse; requestedTicker: string }) {
+export function EventDetail({ data, requestedTicker, onReloadReporting }: { data: EventResponse; requestedTicker: string; onReloadReporting: () => Promise<unknown> }) {
     const historyId = useId();
     const markets = data.event.markets;
     const initialIndex = Math.max(0, markets.findIndex(m => m.ticker === requestedTicker));
@@ -73,10 +73,11 @@ export function EventDetail({ data, requestedTicker }: { data: EventResponse; re
                     </Card>
                 </div>
                 <div>
+                    <Card><div className="row"><h2>Reporting context</h2><ReloadButton label="Reload reporting" onReload={onReloadReporting}/></div><p className="note">Saved reporting is separate from current odds. Unchanged sources reuse the cached summary.</p></Card>
                     <Card><h2>Why this trust score</h2>{market && <><p className="note">{market.subtitle || market.title}</p><TrustBreakdown market={market}/></>}</Card>
                     {data.summary && <Card>
                         <h2>Why the odds moved</h2><span className="chip plain">AI summary</span>
-                        <p>{data.summary.text}</p>
+                        <p>{data.summary.text}</p>{data.summary.generatedAt && <p className="note">AI snapshot saved <time dateTime={data.summary.generatedAt}>{dateText(data.summary.generatedAt, true)}</time>. Current odds may differ.</p>}
                         {data.summary.sources.map(s => <p key={s.url}><a href={s.url} target="_blank" rel="noreferrer">{s.title}</a></p>)}
                         <p className="note">Generated from linked reporting. Check the sources.</p>
                     </Card>}

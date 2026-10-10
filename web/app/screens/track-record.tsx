@@ -1,17 +1,17 @@
 'use client';
 import { useState } from 'react';
 import type { TrackRecordResponse, CategoryRecord, ExposureResponse, HistorySubject } from '../../../shared/types';
-import { percent, number, dateText, useData, Card, Fresh, Status, Empty, href, Progress, LinkChip, linkLabel } from '../common';
+import { percent, number, dateText, useData, Card, Fresh, Status, Empty, href, Progress, LinkChip, linkLabel, ReloadButton } from '../common';
 const historyDate = (s:string|null) => s ? new Date(s).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : 'unavailable';
 
 export function TrackRecord() {
-    const {data,error}=useData<TrackRecordResponse>('/track-record');
-    const {data:portfolio}=useData<ExposureResponse>('/exposure');
+    const {data,error,reload}=useData<TrackRecordResponse>('/track-record');
+    const {data:portfolio,reload:reloadPortfolio}=useData<ExposureResponse>('/exposure');
     const [selected,setSelected]=useState('all');
     const subject=data?.subjects.find(s=>s.id===selected) ?? data?.subjects[0];
     const category=subject?.record;
     const event=portfolio?.events.filter(e=>subject?.id!=='all' && subject?.seriesTickers.includes(e.seriesTicker??'')).sort((a,b)=>Date.parse(a.closeTime)-Date.parse(b.closeTime))[0];
-    return <><h1>How much evidence supports these odds?</h1><p>See how earlier Kalshi predictions compared with real outcomes, before you put weight on today's odds.</p>
+    return <><div className="row"><h1>How much evidence supports these odds?</h1><ReloadButton onReload={() => Promise.all([reload(), reloadPortfolio()])}/></div><p>See how earlier Kalshi predictions compared with real outcomes, before you put weight on today's odds.</p>
     <Status error={error} loading={!data&&!error}/><Fresh asOf={data?.asOf??null}/>
     {data && <><div className="toolbar"><label>What are you following? <select value={subject?.id??'all'} onChange={e=>setSelected(e.target.value)}>{data.subjects.map(s=><option key={s.id} value={s.id}>{s.title}{!s.record?' — no verified history yet':''}</option>)}</select></label></div>
     {subject?.id==='all' && <p className="note">Choose a subject above to find evidence for the odds you're watching and see its connection to your holdings. All history gives you the full sample.</p>}

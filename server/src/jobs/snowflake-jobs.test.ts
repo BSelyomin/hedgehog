@@ -1,3 +1,4 @@
+import { contentHash } from '../services/ai-cache.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 
@@ -5,12 +6,13 @@ const mocks = vi.hoisted(() => ({
     query: vi.fn(), seedFile: vi.fn(), cortexJson: vi.fn(), searchSources: vi.fn(),
     configured: vi.fn(), searchConfigured: vi.fn(), readFile: vi.fn()
 }));
-vi.mock('../db.ts', () => ({ query: mocks.query }));
+vi.mock('../db.ts', () => ({ query: mocks.query, pool: {} }));
 vi.mock('../seed.ts', () => ({ seedFile: mocks.seedFile }));
 vi.mock('./prices.ts', () => ({ yahoo: {} }));
 vi.mock('node:fs/promises', () => ({ readFile: mocks.readFile }));
 vi.mock('../services/snowflake.ts', async importOriginal => ({
     ...await importOriginal<typeof import('../services/snowflake.ts')>(),
+    cortexResult: async (_instructions: string, input: unknown) => ({ value: { result: await mocks.cortexJson(), input }, createdAt: '2026-10-09T12:00:00.000Z' }),
     cortexJson: mocks.cortexJson, searchSources: mocks.searchSources,
     snowflakeConfigured: mocks.configured, snowflakeSearchConfigured: mocks.searchConfigured
 }));
@@ -114,7 +116,7 @@ describe('Snowflake jobs', () => {
         await riskFactors('AAPL', 'filing.txt', 'https://www.sec.gov/filing');
         expect(mocks.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO stock_tags'), ['AAPL', 'oil']);
         expect(mocks.query).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO risk_factors'),
-            ['AAPL', 'https://www.sec.gov/filing', 'Filing risk factors']);
+            ['AAPL', 'https://www.sec.gov/filing', 'Filing risk factors', contentHash({ symbol: 'AAPL', sourceUrl: 'https://www.sec.gov/filing', text: 'Filing risk factors', allowed: ['oil', 'AAPL'] })]);
     });
 
     it('does not cache a malformed filing response as successful', async () => {
@@ -124,9 +126,9 @@ describe('Snowflake jobs', () => {
     });
 
     it('reuses cached filings without calling Snowflake', async () => {
-        mocks.query.mockResolvedValueOnce([{ symbol: 'AAPL' }]);
+        mocks.query.mockResolvedValueOnce([{ input_hash: contentHash({ symbol: 'AAPL', sourceUrl: 'https://www.sec.gov/filing', text: 'Filing risk factors', allowed: ['oil', 'AAPL'] }) }]);
         await riskFactors('AAPL', 'filing.txt', 'https://www.sec.gov/filing');
-        expect(mocks.readFile).not.toHaveBeenCalled();
+        expect(mocks.readFile).toHaveBeenCalledWith('filing.txt', 'utf8');
         expect(mocks.cortexJson).not.toHaveBeenCalled();
     });
 
@@ -145,7 +147,7 @@ describe('Snowflake jobs', () => {
         mocks.cortexJson.mockResolvedValue({ text: 'Odds are 38%.', sourceIds: ['source-0'] });
         await summaries();
         expect(mocks.query).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO summaries'), [
-            'OIL', 'Odds are 38%.', JSON.stringify([{ title: passage.title, url: passage.url }]), JSON.stringify({ event, markets })
+            'OIL', 'Odds are 38%.', JSON.stringify([{ title: passage.title, url: passage.url }]), JSON.stringify({ event, markets }), '2026-10-09T12:00:00.000Z'
         ]);
     });
 
@@ -154,7 +156,8 @@ describe('Snowflake jobs', () => {
             .mockResolvedValueOnce([{ probability_points: 38 }]);
         mocks.cortexJson.mockResolvedValue({ text: 'Odds are 99%.', sourceIds: ['source-0'] });
         await summaries();
-        expect(mocks.query).toHaveBeenCalledTimes(2);
+        expect(mocks.query).toHaveBeenCalledTimes(3);
+        expect(mocks.query).toHaveBeenLastCalledWith('DELETE FROM summaries WHERE event_ticker=$1', ['OIL']);
     });
 });
 

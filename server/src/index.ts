@@ -1,5 +1,5 @@
 import { createApp } from './app.ts';
-import { pool } from './db.ts';
+import { closePools } from './db.ts';
 import { databaseReadOnly, migrate, pendingMigrations } from './migrate.ts';
 import { scheduler } from './jobs/scheduler.ts';
 const app = createApp();
@@ -33,10 +33,10 @@ try {
         await startWriting();
     const server = app.listen(Number(process.env.PORT ?? 4000), '0.0.0.0', () => console.log('Hedgehog API listening'));
     for (const signal of ['SIGINT', 'SIGTERM'])
-        process.on(signal, () => { clearInterval(recheck); tasks.forEach(t => t.stop()); server.close(() => { void pool.end(); }); });
+        process.on(signal, () => { clearInterval(recheck); tasks.forEach(t => t.stop()); server.close(() => { void closePools(); }); });
 }
 catch {
     console.error('Startup failed. Set DATABASE_URL and ensure TimescaleDB is reachable.');
-    await pool.end();
+    await closePools();
     process.exitCode = 1;
 }

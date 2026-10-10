@@ -25,7 +25,7 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
         try {
             await api<HoldingsResponse>('/holdings', { method: 'POST', body: JSON.stringify({ holdings: [] }) });
             setHoldings([]); setSymbol(''); setAmount(''); setSearch(''); setCleared(true);
-            setNotice('Portfolio cleared. Add holdings or import a CSV to start again.');
+            setNotice('Manual holdings cleared. Connected brokerage holdings are unchanged.');
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -38,7 +38,7 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
     const fixedTerm = assetType === 'treasury' || assetType === 'bond';
     const visibleHoldings = holdings.filter(holding => holding.symbol.toLowerCase().includes(search.trim().toLowerCase()));
     useEffect(() => { if (saved.data)
-        setHoldings(saved.data.holdings); }, [saved.data]);
+        setHoldings(saved.data.manualHoldings ?? saved.data.holdings); }, [saved.data]);
     function add(e: FormEvent) {
         e.preventDefault();
         const ticker = symbol.trim().toUpperCase(), value = Number(amount);
@@ -88,6 +88,7 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
             </div>
             <Card className="portfolio-editor">
                 <h2>Add your holdings</h2>
+                <p className="note">Manual entry and CSV imports remain available. <a href="#brokerages">Connect a brokerage →</a></p>{!!saved.data?.brokerageHoldings?.length && <div><p className="note">Connected holdings (read-only; {saved.data.sandbox ? 'simulated sandbox data' : 'SnapTrade data'}). Values are quantity × provider price. Manual entries add to these values; remove any duplicate entries.</p>{saved.data.brokerageHoldings.map(h => <div className="row" key={h.symbol}><strong className="mono">{h.symbol}</strong><span className="mono">{money(h.valueUsd)}</span></div>)}<a href="#brokerages">Manage connected accounts</a></div>}
                 <form onSubmit={add} className="holding-form">
                     <label>Type<select disabled={busy || !saved.data} value={assetType} onChange={e => { setAssetType(e.target.value as AssetType); setError(''); }}>{(Object.keys(assetLabel) as AssetType[]).map(type => <option key={type} value={type}>{assetLabel[type]}</option>)}</select></label>
                     <label>{assetType === 'security' ? 'Ticker' : 'Short name'}<input disabled={busy || !saved.data} required value={symbol} onChange={e => setSymbol(e.target.value)} placeholder={assetType === 'security' ? 'e.g. AAPL' : assetType === 'property' ? 'e.g. HOME' : assetType === 'cash' ? 'e.g. SAVINGS' : 'e.g. TNOTE-2031'} maxLength={15}/></label>
@@ -115,18 +116,18 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
                     {!holdings.length ? <Empty>Add what you own to see which events reach your portfolio.</Empty> : !visibleHoldings.length && <Empty>No holdings match your search.</Empty>}
                 </div>
                 <div className="portfolio-actions">
-                    <label>Import CSV (symbol,valueUsd, plus optional type and terms)<input disabled={busy || !saved.data} type="file" accept=".csv,text/csv" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; void importCsv(file); }}/></label>
+                    <label>Import CSV (symbol,valueUsd) · optional type and terms<input disabled={busy || !saved.data} type="file" accept=".csv,text/csv" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; void importCsv(file); }}/></label>
                     {error && <p className="error" role="alert">{error}</p>}
                     <div className="actions">
-                        <button className="primary" onClick={() => void save()} disabled={busy || !saved.data || !holdings.length}>{busy ? 'Saving…' : 'Map my exposure →'}</button>
-                        <button onClick={() => void clearPortfolio()} disabled={busy || !saved.data || (!holdings.length && (cleared || !saved.data.holdings.length))}>Clear portfolio</button>
+                        <button className="primary" onClick={() => void save()} disabled={busy || !saved.data || !holdings.length && !saved.data.brokerageHoldings?.length}>{busy ? 'Saving…' : 'Map my exposure →'}</button>
+                        <button onClick={() => void clearPortfolio()} disabled={busy || !saved.data || (!holdings.length && (cleared || !(saved.data.manualHoldings ?? saved.data.holdings).length))}>Clear manual / CSV holdings</button>
                     </div>
                 </div>
                 <p className="note">CSV columns: <span className="mono">{CSV_COLUMNS}</span>. Stocks and funds need only the first two; the rest describe cash, Treasuries, bonds and property. Try <span className="mono">examples/feature-tour.csv</span>.</p>
                 {notice && <p role="status">{notice}</p>}
-                <p className="note">Clear portfolio immediately removes saved holdings {user ? 'from your account on every device' : 'for this guest session'}.</p>
+                <p className="note">Clearing immediately removes manual and CSV holdings {user ? 'from your account on every device' : 'for this guest session'}.</p>
                 <p className="note">Hedgehog reads odds and prices; it never trades. {user ? `Your portfolio is saved to ${user.email}.` : <>Your guest portfolio is stored on the server and linked to this browser. <a href="#signup">Create an account</a> to keep it across devices.</>}</p>
-                <Fresh asOf={cleared ? null : saved.data?.asOf ?? null}/>
+                <Fresh asOf={cleared && !saved.data?.brokerageHoldings?.length ? null : saved.data?.asOf ?? null}/>
             </Card>
         </div>
         <h2>How it works</h2>

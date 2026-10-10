@@ -1,20 +1,23 @@
 'use client';
 import { useState } from 'react';
 import type { MovesResponse } from '../../../shared/types';
-import { money, percent, number, href, useData, assetLabel, Card, Fresh, Status, Empty, LinkChip } from '../common';
+import { money, percent, number, href, useData, assetLabel, Card, Fresh, Status, Empty, LinkChip, ReloadButton } from '../common';
 import { describeLeadMove, driverName } from './sensitivity';
 
 export function Moves() {
     const [search, setSearch] = useState('');
     // No date asks the server for the latest completed session, so the page never opens on a day whose close is not in yet.
     const [date, setDate] = useState('');
-    const { data, error } = useData<MovesResponse>(date ? `/moves?date=${date}` : '/moves');
+    const { data, error, reload } = useData<MovesResponse>(date ? `/moves?date=${date}` : '/moves');
     const term = search.trim().toLowerCase();
     const rows = data?.holdings.filter(h => h.symbol.toLowerCase().includes(term)) ?? [];
     return <>
         <div className="row"><div><h1>What moved your portfolio</h1><p>Whole market, your individual stocks, and events that moved the same day</p></div><label>Price date<input type="date" value={date || data?.date || ''} onChange={e => setDate(e.target.value)}/></label></div>
+        <div className="actions"><ReloadButton onReload={() => reload()}/><button disabled={!date} onClick={() => setDate('')}>Latest trading session</button></div>
         <Status error={error} loading={!data && !error}/><Fresh asOf={data?.asOf ?? null}/>
         {data && <>
+            {data.notes.map(note => <p className="note" key={note}>{note}</p>)}
+            <p className="note">Price session: <time dateTime={data.date}>{data.date}</time>. An explicitly selected date uses only that session.</p>
             <div className="stats">
                 <Card><span className="muted">Portfolio dollar move</span><strong className={`number ${data.total !== null && data.total < 0 ? 'orange' : 'blue'}`}>{money(data.total)}</strong></Card>
                 <Card><span className="muted">Estimated market component</span><strong className="number">{money(data.fromMarket)}</strong></Card>
@@ -25,12 +28,13 @@ export function Moves() {
             <Card><h2>By holding</h2>
                 <label className="move-search">Search holdings<input type="search" placeholder="Ticker, e.g. AAPL" value={search} onChange={e => setSearch(e.target.value)}/></label>
                 <p className="note">Search filters the rows below. Totals above cover {data.unpricedValue > 0 ? `your listed securities; ${money(data.unpricedValue)} in cash, bonds held directly and property has no daily price and is left out` : 'your full portfolio'}.</p>
-                <div className="scroll"><table><thead><tr>{['Holding', 'Measured beta', 'Dollar move', 'From market', 'Beyond market', 'Biggest measured driver'].map(t => <th key={t}>{t}</th>)}</tr></thead><tbody>
-                    {rows.map(h => h.assetType && h.assetType !== 'security' ? <tr key={h.symbol}><td>{h.symbol}<span className="note"> · {assetLabel[h.assetType]}</span></td><td colSpan={5} className="note">No daily price, so no daily move. Worth {money(h.valueUsd)} as entered.</td></tr> : <tr key={h.symbol}><td>{h.symbol}</td><td className="amount">{number(h.beta, 3)}</td><td className="amount">{money(h.actual)}</td><td className="amount">{money(h.fromMarket)}</td><td className="amount">{money(h.beyondMarket)}</td>
-                        <td className={h.drivers[0] && h.drivers[0].driver !== 'SPY' ? 'driver-cell lead' : 'driver-cell'}>{h.drivers[0] ? <>{driverName(h.drivers[0].driver)} <span className="mono">{money(h.drivers[0].contribution)}</span></> : 'Unavailable'}</td></tr>)}
-                    {!rows.length && <tr><td colSpan={6}><Empty>No holdings match your search.</Empty></td></tr>}
+                <div className="scroll"><table><thead><tr>{['Holding', 'Measured beta', 'Dollar move', 'From market', 'Beyond market', 'Biggest measured driver', 'Data availability'].map(t => <th key={t}>{t}</th>)}</tr></thead><tbody>
+                    {rows.map(h => h.assetType && h.assetType !== 'security' ? <tr key={h.symbol}><td>{h.symbol}<span className="note"> · {assetLabel[h.assetType]}</span></td><td colSpan={6} className="note">No daily price, so no daily move. Worth {money(h.valueUsd)} as entered.</td></tr> : <tr key={h.symbol}><td>{h.symbol}</td><td className="amount">{number(h.beta, 3)}</td><td className="amount">{money(h.actual)}</td><td className="amount">{money(h.fromMarket)}</td><td className="amount">{money(h.beyondMarket)}</td>
+                        <td className={h.drivers[0] && h.drivers[0].driver !== 'SPY' ? 'driver-cell lead' : 'driver-cell'}>{h.drivers[0] ? <>{driverName(h.drivers[0].driver)} <span className="mono">{money(h.drivers[0].contribution)}</span></> : 'Unavailable'}</td><td>{h.actual !== null && h.previousDate && <p className="note">Source closes: {h.previousDate} → {h.sourceDate}.</p>}{h.unavailableReasons.length ? h.unavailableReasons.join(' ') : 'Closing prices and measured beta available.'}</td></tr>)}
+                    {!rows.length && <tr><td colSpan={7}><Empty>No holdings match your search.</Empty></td></tr>}
                 </tbody></table></div>
                 <p className="note">From market = measured beta × SPY return × entered holding value. Beyond market = actual move − market component. Price sources: Yahoo daily closes. Missing history leaves the result unavailable.</p>
+                {data.total === null && data.holdings.some(h => !h.assetType || h.assetType === 'security') && <p className="note">The listed-security total needs supported price moves over the same dates for every listed holding. Available individual moves are shown above.</p>}
                 <p className="note">Biggest measured driver compares each driver’s estimated part of the move: its measured sensitivity × that day’s change × the holding’s value. It is highlighted when something other than the stock market mattered most.</p>
             </Card>
             <h2>Kalshi markets that moved the same day</h2>

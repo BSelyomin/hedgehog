@@ -35,10 +35,14 @@ Move components reconcile mathematically, with unavailable values when aligned c
 
 **Event context:** Optional Cortex Search retrieves reporting from your own index with `TITLE`, `URL` and `TEXT` columns. This replaces Google Search grounding; automatic open-web search is not implemented. Summaries cite only retrieved HTTPS sources and may use only numbers in the supplied market data. Missing configuration, sources or supported numbers means no new summary. See [DEPLOY.md](DEPLOY.md) for setup. Application storage remains in Tiger Data/PostgreSQL, independently of Snowflake.
 
-**ElevenLabs:** The official SDK converts a database-backed template briefing into MP3, cached per account or guest portfolio and New York calendar day. Playback appears on the overview when audio is available. Scheduled jobs create it from 8 a.m. New York time, and Refresh briefing regenerates it on request. Templates go through the same number guard. Optional AI wording smoothing is omitted to preserve exact template facts.
+**ElevenLabs:** The official SDK converts a database-backed template briefing into MP3, cached per account or guest portfolio and holdings snapshot. Playback appears on the overview when audio is available. Scheduled jobs create it from 8 a.m. New York time, and Reload briefing prepares a missing snapshot on request. Unchanged holdings reuse the saved audio even when the date or Kalshi quotes change. Templates go through the same number guard. Optional AI wording smoothing is omitted to preserve exact template facts.
 
 ## Status
 
 Docker setup, Kalshi polling, Yahoo price loading, Snowflake tagging and one Cortex Search query have run against live services. Series tags were bulk-approved on October 9, 2026 without individual review; 103 plainly incorrect mappings were withdrawn on October 10 and several debatable groups remain approved (see [REVIEW-TAGS.md](REVIEW-TAGS.md)). The human sector mapping is still empty, so links come only from company tags and the four measured drivers. SEC report dates need `SEC_USER_AGENT`. See [VALIDATION.md](VALIDATION.md) for current checks and the historical phase log; production readiness is not certified.
 
 [NUMBERS.md](NUMBERS.md) maps displayed numbers to sources. [SUBMISSION.md](SUBMISSION.md) is a draft for human review; it avoids unverified completion claims.
+
+## Brokerage accounts
+
+Read-only SnapTrade linking is available under **Brokerages** for signed-in users, with separate sandbox and live modes. Manual entry and CSV imports remain available. Configure commercial test keys and follow [SNAPTRADE.md](SNAPTRADE.md) for sandbox setup and the test checklist. Docker passes the connector settings to the backend.

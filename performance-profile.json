@@ -1,0 +1,730 @@
+{
+  "environment": "Production Next handler + real Express app + embedded PostgreSQL 17 (PGlite); no listening socket, browser hydration, network, TimescaleDB, or real providers",
+  "fixture": {
+    "holdings": 10,
+    "events": 200,
+    "markets": 400,
+    "oddsRows": 38400,
+    "priceRows": 127260,
+    "settledMarkets": 25000,
+    "briefingAudioBytes": 1048576
+  },
+  "endpoints": {
+    "/": {
+      "firstMs": 90.29,
+      "samples": 8,
+      "medianMs": 1.41,
+      "p95Ms": 2.25,
+      "sqlCalls": 0,
+      "responseBytes": 5588,
+      "queries": {}
+    },
+    "/api/auth/session": {
+      "firstMs": 21.29,
+      "samples": 8,
+      "medianMs": 3.32,
+      "p95Ms": 4.52,
+      "sqlCalls": 1,
+      "responseBytes": 297,
+      "queries": {
+        "auth": {
+          "meanMs": 0.8,
+          "rowsPerCall": 1
+        }
+      }
+    },
+    "/api/holdings": {
+      "firstMs": 4.53,
+      "samples": 8,
+      "medianMs": 5.04,
+      "p95Ms": 5.21,
+      "sqlCalls": 3,
+      "responseBytes": 748,
+      "queries": {
+        "auth": {
+          "meanMs": 0.8,
+          "rowsPerCall": 1
+        },
+        "holdings": {
+          "meanMs": 0.49,
+          "rowsPerCall": 10
+        },
+        "brokerage holdings": {
+          "meanMs": 0.8,
+          "rowsPerCall": 0
+        }
+      }
+    },
+    "/api/briefing": {
+      "firstMs": 13.24,
+      "samples": 8,
+      "medianMs": 11.46,
+      "p95Ms": 12.18,
+      "sqlCalls": 4,
+      "responseBytes": 209,
+      "queries": {
+        "auth": {
+          "meanMs": 1.01,
+          "rowsPerCall": 1
+        },
+        "holdings": {
+          "meanMs": 0.52,
+          "rowsPerCall": 10
+        },
+        "brokerage holdings": {
+          "meanMs": 0.9,
+          "rowsPerCall": 0
+        },
+        "AI cache (including audio)": {
+          "meanMs": 6.27,
+          "rowsPerCall": 1
+        }
+      }
+    },
+    "/api/exposure": {
+      "firstMs": 217.51,
+      "samples": 8,
+      "medianMs": 175.95,
+      "p95Ms": 187.94,
+      "sqlCalls": 8,
+      "responseBytes": 618092,
+      "queries": {
+        "auth": {
+          "meanMs": 0.81,
+          "rowsPerCall": 1
+        },
+        "holdings": {
+          "meanMs": 0.46,
+          "rowsPerCall": 10
+        },
+        "brokerage holdings": {
+          "meanMs": 1.07,
+          "rowsPerCall": 0
+        },
+        "linked markets + latest odds": {
+          "meanMs": 13.72,
+          "rowsPerCall": 400
+        },
+        "series tags": {
+          "meanMs": 14.5,
+          "rowsPerCall": 1
+        },
+        "stock tags": {
+          "meanMs": 15.9,
+          "rowsPerCall": 10
+        },
+        "measurements": {
+          "meanMs": 16.42,
+          "rowsPerCall": 10
+        },
+        "all settled markets": {
+          "meanMs": 140.63,
+          "rowsPerCall": 25000
+        }
+      }
+    },
+    "/api/moves": {
+      "firstMs": 180.53,
+      "samples": 8,
+      "medianMs": 178.39,
+      "p95Ms": 201.67,
+      "sqlCalls": 13,
+      "responseBytes": 2114,
+      "queries": {
+        "auth": {
+          "meanMs": 1.87,
+          "rowsPerCall": 1
+        },
+        "holdings": {
+          "meanMs": 0.46,
+          "rowsPerCall": 10
+        },
+        "brokerage holdings": {
+          "meanMs": 0.8,
+          "rowsPerCall": 0
+        },
+        "linked markets + latest odds": {
+          "meanMs": 11.64,
+          "rowsPerCall": 400
+        },
+        "series tags": {
+          "meanMs": 12.36,
+          "rowsPerCall": 1
+        },
+        "stock tags": {
+          "meanMs": 12.73,
+          "rowsPerCall": 10
+        },
+        "measurements": {
+          "meanMs": 7.21,
+          "rowsPerCall": 10
+        },
+        "all settled markets": {
+          "meanMs": 134.13,
+          "rowsPerCall": 25000
+        },
+        "latest price date": {
+          "meanMs": 1.12,
+          "rowsPerCall": 1
+        },
+        "latest stock closes": {
+          "meanMs": 0.77,
+          "rowsPerCall": 22
+        },
+        "24-hour odds": {
+          "meanMs": 1.93,
+          "rowsPerCall": 0
+        },
+        "price freshness scan": {
+          "meanMs": 16.6,
+          "rowsPerCall": 1
+        }
+      }
+    },
+    "/api/calendar?days=14": {
+      "firstMs": 164.3,
+      "samples": 8,
+      "medianMs": 167.13,
+      "p95Ms": 176.3,
+      "sqlCalls": 8,
+      "responseBytes": 489624,
+      "queries": {
+        "auth": {
+          "meanMs": 1.07,
+          "rowsPerCall": 1
+        },
+        "holdings": {
+          "meanMs": 0.47,
+          "rowsPerCall": 10
+        },
+        "brokerage holdings": {
+          "meanMs": 0.74,
+          "rowsPerCall": 0
+        },
+        "linked markets + latest odds": {
+          "meanMs": 12.68,
+          "rowsPerCall": 400
+        },
+        "series tags": {
+          "meanMs": 13.41,
+          "rowsPerCall": 1
+        },
+        "stock tags": {
+          "meanMs": 13.73,
+          "rowsPerCall": 10
+        },
+        "measurements": {
+          "meanMs": 14.17,
+          "rowsPerCall": 10
+        },
+        "all settled markets": {
+          "meanMs": 134.14,
+          "rowsPerCall": 25000
+        }
+      }
+    },
+    "/api/event/E1": {
+      "firstMs": 155.29,
+      "samples": 8,
+      "medianMs": 159.6,
+      "p95Ms": 164.02,
+      "sqlCalls": 10,
+      "responseBytes": 15180,
+      "queries": {
+        "auth": {
+          "meanMs": 0.94,
+          "rowsPerCall": 1
+        },
+        "holdings": {
+          "meanMs": 0.52,
+          "rowsPerCall": 10
+        },
+        "brokerage holdings": {
+          "meanMs": 0.8,
+          "rowsPerCall": 0
+        },
+        "linked markets + latest odds": {
+          "meanMs": 10.46,
+          "rowsPerCall": 400
+        },
+        "series tags": {
+          "meanMs": 11.08,
+          "rowsPerCall": 1
+        },
+        "stock tags": {
+          "meanMs": 11.38,
+          "rowsPerCall": 10
+        },
+        "measurements": {
+          "meanMs": 12.09,
+          "rowsPerCall": 10
+        },
+        "all settled markets": {
+          "meanMs": 134.83,
+          "rowsPerCall": 25000
+        },
+        "odds chart": {
+          "meanMs": 3.92,
+          "rowsPerCall": 192
+        },
+        "saved summary": {
+          "meanMs": 0.41,
+          "rowsPerCall": 0
+        }
+      }
+    },
+    "/api/track-record": {
+      "firstMs": 141.28,
+      "samples": 8,
+      "medianMs": 146.14,
+      "p95Ms": 154.48,
+      "sqlCalls": 2,
+      "responseBytes": 1792,
+      "queries": {
+        "auth": {
+          "meanMs": 0.82,
+          "rowsPerCall": 1
+        },
+        "all settled markets": {
+          "meanMs": 130.27,
+          "rowsPerCall": 25000
+        }
+      }
+    }
+  },
+  "overviewWaterfall": {
+    "ms": 182.52,
+    "sqlCalls": 13
+  },
+  "plans": {
+    "priceFreshnessCurrent": {
+      "Plan": {
+        "Node Type": "Aggregate",
+        "Strategy": "Plain",
+        "Partial Mode": "Simple",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Startup Cost": 2846.49,
+        "Total Cost": 2846.5,
+        "Plan Rows": 1,
+        "Plan Width": 8,
+        "Actual Startup Time": 14.433,
+        "Actual Total Time": 14.436,
+        "Actual Rows": 1,
+        "Actual Loops": 1,
+        "Shared Hit Blocks": 936,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Seq Scan",
+            "Parent Relationship": "Outer",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Relation Name": "prices",
+            "Alias": "prices",
+            "Startup Cost": 0,
+            "Total Cost": 2844.9,
+            "Plan Rows": 636,
+            "Plan Width": 8,
+            "Actual Startup Time": 0.03,
+            "Actual Total Time": 14.3,
+            "Actual Rows": 101,
+            "Actual Loops": 1,
+            "Filter": "((ts)::date = '2026-10-09'::date)",
+            "Rows Removed by Filter": 127159,
+            "Shared Hit Blocks": 936,
+            "Shared Read Blocks": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0
+          }
+        ]
+      },
+      "Planning": {
+        "Shared Hit Blocks": 0,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.136,
+      "Triggers": [],
+      "Execution Time": 14.513
+    },
+    "priceFreshnessRange": {
+      "Plan": {
+        "Node Type": "Aggregate",
+        "Strategy": "Plain",
+        "Partial Mode": "Simple",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Startup Cost": 299.24,
+        "Total Cost": 299.25,
+        "Plan Rows": 1,
+        "Plan Width": 8,
+        "Actual Startup Time": 0.436,
+        "Actual Total Time": 0.44,
+        "Actual Rows": 1,
+        "Actual Loops": 1,
+        "Shared Hit Blocks": 105,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Bitmap Heap Scan",
+            "Parent Relationship": "Outer",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Relation Name": "prices",
+            "Alias": "prices",
+            "Startup Cost": 5.46,
+            "Total Cost": 298.99,
+            "Plan Rows": 101,
+            "Plan Width": 8,
+            "Actual Startup Time": 0.043,
+            "Actual Total Time": 0.283,
+            "Actual Rows": 101,
+            "Actual Loops": 1,
+            "Recheck Cond": "((ts >= '2026-10-09 00:00:00-05'::timestamp with time zone) AND (ts < ('2026-10-09 00:00:00-05'::timestamp with time zone + '1 day'::interval)))",
+            "Rows Removed by Index Recheck": 0,
+            "Exact Heap Blocks": 101,
+            "Lossy Heap Blocks": 0,
+            "Shared Hit Blocks": 105,
+            "Shared Read Blocks": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0,
+            "Plans": [
+              {
+                "Node Type": "Bitmap Index Scan",
+                "Parent Relationship": "Outer",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Index Name": "prices_pkey",
+                "Startup Cost": 0,
+                "Total Cost": 5.43,
+                "Plan Rows": 101,
+                "Plan Width": 0,
+                "Actual Startup Time": 0.024,
+                "Actual Total Time": 0.025,
+                "Actual Rows": 101,
+                "Actual Loops": 1,
+                "Index Cond": "((ts >= '2026-10-09 00:00:00-05'::timestamp with time zone) AND (ts < ('2026-10-09 00:00:00-05'::timestamp with time zone + '1 day'::interval)))",
+                "Shared Hit Blocks": 4,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              }
+            ]
+          }
+        ]
+      },
+      "Planning": {
+        "Shared Hit Blocks": 24,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.341,
+      "Triggers": [],
+      "Execution Time": 0.483
+    },
+    "trackRecord": {
+      "Plan": {
+        "Node Type": "Seq Scan",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Relation Name": "settled_markets",
+        "Alias": "settled_markets",
+        "Startup Cost": 0,
+        "Total Cost": 535,
+        "Plan Rows": 25000,
+        "Plan Width": 27,
+        "Actual Startup Time": 0.014,
+        "Actual Total Time": 5.888,
+        "Actual Rows": 25000,
+        "Actual Loops": 1,
+        "Shared Hit Blocks": 285,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning": {
+        "Shared Hit Blocks": 0,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.053,
+      "Triggers": [],
+      "Execution Time": 9.774
+    },
+    "cacheMetadataOnly": {
+      "Plan": {
+        "Node Type": "Seq Scan",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Relation Name": "ai_cache",
+        "Alias": "ai_cache",
+        "Startup Cost": 0,
+        "Total Cost": 1.92,
+        "Plan Rows": 1,
+        "Plan Width": 40,
+        "Actual Startup Time": 0.805,
+        "Actual Total Time": 0.807,
+        "Actual Rows": 1,
+        "Actual Loops": 1,
+        "Filter": "((namespace = 'briefing-v1'::text) AND (input_hash = '594d1ba0b11a7eef6a31dba7fe58c680d32e4459252651f7fe06c330a44486cc'::text))",
+        "Rows Removed by Filter": 0,
+        "Shared Hit Blocks": 180,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning": {
+        "Shared Hit Blocks": 0,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.074,
+      "Triggers": [],
+      "Execution Time": 0.819
+    }
+  },
+  "cache": {
+    "storedJsonBytes": 1398219,
+    "metadataJsonBytes": 104
+  },
+  "isolatedSQL": {
+    "cacheFull": {
+      "medianMs": 6.91,
+      "maxMs": 8.54
+    },
+    "cacheTextOnly": {
+      "medianMs": 1.46,
+      "maxMs": 9.3
+    },
+    "trackRecord": {
+      "medianMs": 129.75,
+      "maxMs": 145.16
+    }
+  },
+  "reuseSettledRowsExperiment": {
+    "/api/exposure": {
+      "samples": 8,
+      "medianMs": 39.42,
+      "p95Ms": 46.73,
+      "sqlCalls": 8,
+      "responseBytes": 618092,
+      "queries": {
+        "auth": {
+          "meanMs": 0.96,
+          "rowsPerCall": 1
+        },
+        "holdings": {
+          "meanMs": 0.54,
+          "rowsPerCall": 10
+        },
+        "brokerage holdings": {
+          "meanMs": 0.81,
+          "rowsPerCall": 0
+        },
+        "all settled markets": {
+          "meanMs": 0,
+          "rowsPerCall": 25000
+        },
+        "linked markets + latest odds": {
+          "meanMs": 21.35,
+          "rowsPerCall": 400
+        },
+        "series tags": {
+          "meanMs": 22.01,
+          "rowsPerCall": 1
+        },
+        "stock tags": {
+          "meanMs": 22.33,
+          "rowsPerCall": 10
+        },
+        "measurements": {
+          "meanMs": 22.75,
+          "rowsPerCall": 10
+        }
+      }
+    },
+    "/api/moves": {
+      "samples": 8,
+      "medianMs": 49.72,
+      "p95Ms": 53.65,
+      "sqlCalls": 13,
+      "responseBytes": 2114,
+      "queries": {
+        "auth": {
+          "meanMs": 0.84,
+          "rowsPerCall": 1
+        },
+        "holdings": {
+          "meanMs": 0.44,
+          "rowsPerCall": 10
+        },
+        "brokerage holdings": {
+          "meanMs": 0.73,
+          "rowsPerCall": 0
+        },
+        "all settled markets": {
+          "meanMs": 0,
+          "rowsPerCall": 25000
+        },
+        "linked markets + latest odds": {
+          "meanMs": 21.92,
+          "rowsPerCall": 400
+        },
+        "series tags": {
+          "meanMs": 22.64,
+          "rowsPerCall": 1
+        },
+        "stock tags": {
+          "meanMs": 22.95,
+          "rowsPerCall": 10
+        },
+        "measurements": {
+          "meanMs": 12.3,
+          "rowsPerCall": 10
+        },
+        "latest price date": {
+          "meanMs": 1.06,
+          "rowsPerCall": 1
+        },
+        "latest stock closes": {
+          "meanMs": 0.78,
+          "rowsPerCall": 22
+        },
+        "24-hour odds": {
+          "meanMs": 1.68,
+          "rowsPerCall": 0
+        },
+        "price freshness scan": {
+          "meanMs": 14.79,
+          "rowsPerCall": 1
+        }
+      }
+    },
+    "/api/event/E1": {
+      "samples": 8,
+      "medianMs": 32.49,
+      "p95Ms": 42.35,
+      "sqlCalls": 10,
+      "responseBytes": 15180,
+      "queries": {
+        "auth": {
+          "meanMs": 0.8,
+          "rowsPerCall": 1
+        },
+        "holdings": {
+          "meanMs": 0.48,
+          "rowsPerCall": 10
+        },
+        "brokerage holdings": {
+          "meanMs": 0.82,
+          "rowsPerCall": 0
+        },
+        "all settled markets": {
+          "meanMs": 0,
+          "rowsPerCall": 25000
+        },
+        "linked markets + latest odds": {
+          "meanMs": 23.03,
+          "rowsPerCall": 400
+        },
+        "series tags": {
+          "meanMs": 23.66,
+          "rowsPerCall": 1
+        },
+        "stock tags": {
+          "meanMs": 23.98,
+          "rowsPerCall": 10
+        },
+        "measurements": {
+          "meanMs": 24.4,
+          "rowsPerCall": 10
+        },
+        "odds chart": {
+          "meanMs": 1.46,
+          "rowsPerCall": 192
+        },
+        "saved summary": {
+          "meanMs": 0.29,
+          "rowsPerCall": 0
+        }
+      }
+    }
+  },
+  "backendCalls": 99,
+  "externalCalls": 0
+}

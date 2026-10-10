@@ -57,7 +57,7 @@ describe('highlighting what matters most', () => {
         expect(describeLeadMove([], money)).toBeNull();
     });
     it('shows the ranked drivers on the Moves screen and says which could not be compared', () => {
-        const data = { date: '2026-10-09', asOf: null, spyReturn: .01, holdings: [], total: null, fromMarket: null, beyondMarket: null, oddsMoves: [],
+        const data = { date: '2026-10-09', requestedDate: null, notes: [], asOf: null, spyReturn: .01, holdings: [], total: null, fromMarket: null, beyondMarket: null, oddsMoves: [],
             drivers: [{ driver: 'CL=F', contribution: -310 }, { driver: 'SPY', contribution: 120 }], missingDrivers: ['DGS2', 'DGS10'], unpricedValue: 0 };
         const html = renderToStaticMarkup(<LeadDrivers data={data}/>);
         expect(html).toContain('Crude oil mattered most');

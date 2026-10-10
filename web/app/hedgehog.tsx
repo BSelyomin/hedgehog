@@ -9,6 +9,7 @@ import { Earnings } from './screens/earnings';
 import { TrackRecord } from './screens/track-record';
 import { AccountProvider, useAccount } from './auth';
 import { AccountScreen } from './screens/account';
+import { Brokerages } from './screens/brokerages';
 import { useData } from './common';
 import type { HealthResponse } from '../../shared/types';
 
@@ -33,10 +34,11 @@ function Shell() {
         return () => window.removeEventListener('hashchange', change);
     }, []);
 
-    const tabs = [['overview', 'Overview'], ['calendar', 'Calendar'], ['earnings', 'Earnings'], ['moves', 'Moves'], ['track-record', 'Track record']];
+    const tabs = [['brokerages', 'Brokerages'], ['overview', 'Overview'], ['calendar', 'Calendar'], ['earnings', 'Earnings'], ['moves', 'Moves'], ['track-record', 'Track record']];
     let screen;
     switch (route) {
         case 'signup': case 'signin': case 'account': screen = <AccountScreen signup={route === 'signup'}/>; break;
+        case 'brokerages': screen = <Brokerages/>; break;
         case 'overview': screen = <Overview/>; break;
         case 'calendar': screen = <Calendar/>; break;
         case 'event': screen = <EventPage ticker={id}/>; break;

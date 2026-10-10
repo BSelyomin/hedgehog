@@ -1,5 +1,7 @@
 import type { AssetType, Holding, HoldingDetails } from '../../../shared/types.ts';
 import { pool, query, iso } from '../db.ts';
+import { contentHash } from './ai-cache.ts';
+import { configuration, mode } from '../brokerages/client.ts';
 const ASSET_TYPES: AssetType[] = ['security', 'cash', 'treasury', 'bond', 'property'];
 const DAY = 86400000;
 // The terms each asset type needs for its links. Anything else the client sends is dropped.
@@ -43,14 +45,22 @@ export function validateHoldings(input: unknown): Holding[] {
     });
 }
 export async function getHoldings(session: string) {
-    const rows = await query<{
-        symbol: string;
-        value_usd: string;
-        updated_at: Date;
-        asset_type?: AssetType;
-        details?: HoldingDetails;
-    }>('SELECT * FROM holdings WHERE session_id=$1 ORDER BY symbol', [session]);
-    return { holdings: rows.map((r): Holding => ({ symbol: r.symbol, valueUsd: Number(r.value_usd), ...(r.asset_type && r.asset_type !== 'security' ? { assetType: r.asset_type, details: r.details ?? {} } : {}) })), asOf: iso(rows.reduce<Date | null>((d, r) => !d || r.updated_at > d ? r.updated_at : d, null)) };
+    const config = configuration();
+    const [rows, imported] = await Promise.all([
+        query<{ symbol: string; value_usd: string; updated_at: Date; asset_type?: AssetType; details?: HoldingDetails }>(
+            'SELECT * FROM holdings WHERE session_id=$1 ORDER BY symbol', [session]),
+        session.startsWith('user:') && config.configured ? query<{ symbol: string; value_usd: string; updated_at: Date }>(
+            `SELECT h.* FROM brokerage_holdings h JOIN snaptrade_users u ON h.session_id='user:' || u.user_id::text AND h.mode=u.mode
+             WHERE h.session_id=$1 AND h.mode=$2 AND u.client_hash=$3 ORDER BY h.symbol`, [session, mode(), config.clientHash]) : Promise.resolve([])
+    ]);
+    const manualHoldings = rows.map((r): Holding => ({ symbol: r.symbol, valueUsd: Number(r.value_usd), ...(r.asset_type && r.asset_type !== 'security' ? { assetType: r.asset_type, details: r.details ?? {} } : {}) }));
+    const brokerageHoldings = imported.map(r => ({ symbol: r.symbol, valueUsd: Number(r.value_usd) }));
+    const cents = new Map<string, number>();
+    for (const h of [...manualHoldings, ...brokerageHoldings]) cents.set(h.symbol, (cents.get(h.symbol) ?? 0) + Math.round(h.valueUsd * 100));
+    const holdings = [...cents].sort(([a], [b]) => a.localeCompare(b)).map(([symbol, value]) => ({ ...manualHoldings.find(h => h.symbol === symbol), symbol, valueUsd: value / 100 }));
+    const manualDate = rows.reduce<Date | null>((d, r) => !d || r.updated_at > d ? r.updated_at : d, null);
+    const asOf = imported.reduce<Date | null>((d, r) => !d || r.updated_at < d ? r.updated_at : d, manualDate);
+    return { holdings, manualHoldings, brokerageHoldings, sandbox: mode() === 'sandbox' && imported.length > 0, asOf: iso(asOf) };
 }
 export async function saveHoldings(session: string, holdings: Holding[]) {
     const client = await pool.connect();
@@ -70,4 +80,10 @@ export async function saveHoldings(session: string, holdings: Holding[]) {
         client.release();
     }
     return getHoldings(session);
+}
+
+export function portfolioRevision(portfolio: Awaited<ReturnType<typeof getHoldings>>) {
+    const sorted = (rows: Holding[]) => [...rows].sort((a, b) => a.symbol.localeCompare(b.symbol));
+    return contentHash({ holdings: sorted(portfolio.holdings), manualHoldings: sorted(portfolio.manualHoldings),
+        brokerageHoldings: sorted(portfolio.brokerageHoldings), sandbox: portfolio.sandbox });
 }
