@@ -51,6 +51,21 @@ On 2026-10-09, `HEDGEHOG.REPORTING.EVENT_SOURCES` was provisioned with 21 dated 
 - Kalshi lists no company revenue or earnings-per-share markets. Company results markets are
   ladders of "above X" levels on operating metrics (232 open) and earnings-call word markets.
 
+# Settled markets for the track record (October 10, 2026)
+
+- `GET /markets?status=settled&series_ticker=…` and `GET /historical/markets?series_ticker=…`
+  both accept `limit=1000` and return `ticker`, `event_ticker`, `title`, `open_time`,
+  `close_time` and `result`. Most settled markets are in the archive: CPI had 25 on the live
+  listing and 483 archived, the Fed series 11 and 402.
+- The batch candlestick endpoint returns nothing for an archived market; those are read one at
+  a time from `GET /historical/markets/{ticker}/candlesticks`, which accepts
+  `period_interval=60` and names its prices `yes_bid.close` and `yes_ask.close`.
+- Reading the odds 24 hours before close: of 36 live-listed CPI and Fed markets, a one-minute
+  candlestick existed at the exact mark for 6; the last hourly candlestick within the week
+  before the mark existed for all 36, with a median age of 1.4 to 2.9 hours and at most 20.9.
+- Daily markets ("gas prices tomorrow", 3,697 settled in one series) open about 16 hours
+  before they close, so they have no quote 24 hours before close.
+
 # Security profiles for asset classes (October 10, 2026)
 
 - Yahoo `quoteSummary` was called for about 150 tickers and the replies inspected.

@@ -35,7 +35,8 @@ it('reads archive dollar prices without confusing them with live cent fields', (
     const candles = normalizeHistoricalCandles([{ end_period_ts: ts, yes_bid: { close: '.37' }, yes_ask: { close: '.39' } }]);
     expect(oddsBeforeClose(candles, close)?.probability).toBeCloseTo(.38);
     expect(oddsBeforeClose([{ ...candles[0], end_period_ts: ts + 60 }], close)).toBeNull();
-    expect(oddsBeforeClose([{ ...candles[0], end_period_ts: ts - 120 }], close)).toBeNull();
+    // A quote published two minutes before the mark was still standing at it (see backfill-job.test.ts).
+    expect(oddsBeforeClose([{ ...candles[0], end_period_ts: ts - 120 }], close)).toEqual({ probability: expect.closeTo(.38, 10), ts: ts - 120 });
     expect(oddsBeforeClose(normalizeHistoricalCandles([{ end_period_ts: ts, yes_bid: { close: null }, yes_ask: { close: '.39' } }]), close)).toBeNull();
 });
 it('classifies call-mention markets by Kalshi category and range ladders including their end caps', () => {

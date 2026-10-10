@@ -46,7 +46,7 @@
 | Earnings | Typical move | Mean absolute move over the last 8 reports with a move (at least 4); × entered holding value for dollars |
 | Earnings | Past report move | earnings_reports.filing_date from SEC EDGAR (8-K with Item 2.02); first prices.close after the filing date ÷ last close before it − 1; unavailable across a gap in price history |
 | Earnings | Raw sum | Sum of unnormalized midpoint quotes |
-| Track record | Count, Brier, average miss | settled_markets outcomes and bid–ask midpoint from candle at 24 hours before close |
+| Track record | Count, Brier, average miss | settled_markets outcomes and the bid–ask midpoint standing 24 hours before close: the close of the last hourly Kalshi candlestick at or before that mark, no more than seven days older (odds_time records when). Markets listed for under a day, and markets whose book was empty at the mark, are not counted |
 | Track record | Calibration chart | Ten-point buckets; mean probability and observed outcome rate, no dots for empty buckets |
 | Track record | 70% headline | Observed rate for 65% ≤ probability < 75%, shown only with observations |
 | Briefing | Reach, moves and biggest odds move | Same backend services used by calendar/moves, rounded for template then number-checked |

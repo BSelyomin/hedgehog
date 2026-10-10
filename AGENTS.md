@@ -117,7 +117,7 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | `series_tags` | series_ticker, tag, source ('snowflake', legacy 'gemini', or 'manual'), reviewed boolean | tagging job |
 | `stock_tags` | symbol, tag, link_type ('direct', 'measured', 'related') | sector table + 10-K job |
 | `measured_links` | symbol, driver, b, se, low, high, days, reliable, computed_at, effect | nightly job |
-| `settled_markets` | ticker, category, prob_24h_before, outcome (0/1), close_time | backfill |
+| `settled_markets` | ticker, category, prob_24h_before, outcome (0/1), close_time, odds_time, series_ticker, event_ticker, title | backfill |
 | `holdings` | session_id, symbol, value_usd, asset_type ('security', 'cash', 'treasury', 'bond', 'property'), details | add-holdings screen |
 | `sector_tags` | sector, tag | seeded from `server/seed/sector_tags.json` (written by a human) |
 | `earnings_reports` | symbol, accession, filing_date, report_date, source_url | earnings-dates job (SEC EDGAR) |
@@ -192,6 +192,18 @@ is rescaled from the other three parts; the UI says "no track record yet". Bands
 Medium 60–79, Low < 60. Return every part, not just the total; the event page shows them.
 
 ## Track record
+
+The backfill (`server/src/jobs/backfill.ts`) scores settled markets of every series that can
+link to a holding (`snapshot_series`), from Kalshi's live listing and its archive, and records
+per series how far it got so a later run looks only at newer settlements.
+
+- **The reading** is the close of the last hourly candlestick ending at or before 24 hours
+  before close. Kalshi publishes a candlestick only when the quote changes, so that is the quote
+  standing at the mark; asking for the exact minute found one for about one market in six.
+  `odds_time` records when that quote was published. One more than seven days old is not used.
+- **No reading, no row.** An empty book at the mark gives no reading (an older quote is not
+  substituted), and a market listed for under a day has no odds a day before its close, so
+  daily markets such as "gas prices tomorrow" are not scored.
 
 For each category, take settled markets, read the odds **24 hours before close** from candlesticks
 (not at close), and pair them with the outcome. Report count, `avgMiss`, Brier score, and the
