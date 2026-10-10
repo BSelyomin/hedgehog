@@ -1,5 +1,5 @@
 import { query } from '../db.ts';
-import { kalshi, quote } from '../services/kalshi.ts';
+import { emptyBook, kalshi, quote } from '../services/kalshi.ts';
 import type { Candle, HistoricalCandle, KalshiMarket } from '../services/kalshi.ts';
 export function normalizeHistoricalCandles(candles: HistoricalCandle[]): Candle[] {
     return candles.map(c => ({ end_period_ts: c.end_period_ts, yes_bid: { close_dollars: c.yes_bid?.close ?? null }, yes_ask: { close_dollars: c.yes_ask?.close ?? null } }));
@@ -28,7 +28,7 @@ export function oddsBeforeClose(candles: Candle[], closeTime: string) {
     if (!candle)
         return null;
     const q = quote(candle.yes_bid.close_dollars, candle.yes_ask.close_dollars);
-    return q ? { probability: q.mid, ts: candle.end_period_ts } : null;
+    return q && !emptyBook(q.bid, q.ask) ? { probability: q.mid, ts: candle.end_period_ts } : null;
 }
 export async function backfill() {
     const series = await query<{

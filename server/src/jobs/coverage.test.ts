@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { preparePollPage } from './poll-storage.ts';
 import { oddsBeforeClose, normalizeHistoricalCandles } from './backfill.ts';
-import { eventTime, isRangeLadder, marketKind } from '../services/kalshi.ts';
+import { emptyBook, eventTime, isRangeLadder, marketKind, quotedSpread } from '../services/kalshi.ts';
 import type { KalshiEvent } from '../services/kalshi.ts';
 import { trustScore } from '../config/trust.ts';
 import { matchHolding } from '../services/matching.ts';
@@ -63,6 +63,18 @@ it('dates an event by the most specific upcoming Kalshi time and falls back to t
     expect(eventTime(now, close, new Date('invalid'), null, null).source).toBe('close');
     // A data release after trading stops is still the event date.
     expect(eventTime(now, at('2026-11-07T03:29:00Z'), at('2026-11-14T05:00:00Z'), null, null).source).toBe('occurrence');
+});
+it('does not read a probability from an empty order book', () => {
+    expect([emptyBook(0, 1), emptyBook(0, .99), emptyBook(.01, 1), emptyBook(.4, .6), emptyBook(null, 1), emptyBook(0, null)]).toEqual([true, false, false, false, false, false]);
+    expect(quotedSpread(0, 1)).toBeNull();
+    expect(quotedSpread(null, .5)).toBeNull();
+    expect(quotedSpread(.4, .46)).toBeCloseTo(.06, 12);
+    expect(quotedSpread(0, .06)).toBe(.06);
+    // The track record reads the odds a day before close; an empty book there gives no reading.
+    const close = '2026-10-20T12:00:00Z', mark = Date.parse(close) / 1000 - 86400;
+    const candle = (bid: string, ask: string) => [{ end_period_ts: mark, yes_bid: { close_dollars: bid }, yes_ask: { close_dollars: ask } }];
+    expect(oddsBeforeClose(candle('0.0000', '1.0000'), close)).toBeNull();
+    expect(oddsBeforeClose(candle('0.6000', '0.6400'), close)).toEqual({ probability: .62, ts: mark });
 });
 it('can award medium and high trust; no history is rescaled, not scored as zero', () => {
     expect(trustScore(1, 100000, 1000000, null, 0).band).toBe('High');

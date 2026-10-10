@@ -5,7 +5,7 @@ import { matchHolding, linkRank, rankDrivers } from './matching.ts';
 import type { MeasuredRow } from './matching.ts';
 import { ASSET_TAGS, assetLink, assetType, isSecurity } from './asset-links.ts';
 import { trustScore } from '../config/trust.ts';
-import { eventTime, isRangeLadder, marketKind, statedDate } from './kalshi.ts';
+import { eventTime, isRangeLadder, marketKind, quotedSpread, statedDate } from './kalshi.ts';
 import { numbersSupported, safeSources } from './ai-guard.ts';
 import { trackRecord } from './track-record.ts';
 import { categorize, fundClasses, linkThemes, noCategories } from './categories.ts';
@@ -85,7 +85,8 @@ export async function exposure(session: string): Promise<ExposureResponse> {
         // The event's date is its earliest upcoming market time; closeTime stays the earliest market close.
         const timing = rows.map(m => eventTime(now, m.close_time, m.occurrence_time, e.strike_date, m.expected_expiration_time, statedDate(e.description))).sort((a, b) => a.time.getTime() - b.time.getTime())[0];
         const ladder = isRangeLadder(e.mutually_exclusive, rows.map(m => m.strike_type));
-        const outcomes: Market[] = rows.map(m => ({ ticker: m.ticker, title: m.title, subtitle: m.subtitle, probability: m.mid, spread: m.yes_ask === null || m.yes_bid === null ? null : m.yes_ask - m.yes_bid, asOf: iso(m.ts), kind: marketKind(m.strike_type, e.category, m.title, ladder), floorStrike: m.floor_strike ?? null, trust: trustScore(m.yes_ask === null || m.yes_bid === null ? null : (m.yes_ask - m.yes_bid) * 100, m.volume_24h, m.open_interest, category?.avgMiss ?? null, category?.count ?? 0) }));
+        // An empty book has no midpoint, so it has no probability, spread or trust score.
+        const outcomes: Market[] = rows.map(m => { const spread = quotedSpread(m.yes_bid, m.yes_ask); return { ticker: m.ticker, title: m.title, subtitle: m.subtitle, probability: spread === null ? null : m.mid, spread, asOf: iso(m.ts), kind: marketKind(m.strike_type, e.category, m.title, ladder), floorStrike: m.floor_strike ?? null, trust: trustScore(spread === null ? null : spread * 100, m.volume_24h, m.open_interest, category?.avgMiss ?? null, category?.count ?? 0) }; });
         const linkedValue = links.reduce((s, l) => s + l.valueUsd, 0);
         result.push({ seriesTicker: e.series_ticker, ticker: e.ticker, title: e.title, category: e.category, mutuallyExclusive: e.mutually_exclusive, closeTime: new Date(Math.min(...rows.map(m => new Date(m.close_time).getTime()))).toISOString(), eventTime: timing.time.toISOString(), eventTimeSource: timing.source, linkedValue, share: totalValue ? linkedValue / totalValue : 0, links, markets: outcomes, themes: [...new Set(links.flatMap(l => l.themes))] });
     }

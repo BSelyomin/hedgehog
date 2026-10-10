@@ -1,5 +1,5 @@
 import { pool, query } from '../db.ts';
-import { kalshi, quote } from '../services/kalshi.ts';
+import { emptyBook, kalshi, quote } from '../services/kalshi.ts';
 import type { Candle } from '../services/kalshi.ts';
 
 // Kalshi's limits on GET /markets/candlesticks: tickers per request, and candlesticks returned
@@ -40,8 +40,7 @@ export function planCandleRequests(needs: CandleNeed[], end: number, minutes: nu
 export function candleReadings(ticker: string, minutes: number, candles: Candle[], end: number) {
     return candles.flatMap(candle => {
         const q = quote(candle.yes_bid?.close_dollars, candle.yes_ask?.close_dollars);
-        // No bid and no offer is not a quote: 0 and 1 would average to a 50% nobody posted.
-        if (!q || (q.bid <= 0 && q.ask >= 1) || !Number.isInteger(candle.end_period_ts) || candle.end_period_ts > end)
+        if (!q || emptyBook(q.bid, q.ask) || !Number.isInteger(candle.end_period_ts) || candle.end_period_ts > end)
             return [];
         return [{ ticker, minutes, ts: new Date(candle.end_period_ts * 1000).toISOString(), mid: q.mid }];
     });

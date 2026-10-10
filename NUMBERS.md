@@ -14,7 +14,7 @@
 | All data screens | asOf | Max relevant source update timestamp; null means no source data |
 | Calendar / Event / Earnings | Event date | A date Kalshi states in the event subtitle ("On Oct 29, 2026") wins, with a precise time only when one falls on that day. Otherwise the first of these still in the future: Kalshi market occurrence_datetime, event strike_date, market expected_expiration_time; otherwise markets.close_time. The screen names the field used and shows the market close beside it |
 | Overview / Event | Close date/time | markets.close_time, never guessed report time |
-| Event / Overview / Earnings | Probability | odds_snapshots.mid = (yes_bid + yes_ask) / 2 from Kalshi dollar fields |
+| Event / Overview / Earnings | Probability | odds_snapshots.mid = (yes_bid + yes_ask) / 2 from Kalshi dollar fields. Unavailable when the latest reading has no bid and no offer (yes_bid 0 and yes_ask 1): that is an empty book, not a 50% quote |
 | Event | Odds chart (1 day, 1 week, 1 month, all time) | Each point is a stored reading for the selected ticker: odds_snapshots.mid, or odds_candles.mid = midpoint of a Kalshi candlestick's closing bid and ask at the end of its hour or day. 1 day: every snapshot plus hourly closes; 1 week: hourly closes plus the last snapshot of each hour; 1 month and all time: daily closes plus the latest snapshot. Readings with no bid and no offer are left out. The line is stepped and holds each reading until the next; nothing is interpolated |
 | Event | Chart start, low, high, latest | First, minimum, maximum and last of the readings drawn in the selected range |
 | Event | Chart probability axis | Round levels enclosing the readings drawn, at least ten points apart end to end, within 0% to 100%; a display scale, not data |

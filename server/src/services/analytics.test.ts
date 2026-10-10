@@ -11,9 +11,10 @@ const originalQuery = pool.query;
 const now = new Date('2026-10-09T16:00:00Z'), prior = new Date('2026-10-08T16:00:00Z');
 let symbols: string[], marketCount: number, missingQuotes: boolean, missingSpy: boolean, missingBeta: boolean;
 let priceThrough: string | null, computedAt: Date, extraMeasured: boolean, marketTags: string[];
+let bid: number, ask: number;
 const calls: string[] = [];
 beforeEach(() => {
-    symbols = ['AAPL']; marketCount = 1; missingQuotes = false; missingSpy = false; missingBeta = false; priceThrough = null; computedAt = now; extraMeasured = false; marketTags = ['oil']; calls.length = 0;
+    symbols = ['AAPL']; marketCount = 1; bid = .39; ask = .41; missingQuotes = false; missingSpy = false; missingBeta = false; priceThrough = null; computedAt = now; extraMeasured = false; marketTags = ['oil']; calls.length = 0;
     pool.query = (async (sql: string, values: unknown[] = []) => {
         calls.push(sql);
         let rows: unknown[] = [];
@@ -25,8 +26,8 @@ beforeEach(() => {
         else if (sql.includes('SELECT m.*')) rows = Array.from({ length: marketCount }, (_, i) => ({
             ticker: `OIL-${i}`, event_ticker: 'OIL', event_title: 'Oil event', series_ticker: 'OIL-S', category: 'Energy',
             title: 'Oil market', subtitle: '', close_time: new Date('2099-01-01'), mutually_exclusive: false,
-            ts: missingQuotes ? null : now, yes_bid: missingQuotes ? null : .39, yes_ask: missingQuotes ? null : .41,
-            mid: missingQuotes ? null : .4, volume_24h: missingQuotes ? null : 1000, open_interest: missingQuotes ? null : 1000
+            ts: missingQuotes ? null : now, yes_bid: missingQuotes ? null : bid, yes_ask: missingQuotes ? null : ask,
+            mid: missingQuotes ? null : (bid + ask) / 2, volume_24h: missingQuotes ? null : 1000, open_interest: missingQuotes ? null : 1000
         }));
         else if (sql.includes('SELECT series_ticker,tag')) rows = [{ series_ticker: 'OIL-S', tag: 'oil' }];
         else if (sql.includes('SELECT symbol,tag')) rows = symbols.map(symbol => ({ symbol, tag: 'oil' }));
@@ -83,6 +84,21 @@ it('returns unavailable quote values and omits unsupported odds moves', async ()
     assert.equal(portfolio.events[0].markets[0].trust.total, null);
     assert.equal(portfolio.asOf, null);
     assert.deepEqual((await moves('guest', '2026-10-09', portfolio)).oddsMoves, []);
+});
+it('shows no probability, spread or trust for a market whose order book is empty', async () => {
+    symbols = ['OIL-S'];
+    const market = async () => (await exposure('guest')).events[0].markets[0];
+    assert.deepEqual([(await market()).probability, (await market()).spread], [.4, .41 - .39]);
+    // Nobody bidding and nobody offering: 0 and 1 would average to a 50% that no one posted.
+    bid = 0; ask = 1;
+    const empty = await market();
+    assert.deepEqual([empty.probability, empty.spread, empty.trust.total, empty.trust.band, empty.trust.spreadCents], [null, null, null, null, null]);
+    assert.equal(empty.asOf, now.toISOString());
+    // An offer with no bid, or a bid with no offer, is still a quote.
+    bid = 0; ask = .06;
+    assert.equal((await market()).probability, .03);
+    bid = .94; ask = 1;
+    assert.equal((await market()).probability, .97);
 });
 it('returns an empty portfolio without scanning markets when no holdings exist', async () => {
     symbols = [];

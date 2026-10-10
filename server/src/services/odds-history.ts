@@ -1,5 +1,6 @@
 import type { OddsHistoryResponse, OddsRange } from '../../../shared/types.ts';
 import { query, iso } from '../db.ts';
+import { QUOTED as quoted } from './kalshi.ts';
 
 // What each range of the event chart draws. `candles` is the period, in minutes, of the Kalshi
 // candlestick closes it reads; `own` is how much of Hedgehog's five-minute readings is added:
@@ -12,8 +13,7 @@ export const ODDS_RANGES: Record<OddsRange, { days: number | null; candles: 60 |
 };
 export const isOddsRange = (value: unknown): value is OddsRange => typeof value === 'string' && Object.hasOwn(ODDS_RANGES, value);
 
-// A reading with no bid and no offer is not a quote, so it is not drawn (see candleReadings).
-const quoted = 'NOT (yes_bid<=0 AND yes_ask>=1)';
+// A reading with no bid and no offer is not a quote, so it is not drawn (`quoted`, from kalshi.ts).
 const OWN = {
     every: `SELECT ts,mid FROM odds_snapshots WHERE ticker=$1 AND ts>=$2 AND ${quoted}`,
     hourly: `SELECT ts,mid FROM (SELECT DISTINCT ON (date_trunc('hour',ts)) ts,mid FROM odds_snapshots WHERE ticker=$1 AND ts>=$2 AND ${quoted} ORDER BY date_trunc('hour',ts),ts DESC) hourly`,

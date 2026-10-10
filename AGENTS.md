@@ -22,7 +22,10 @@ data can't support a number, show no number.
   compare on one scale. A link on a minor driver says what matters more.
 - A link that fails `checkSensitivity` stays unmeasured (API type `Related`, labelled **Topic**
   on screen) with no number.
-- Probabilities are the bid–ask midpoint, never the last trade.
+- Probabilities are the bid–ask midpoint, never the last trade. A book with no bid and no offer
+  (0 and 1) has no midpoint: it shows no probability, spread or trust score, counts as no move,
+  and gives the track record no reading. The poller still stores it, so readers know the book
+  is empty now. The test is `emptyBook` in `server/src/services/kalshi.ts`.
 - AI-written text (Snowflake Cortex) never introduces a number that isn't in the data passed to it.
   Code checks this (see "Snowflake Cortex").
 - An AI summary without source links is hidden, not shown.

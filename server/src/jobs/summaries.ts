@@ -30,7 +30,7 @@ export async function summaries(ticker?: string, refreshSources = false) {
                 if (refreshSources) await query('DELETE FROM summaries WHERE event_ticker=$1', [e.ticker]);
                 continue;
             }
-            const markets = await query(`SELECT m.ticker,m.title,s.mid*100 AS probability_points,s.ts FROM markets m JOIN LATERAL(SELECT mid,ts FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON true WHERE m.event_ticker=$1`, [e.ticker]);
+            const markets = await query(`SELECT m.ticker,m.title,s.mid*100 AS probability_points,s.ts FROM markets m JOIN LATERAL(SELECT mid,ts,yes_bid,yes_ask FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON NOT (s.yes_bid<=0 AND s.yes_ask>=1) WHERE m.event_ticker=$1`, [e.ticker]);
             const input = { event: e, markets };
             const cached = await cortexResult(
                 'Write brief, cautious context for this event using only relevant passages. Do not claim that reporting caused an odds move. Every number in text must appear in marketData, even if a different number appears in a passage. Return plain text without citation markers or URLs, plus sourceIds referencing the passages actually used. If there is no relevant reporting, return empty text and sourceIds.',

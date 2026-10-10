@@ -45,11 +45,13 @@ export async function movedMarkets(holdings: Holding[], date: string, stockTags:
         )
         SELECT m.ticker,m.title,m.series_ticker,m.event_ticker,e.title AS event_title,s.tags,current.mid AS current_mid,previous.mid AS previous_mid
         FROM relevant_series s JOIN markets m ON m.series_ticker=s.series_ticker JOIN events e ON e.ticker=m.event_ticker
-        CROSS JOIN LATERAL(SELECT mid FROM odds_snapshots WHERE ticker=m.ticker
+        CROSS JOIN LATERAL(SELECT mid,yes_bid,yes_ask FROM odds_snapshots WHERE ticker=m.ticker
             AND ts<=$2::timestamptz AND ts>=$2::timestamptz-interval '10 minutes' ORDER BY ts DESC LIMIT 1)current
-        CROSS JOIN LATERAL(SELECT mid FROM odds_snapshots WHERE ticker=m.ticker
+        CROSS JOIN LATERAL(SELECT mid,yes_bid,yes_ask FROM odds_snapshots WHERE ticker=m.ticker
             AND ts<=$3::timestamptz AND ts>=$3::timestamptz-interval '10 minutes' ORDER BY ts DESC LIMIT 1)previous
-        WHERE m.status='active' AND m.close_time>now() AND abs((current.mid-previous.mid)*100)>=3`,
+        WHERE m.status='active' AND m.close_time>now() AND abs((current.mid-previous.mid)*100)>=3
+            -- A book that was empty at either end has no midpoint there, so the market shows no move.
+            AND NOT (current.yes_bid<=0 AND current.yes_ask>=1) AND NOT (previous.yes_bid<=0 AND previous.yes_ask>=1)`,
     [holdings.filter(isSecurity).map(h => h.symbol), end, start, [...new Set([...stockTags.map(t => t.tag), ...holdings.flatMap(h => { const type = assetType(h); return type === 'security' ? [] : ASSET_TAGS[type]; })])]]);
     const linksBySeries = new Map<string, HoldingLink[]>();
     const result: OddsMove[] = [];
