@@ -297,8 +297,13 @@ screen narrows it (`web/app/screens/move-scope.ts`).
 - Events linked only by an unmeasured topic are hidden until asked for, as on the Overview.
 - **From a driver to its events.** A driver is a price or a yield, not an event, and many events
   sit behind each one. Wherever a driver is named with an estimate, it leads to them: the
-  holdings table names the linked event whose odds moved most and lists the rest on request
-  (`driverEvents`), and each bar under "What mattered most" counts them.
+  holdings table names the linked event whose odds moved most and opens the rest inside the
+  row (`driverEvents`, `DriverEventList`), and each bar under "What mattered most" does the
+  same. Opening them never moves the reader away from the row.
+- **What is missing.** The table has no column for it, since most rows lack nothing. A reason
+  every listed holding shares is said once above the table (`sharedReasons`); a row carries a
+  note only for what it alone lacks, or when its figures come from other closes than the
+  window's.
 
 ## Earnings preview
 

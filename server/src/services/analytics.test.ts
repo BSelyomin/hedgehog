@@ -153,6 +153,8 @@ it('rejects measurements whose source prices are later than the requested date',
     const result = await moves('guest', '2026-10-09');
     assert.equal(result.holdings[0].beta, null);
     assert.equal(result.fromMarket, null);
+    // It says why, which is not that the holding lacks history.
+    assert.deepEqual(result.holdings[0].unavailableReasons, ['The market split is not shown for a window that ends before the latest session: the stored measurement includes later prices.']);
 });
 it('keeps an unsupported beta null without hiding an available stock move', async () => {
     missingBeta = true;

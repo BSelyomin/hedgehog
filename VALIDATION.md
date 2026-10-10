@@ -1,5 +1,23 @@
 # Validation and phase status
 
+## Moves: column help and events inside the row (2026-10-10)
+
+All 430 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390
+pixels with the feature-tour portfolio in a temporary guest session, cleared afterwards: no
+browser errors, no sideways page scroll, no control under 44 pixels.
+
+- **Column help.** Each of the eight column names has an "i" button (30 by 44 pixels around a
+  17-pixel mark). Its explanation opens on hover and on keyboard focus, closes on leaving and on
+  Escape, and stays inside the window at both widths.
+- **A driver's events open in its row.** For USO over the week, "See all 47 events" opens 36
+  whose odds moved and 11 that settled, linked through crude oil, under the row; the page does
+  not scroll, opening another row closes the first, and the same list opens under a bar of
+  "What mattered most". Six of each show at first.
+- **No Data availability column.** Every row said the same thing. A row now carries a note only
+  for what it alone lacks. For a week ending 2026-09-18 the reason the market split is missing
+  is said once above the table instead of in 13 rows, and it is now the real reason (the stored
+  measurement includes later prices) and not the one for a holding short of history.
+
 ## Moves over a window, for the portfolio, a category or one holding (2026-10-10)
 
 All 420 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390

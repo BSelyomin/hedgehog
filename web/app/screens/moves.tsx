@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { DriverChange, DriverMove, ExposureResponse, HoldingMove, MoveLink, MoveRange, MovedEvent, MovesResponse, SettledEvent, SettledMarket } from '../../../shared/types';
 import { money, percent, number, href, dateText, useData, assetLabel, Card, Fresh, Status, Empty, LinkChip, ReloadButton } from '../common';
@@ -7,13 +7,14 @@ import { Info } from '../explain';
 import { describeLeadMove, driverName, driverPhrase } from './sensitivity';
 import { CategoryFilter } from './category-controls';
 import { activeSelection, selectedSymbols, selectionMove, useCategorySelection } from './category-filter';
-import { RANGES, describeChange, driverEvents, eventLines, scopeDrivers, scopeEvents, scopeRows, signed, type Scoped } from './move-scope';
+import { RANGES, describeChange, driverEvents, eventLines, scopeDrivers, scopeEvents, scopeRows, sharedReasons, signed, type Scoped } from './move-scope';
 
 // A session date (YYYY-MM-DD) as a day, whatever the reader's time zone.
 const session = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
 const tone = (value: number | null) => value !== null && value < 0 ? 'orange' : 'blue';
 const points = (value: number) => `${value > 0 ? '+' : ''}${number(value)} pts`;
-const PAGE = 5;
+const PAGE = 5, LIST = 6;
+type Behind = { moved: Scoped<MovedEvent>[]; settled: Scoped<SettledEvent>[] };
 
 // The columns of the holdings table, each with what it means for the "i" beside its name.
 const COLUMNS = [
@@ -24,8 +25,7 @@ const COLUMNS = [
     { name: 'Change', about: 'The value at the last close minus the value at the first, in dollars and as a percentage of the value at the first close.' },
     { name: 'From market', about: 'An estimate of the part of the change that came with the stock market: measured beta × the S&P 500’s return over the window × the value at the first close.' },
     { name: 'Beyond market', about: 'The change minus the market estimate: what the stock market’s move does not account for. The two always add up to the change.' },
-    { name: 'Biggest measured driver', about: 'Of the things this holding has reliably moved with (the stock market, oil, Treasury yields), the one with the largest estimate for this window: its measured sensitivity × the driver’s own change × the value at the first close. Under it is the linked Kalshi event whose odds moved most. A driver is a price or a yield, not an event, and the estimate is a past association with it, not an effect of that event.' },
-    { name: 'Data availability', about: 'Which two closes the figures were read from, and what is missing when a figure is unavailable.' },
+    { name: 'Biggest measured driver', about: 'Of the things this holding has reliably moved with (the stock market, oil, Treasury yields), the one with the largest estimate for this window: its measured sensitivity × the driver’s own change × the value at the first close. Under it is the linked Kalshi event whose odds moved most, and the rest open in the row. A driver is a price or a yield, not an event, and the estimate is a past association with it, not an effect of that event.' },
 ];
 // The "i" stays on the line of the name's last word.
 function ColumnName({ name, about }: { name: string; about: string }) {
@@ -59,12 +59,8 @@ export function Moves() {
 export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { data: MovesResponse; exposure: ExposureResponse | null; chosen: Set<string> | null; theme: string; focus: string; setFocus: (symbol: string) => void }) {
     const [search, setSearch] = useState('');
     const [topics, setTopics] = useState(false);
-    // Asked for from a driver: only the events linked through it, for what was in view then.
-    const [via, setVia] = useState<{ scope: string; driver: string } | null>(null);
-    const eventsHead = useRef<HTMLHeadingElement>(null);
-    useEffect(() => { if (via) eventsHead.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [via]);
-    const driver = via && via.scope === focus ? via.driver : '';
-    const showEvents = (symbol: string, through: string) => { setFocus(symbol); setVia({ scope: symbol, driver: through }); };
+    // The holding whose driver's events are open in its row.
+    const [open, setOpen] = useState('');
     const inCategory = scopeRows(data.holdings, chosen, ''), rows = scopeRows(data.holdings, chosen, focus);
     const listed = inCategory.filter(holding => holding.symbol.toLowerCase().includes(search.trim().toLowerCase()));
     const whole = !focus && !chosen, part = selectionMove(rows);
@@ -72,9 +68,11 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
     const totals = whole ? { ...part, startValue: data.startValue, endValue: data.endValue, actual: data.total, fromMarket: data.fromMarket, beyondMarket: data.beyondMarket } : part;
     const subject = focus || (chosen ? 'The chosen holdings' : data.unpricedValue > 0 ? 'Your listed securities' : 'Your portfolio');
     const symbols = focus ? new Set([focus]) : chosen;
-    const settled = scopeEvents(data.settledEvents, symbols, theme, topics, driver), moved = scopeEvents(data.movedEvents, symbols, theme, topics, driver);
-    const through = (key: string) => scopeEvents(data.settledEvents, symbols, theme, false, key).length + scopeEvents(data.movedEvents, symbols, theme, false, key).length;
-    const topicOnly = driver ? 0 : scopeEvents(data.settledEvents, symbols, theme, true).length + scopeEvents(data.movedEvents, symbols, theme, true).length
+    const settled = scopeEvents(data.settledEvents, symbols, theme, topics), moved = scopeEvents(data.movedEvents, symbols, theme, topics);
+    const through = (key: string): Behind => ({ moved: scopeEvents(data.movedEvents, symbols, theme, false, key), settled: scopeEvents(data.settledEvents, symbols, theme, false, key) });
+    // What is missing for every holding is said once, above the table, and not in each row.
+    const shared = sharedReasons(inCategory);
+    const topicOnly = scopeEvents(data.settledEvents, symbols, theme, true).length + scopeEvents(data.movedEvents, symbols, theme, true).length
         - scopeEvents(data.settledEvents, symbols, theme, false).length - scopeEvents(data.movedEvents, symbols, theme, false).length;
     const market = data.driverChanges.find(change => change.driver === 'SPY');
     return <>
@@ -108,39 +106,47 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
                 <Card><span className="muted">Beyond the market</span><strong className="number">{totals.beyondMarket === null ? 'Unavailable' : signed(totals.beyondMarket, money)}</strong>
                     <span className="note">The change less the market estimate</span></Card>
             </div>
-            <LeadDrivers drivers={whole ? data.drivers : scopeDrivers(rows)} changes={data.driverChanges} missing={data.missingDrivers} subject={focus || undefined} events={through} onEvents={key => showEvents(focus, key)}/>
+            <LeadDrivers drivers={whole ? data.drivers : scopeDrivers(rows)} changes={data.driverChanges} missing={data.missingDrivers} subject={focus || undefined} events={through}/>
         </>}
         <Card><h2>By holding</h2>
             <p className="note">Pick a holding to look at it alone: its change, what mattered most for it, and the Kalshi events linked to it.</p>
             <label className="move-search">Search holdings<input type="search" placeholder="Ticker, e.g. AAPL" value={search} onChange={e => setSearch(e.target.value)}/></label>
             <p className="note">Search filters the rows below. Totals above cover {data.unpricedValue > 0 ? `listed securities; ${money(data.unpricedValue)} in cash, bonds held directly and property has no daily price and is left out` : 'your full portfolio'}.</p>
+            {shared.length > 0 && <p className="note shared-reasons">For every holding below: {shared.join(' ')}</p>}
             <div className="scroll"><table className="move-table"><thead><tr>{COLUMNS.map(column => <th key={column.name} scope="col"><ColumnName {...column}/></th>)}</tr></thead><tbody>
                 {listed.map(h => {
                     const pick = <button className="holding-pick" aria-pressed={h.symbol === focus} onClick={() => setFocus(h.symbol === focus ? '' : h.symbol)}>{h.symbol}</button>;
-                    return h.assetType && h.assetType !== 'security' ? <tr key={h.symbol} className={h.symbol === focus ? 'picked' : ''}><td>{pick}<span className="note"> · {assetLabel[h.assetType]}</span></td><td colSpan={8} className="note">No daily price, so no move over a window. Worth {money(h.valueUsd)} as entered.</td></tr>
-                        : <tr key={h.symbol} className={h.symbol === focus ? 'picked' : ''}><td>{pick}</td><td className="amount">{number(h.beta, 3)}</td><td className="amount">{money(h.startValue)}</td><td className="amount">{money(h.endValue)}</td>
+                    if (h.assetType && h.assetType !== 'security')
+                        return <tr key={h.symbol} className={h.symbol === focus ? 'picked' : ''}><td>{pick}<span className="note"> · {assetLabel[h.assetType]}</span></td><td colSpan={7} className="note">No daily price, so no move over a window. Worth {money(h.valueUsd)} as entered.</td></tr>;
+                    const top = h.drivers[0], behind = top ? driverEvents(data, h.symbol, top.driver) : null, opened = open === h.symbol && behind !== null;
+                    // A row speaks up only when it differs: a figure it lacks, or closes other than the window's.
+                    const own = h.unavailableReasons.filter(reason => !shared.includes(reason)), otherCloses = h.actual !== null && (h.previousDate !== data.startDate || h.sourceDate !== data.date);
+                    return <Fragment key={h.symbol}>
+                        <tr className={h.symbol === focus ? 'picked' : ''}><td>{pick}</td><td className="amount">{number(h.beta, 3)}</td><td className="amount">{money(h.startValue)}</td><td className="amount">{money(h.endValue)}</td>
                             <td className={`amount ${h.actual === null ? '' : tone(h.actual)}`}>{h.actual === null ? 'Unavailable' : <>{signed(h.actual, money)}{h.startValue ? <span className="note"> {signed(h.actual / h.startValue * 100, value => `${value.toFixed(2)}%`)}</span> : null}</>}</td>
                             <td className="amount">{money(h.fromMarket)}</td><td className="amount">{money(h.beyondMarket)}</td>
-                            <DriverCell holding={h} data={data} onEvents={showEvents}/>
-                            <td>{h.actual !== null && h.previousDate && <p className="note">Source closes: {h.previousDate} → {h.sourceDate}.</p>}{h.unavailableReasons.length ? h.unavailableReasons.join(' ') : 'Closing prices and measured beta available.'}</td></tr>;
+                            <DriverCell holding={h} behind={behind} open={opened} onToggle={() => setOpen(opened ? '' : h.symbol)}/></tr>
+                        {(own.length > 0 || otherCloses) && <tr className="row-note"><td colSpan={8} className="note">{h.symbol}: {otherCloses && `read from the closes on ${h.previousDate} and ${h.sourceDate}. `}{own.join(' ')}</td></tr>}
+                        {opened && top && <tr className="row-events"><td colSpan={8}><DriverEventList moved={behind.moved} settled={behind.settled}
+                            intro={`${eventLines([{ symbol: h.symbol, type: 'Measured', driver: top.driver, themes: [] }], data.holdings, data.driverChanges, money)[0].text} That is a past association with the driver, not an effect of these events.`}/></td></tr>}
+                    </Fragment>;
                 })}
-                {!listed.length && <tr><td colSpan={9}><Empty>No holdings match your search{chosen ? ' in this category' : ''}.</Empty></td></tr>}
+                {!listed.length && <tr><td colSpan={8}><Empty>No holdings match your search{chosen ? ' in this category' : ''}.</Empty></td></tr>}
             </tbody></table></div>
-            <p className="note">From market = measured beta × SPY’s return over the window × the holding’s value at the first close. Beyond market = change − market estimate. Price sources: Yahoo daily closes. Missing history leaves the result unavailable.</p>
+            <p className="note">From market = measured beta × SPY’s return over the window × the holding’s value at the first close. Beyond market = change − market estimate. Price sources: Yahoo daily closes. Every row is read from the window’s two closes; a row says so underneath when a figure is missing.</p>
             {data.total === null && data.holdings.some(h => !h.assetType || h.assetType === 'security') && <p className="note">The listed-security total needs supported price moves over the same dates for every listed holding. Available individual moves are shown above.</p>}
             <p className="note">Biggest measured driver compares each driver’s estimated part of the move: its measured sensitivity × the driver’s change over the window × the holding’s value at the first close. It is highlighted when something other than the stock market mattered most.</p>
         </Card>
-        <h2 ref={eventsHead} className="events-head">Kalshi events over this window{focus ? `, linked to ${focus}` : ''}{driver ? ` through ${driverPhrase(driver)}` : ''}</h2>
-        {driver && <p className="note">Only the events linked through this driver are listed. <button className="reset-filters" onClick={() => setVia(null)}>Show the events linked in any way</button></p>}
+        <h2>Kalshi events over this window{focus ? `, linked to ${focus}` : ''}</h2>
         <p className="note">{data.oddsWindow ? <>Kalshi is read over the same window as the prices: from <time dateTime={data.oddsWindow.from}>{dateText(data.oddsWindow.from)}</time> to <time dateTime={data.oddsWindow.to}>{dateText(data.oddsWindow.to)}</time>, the two closes. </> : 'No window could be set, so no events are listed. '}
             Sharing a window is not proof of cause. Only a Related link is set beside a holding’s move, and then through its driver: the estimate is the holding’s past association with that driver, not an effect of the event.</p>
         {topicOnly > 0 && <label className="topic-toggle"><input type="checkbox" checked={topics} onChange={event => setTopics(event.target.checked)}/> Also show {topicOnly} linked only by a shared topic, with no measured connection</label>}
-        <EventSection key={`settled|${focus}|${theme}|${topics}|${driver}`} title="Settled in this window" count={settled.length} unit="event"
+        <EventSection key={`settled|${focus}|${theme}|${topics}`} title="Settled in this window" count={settled.length} unit="event"
             about="Markets that closed inside the window and have a result, with the odds Kalshi gave 24 hours before each closed. Each event leads with the result furthest from those odds."
             empty={`No linked event settled in this window${focus || chosen || theme ? ' for what is in view' : ''}.`}>
             {shown => settled.slice(0, shown).map(event => <SettledCard key={event.ticker} event={event} rows={data.holdings} changes={data.driverChanges}/>)}
         </EventSection>
-        <EventSection key={`moved|${focus}|${theme}|${topics}|${driver}`} title="Odds that moved" count={moved.length} unit="event"
+        <EventSection key={`moved|${focus}|${theme}|${topics}`} title="Odds that moved" count={moved.length} unit="event"
             about="Markets still open at the last close whose bid–ask midpoint moved 3 points or more between the two closes, biggest first. Only quotes no wider than 10 cents at both ends are compared: a wider quote’s midpoint jumps when one side of the book steps back."
             empty={`No linked market with a narrow quote at both closes moved 3 points or more${focus || chosen || theme ? ' for what is in view' : ''}.`}>
             {shown => moved.slice(0, shown).map(event => <MovedCard key={event.ticker} event={event} rows={data.holdings} changes={data.driverChanges}/>)}
@@ -149,33 +155,61 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
 }
 
 // A holding's biggest driver for the window, with the Kalshi events that sit behind it: the
-// linked event whose odds moved most, and a way to list them all.
-function DriverCell({ holding, data, onEvents }: { holding: HoldingMove; data: MovesResponse; onEvents: (symbol: string, driver: string) => void }) {
+// linked event whose odds moved most, and a button that opens them all in the row.
+function DriverCell({ holding, behind, open, onToggle }: { holding: HoldingMove; behind: Behind | null; open: boolean; onToggle: () => void }) {
     const top = holding.drivers[0];
-    if (!top)
+    if (!top || !behind)
         return <td className="driver-cell">Unavailable</td>;
-    const events = driverEvents(data, holding.symbol, top.driver), count = events.moved.length + events.settled.length, lead = events.moved[0], closed = events.settled[0];
+    const count = behind.moved.length + behind.settled.length, lead = behind.moved[0], closed = behind.settled[0];
     return <td className={top.driver !== 'SPY' ? 'driver-cell lead' : 'driver-cell'}>{driverName(top.driver)} <span className="mono">{money(top.contribution)}</span>
         <span className="driver-event">{lead ? <>Biggest odds move among its Kalshi events: <a href={href('event', lead.markets[0].ticker)}>{lead.title}</a> <span className="mono">{points(lead.markets[0].changePoints)}</span></>
             : closed ? <>A Kalshi event linked through it settled: {closed.title ?? closed.markets[0].title} Resolved {closed.markets[0].outcome ? 'Yes' : 'No'}.</>
             : 'No Kalshi event linked through it moved or settled in this window.'}</span>
-        {count > 0 && <button className="reset-filters" onClick={() => onEvents(holding.symbol, top.driver)}>See {count === 1 ? 'it below' : `all ${count} events`}</button>}
+        {count > 0 && <button className="reset-filters" aria-expanded={open} onClick={onToggle}>{open ? 'Hide' : 'See'} {count === 1 ? 'the event' : `all ${count} events`}</button>}
     </td>;
 }
 
+// The Kalshi events behind a driver, opened where the driver is named: those whose odds moved,
+// biggest first, then those that settled, a few at a time.
+export function DriverEventList({ intro, moved, settled }: { intro: string; moved: Scoped<MovedEvent>[]; settled: Scoped<SettledEvent>[] }) {
+    const [shown, setShown] = useState(LIST);
+    const left = Math.max(0, moved.length - shown) + Math.max(0, settled.length - shown);
+    return <div className="driver-events">
+        <p className="note">{intro}</p>
+        {moved.length > 0 && <><h4>Odds that moved <span className="note">· {moved.length}</span></h4>
+            <ul className="event-markets">{moved.slice(0, shown).map(event => {
+                const lead = event.markets[0];
+                return <li key={event.ticker}><span><a href={href('event', lead.ticker)}>{event.title}</a> <span className="note">{lead.title}{event.moved > 1 ? `, and ${event.moved - 1} more of its markets` : ''}</span></span>
+                    <span className="outcome"><span className="mono">{percent(lead.from)} → {percent(lead.to)}</span> <strong className={`mono ${tone(lead.changePoints)}`}>{points(lead.changePoints)}</strong></span></li>;
+            })}</ul></>}
+        {settled.length > 0 && <><h4>Settled <span className="note">· {settled.length}</span></h4>
+            <ul className="event-markets">{settled.slice(0, shown).map(event => {
+                const lead = event.markets[0];
+                return <li key={event.ticker}><span>{event.title ?? lead.title} <span className="note">{event.title ? `${lead.title} · ` : ''}closed <time dateTime={event.closeTime}>{dateText(event.closeTime)}</time>{event.settled > 1 ? ` · ${event.yes} of ${event.settled} markets resolved Yes` : ''}</span></span>
+                    <Outcome market={lead}/></li>;
+            })}</ul></>}
+        {left > 0 && <button onClick={() => setShown(shown + LIST * 2)}>Show more · {left} left</button>}
+    </div>;
+}
+
 // Which driver accounted for the most over the window, across the holdings in view. `events`
-// counts the Kalshi events linked through a driver, and `onEvents` lists them.
-export function LeadDrivers({ drivers, changes, missing, subject, events, onEvents }: { drivers: DriverMove[]; changes: DriverChange[]; missing: string[]; subject?: string; events?: (driver: string) => number; onEvents?: (driver: string) => void }) {
+// gives the Kalshi events linked through a driver, which open under its bar.
+export function LeadDrivers({ drivers, changes, missing, subject, events }: { drivers: DriverMove[]; changes: DriverChange[]; missing: string[]; subject?: string; events?: (driver: string) => Behind }) {
+    const [open, setOpen] = useState('');
     const lead = describeLeadMove(drivers, money);
     return <Card className="lead-drivers"><h2>What mattered most{subject ? ` for ${subject}` : ''}</h2>
         {lead ? <>
             <p className="driver-lead">{subject ? lead.replace('of your move', `of ${subject}’s move`) : lead}</p>
             <div className="driver-bars">{drivers.map((move, index) => {
                 const change = changes.find(candidate => candidate.driver === move.driver);
-                return <div key={move.driver} className={index === 0 ? 'driver-bar lead' : 'driver-bar'}>
+                const behind = events?.(move.driver), count = behind ? behind.moved.length + behind.settled.length : 0, opened = open === move.driver;
+                return <Fragment key={move.driver}><div className={index === 0 ? 'driver-bar lead' : 'driver-bar'}>
                     <span>{driverName(move.driver)}</span>{change && <span className="note driver-change">{describeChange(change)}</span>}<strong className={`mono ${tone(move.contribution)}`}>{money(move.contribution)}</strong>
-                    {events && onEvents && events(move.driver) > 0 && <button className="reset-filters" onClick={() => onEvents(move.driver)}>{events(move.driver)} Kalshi event{events(move.driver) === 1 ? '' : 's'}</button>}
-                </div>;
+                    {count > 0 && <button className="reset-filters" aria-expanded={opened} onClick={() => setOpen(opened ? '' : move.driver)}>{opened ? 'Hide the ' : ''}{count} Kalshi event{count === 1 ? '' : 's'}</button>}
+                </div>
+                {opened && behind && <DriverEventList moved={behind.moved} settled={behind.settled}
+                    intro={`Kalshi events linked to ${subject ?? 'the holdings in view'} through ${driverPhrase(move.driver)}${change ? `, which ${describeChange(change)} over this window` : ''}. The estimate above is a past association with the driver, not an effect of these events.`}/>}
+                </Fragment>;
             })}</div>
         </> : <Empty>No measured driver could be compared for this window.</Empty>}
         {missing.length > 0 && <p className="note">Not compared, because a reading for one end of this window is not published yet: {missing.map(driverName).join(', ')}.</p>}

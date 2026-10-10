@@ -22,6 +22,13 @@ export function scopeDrivers(rows: HoldingMove[]): DriverMove[] {
         .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution) || a.driver.localeCompare(b.driver));
 }
 
+// The reasons a figure is missing that every listed security in view shares, such as a market
+// split that cannot be shown for a past window. They are said once and not repeated in each row.
+export function sharedReasons(rows: HoldingMove[]): string[] {
+    const priced = rows.filter(row => !row.assetType || row.assetType === 'security');
+    return priced.length < 2 ? [] : priced[0].unavailableReasons.filter(reason => priced.every(row => row.unavailableReasons.includes(reason)));
+}
+
 // An event with the links that fall inside the view.
 export type Scoped<T> = T & { shown: MoveLink[] };
 // The events linked to the holdings in view, through the chosen theme. An event tied to them

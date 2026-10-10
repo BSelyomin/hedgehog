@@ -83,7 +83,10 @@ export async function moves(session: string, requestedDate?: string, snapshot?: 
         if (!price) unavailableReasons.push(`No completed ${h.symbol} closing price for ${date}.`);
         else if (!prior) unavailableReasons.push(`No ${h.symbol} closing price is stored for the start of this window.`);
         else if (actual === null) unavailableReasons.push(`${h.symbol} has no close on the session this window opens on${previous ? ` (${previous.date})` : ''}, or its price there is invalid.`);
-        if (b === null) unavailableReasons.push('Market split needs a reliable beta measured from at least 60 aligned daily returns.');
+        // A measurement that includes prices from after the window is set aside, which is not a shortage of history.
+        const later = !measured && allMeasurements.some(m => m.symbol === h.symbol && m.driver === 'SPY');
+        if (b === null) unavailableReasons.push(later ? 'The market split is not shown for a window that ends before the latest session: the stored measurement includes later prices.'
+            : 'Market split needs a reliable beta measured from at least 60 aligned daily returns.');
         if (spyReturn === null) unavailableReasons.push('SPY history is missing for this window; the stock move can still be shown.');
         const drivers: DriverMove[] = split ? [{ driver: CONTROL, contribution: split.fromMarket }] : [];
         if (actual !== null) {
