@@ -7,6 +7,7 @@ import { measure } from './measure.ts';
 import { summaries } from './summaries.ts';
 import { briefings } from './briefing.ts';
 import { backfill } from './backfill.ts';
+import { syncBrokerages } from '../brokerages/service.ts';
 export async function runJob(name: string, job: () => Promise<void>) {
     const client = await pool.connect();
     const lock = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) locked', [`hedgehog:${name}`])).rows[0].locked;
@@ -31,6 +32,7 @@ export function scheduler() {
         await query('DELETE FROM auth_sessions WHERE expires_at<=now()');
         await query('DELETE FROM auth_rate_limits WHERE resets_at<=now()');
     })));
+    tasks.push(cron.schedule('20 * * * *', () => runJob('brokerages', syncBrokerages)));
     void runJob('poll', poll);
     void runJob('bootstrap', async () => { await prices(); await stockTags(); await tagSeries(); await measure(); });
     return tasks;

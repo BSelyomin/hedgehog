@@ -1,5 +1,7 @@
 import type { Holding } from '../../../shared/types.ts';
 import { pool, query, iso } from '../db.ts';
+import { createHash } from 'node:crypto';
+import { configuration, mode } from '../brokerages/client.ts';
 export function validateHoldings(input: unknown): Holding[] {
     if (!Array.isArray(input) || input.length > 100)
         throw new Error('Provide at most 100 holdings');
@@ -20,7 +22,18 @@ export async function getHoldings(session: string) {
         value_usd: string;
         updated_at: Date;
     }>('SELECT * FROM holdings WHERE session_id=$1 ORDER BY symbol', [session]);
-    return { holdings: rows.map(r => ({ symbol: r.symbol, valueUsd: Number(r.value_usd) })), asOf: iso(rows.reduce<Date | null>((d, r) => !d || r.updated_at > d ? r.updated_at : d, null)) };
+    const manualHoldings = rows.map(r => ({ symbol: r.symbol, valueUsd: Number(r.value_usd) }));
+    const config = configuration();
+    const imported = session.startsWith('user:') && config.configured ? await query<{ symbol: string; value_usd: string; updated_at: Date }>(
+        `SELECT h.* FROM brokerage_holdings h JOIN snaptrade_users u ON h.session_id='user:' || u.user_id::text AND h.mode=u.mode
+         WHERE h.session_id=$1 AND h.mode=$2 AND u.client_hash=$3 ORDER BY h.symbol`, [session, mode(), config.clientHash]) : [];
+    const brokerageHoldings = imported.map(r => ({ symbol: r.symbol, valueUsd: Number(r.value_usd) }));
+    const cents = new Map<string, number>();
+    for (const h of [...manualHoldings, ...brokerageHoldings]) cents.set(h.symbol, (cents.get(h.symbol) ?? 0) + Math.round(h.valueUsd * 100));
+    const holdings = [...cents].sort(([a], [b]) => a.localeCompare(b)).map(([symbol, value]) => ({ symbol, valueUsd: value / 100 }));
+    const manualDate = rows.reduce<Date | null>((d, r) => !d || r.updated_at > d ? r.updated_at : d, null);
+    const asOf = imported.reduce<Date | null>((d, r) => !d || r.updated_at < d ? r.updated_at : d, manualDate);
+    return { holdings, manualHoldings, brokerageHoldings, sandbox: mode() === 'sandbox' && imported.length > 0, asOf: iso(asOf) };
 }
 export async function saveHoldings(session: string, holdings: Holding[]) {
     const client = await pool.connect();
@@ -40,4 +53,8 @@ export async function saveHoldings(session: string, holdings: Holding[]) {
         client.release();
     }
     return getHoldings(session);
+}
+
+export function portfolioRevision(portfolio: Awaited<ReturnType<typeof getHoldings>>) {
+    return createHash('sha256').update(JSON.stringify(portfolio)).digest('hex');
 }

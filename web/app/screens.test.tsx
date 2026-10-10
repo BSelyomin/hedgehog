@@ -9,6 +9,8 @@ import {Earnings} from './screens/earnings';
 import {TrackRecord} from './screens/track-record';
 import Hedgehog from './hedgehog';
 import {SignInForm} from './screens/account';
+import {Brokerages} from './screens/brokerages';
+import {AccountProvider} from './auth';
 it('renders every screen without fabricated market data',()=>{
  for(const screen of [<AddHoldings/>,<Overview/>,<Calendar/>,<EventPage ticker="unconfigured"/>,<Moves/>,<Earnings/>,<TrackRecord/>]){
   const html=renderToStaticMarkup(screen);
@@ -16,6 +18,17 @@ it('renders every screen without fabricated market data',()=>{
   expect(html).not.toContain('Sample data');
  }
  expect(renderToStaticMarkup(<Hedgehog/>)).toContain('Not financial advice. Odds from Kalshi.');
+});
+it('keeps manual and CSV input visible and requires sign-in for brokerage linking',()=>{
+ const holdings=renderToStaticMarkup(<AddHoldings/>);
+ expect(holdings).toContain('Import CSV (symbol,valueUsd)');
+ expect(holdings).toContain('Connect a brokerage');
+ expect(holdings).toContain('Clear manual / CSV holdings');
+ const brokerages=renderToStaticMarkup(<AccountProvider><Brokerages/></AccountProvider>);
+ expect(brokerages).toContain('Connected brokerages');
+ expect(brokerages).toContain('Sign in to link accounts');
+ expect(brokerages).toContain('Manual entry and CSV uploads');
+ expect(brokerages).not.toContain('temporary-token');
 });
 it('renders accessible account forms and explains guest portfolio ownership',()=>{
  const signup=renderToStaticMarkup(<SignInForm signup onSuccess={()=>{}}/>);

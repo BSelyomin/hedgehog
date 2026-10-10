@@ -2,6 +2,7 @@ export type LinkType = 'Direct' | 'Measured' | 'Related';
 export interface Freshness {
     asOf: string | null;
 }
+export interface ApiErrorResponse extends Freshness { error: string }
 export interface AccountUser {
     id: string;
     email: string;
@@ -34,6 +35,69 @@ export interface Holding {
 }
 export interface HoldingsResponse extends Freshness {
     holdings: Holding[];
+    manualHoldings?: Holding[];
+    brokerageHoldings?: Holding[];
+    sandbox?: boolean;
+}
+export type BrokerageMode = 'sandbox' | 'live';
+export interface BrokeragePosition {
+    symbol: string;
+    kind: string;
+    units: string | null;
+    price: string | null;
+    currency: string | null;
+    valueUsd: number | null;
+    excludedReason: string | null;
+}
+export interface BrokerageAccount extends Freshness {
+    id: string;
+    connectionId: string;
+    name: string;
+    institution: string;
+    numberMask: string;
+    included: boolean;
+    available: boolean;
+    positions: BrokeragePosition[];
+    syncError: string | null;
+}
+export interface BrokerageConnection {
+    id: string;
+    name: string;
+    disabled: boolean;
+}
+export interface BrokeragesResponse extends Freshness {
+    configured: boolean;
+    mode: BrokerageMode;
+    message: string | null;
+    connections: BrokerageConnection[];
+    accounts: BrokerageAccount[];
+    checkedAt: string | null;
+}
+export interface BrokerageConnectRequest { reconnect?: string }
+export interface BrokerageConnectResponse extends Freshness { portalUrl: string }
+export interface BrokerageAccountRequest { included: boolean }
+/** Historical activity reported by SnapTrade, never an instruction to place a trade. */
+export interface BrokerageActivity {
+    id: string;
+    type: string;
+    symbol: string | null;
+    quantity: number | null;
+    price: number | null;
+    amount: number | null;
+    currency: string | null;
+    fee: number | null;
+    tradeDate: string | null;
+    settlementDate: string | null;
+    description: string | null;
+}
+export interface BrokerageActivitiesResponse extends Freshness {
+    accountId: string;
+    source: 'SnapTrade';
+    mode: BrokerageMode;
+    fetchedAt: string;
+    /** The provider supplies no source freshness timestamp for this endpoint. */
+    activities: BrokerageActivity[];
+    pagination: { offset: number; limit: number; total: number };
 }
 export interface HoldingsRequest {
     holdings: Holding[];

@@ -9,7 +9,7 @@ export async function loadSeries(symbol: string, years = 10): Promise<PricePoint
 export async function measure() {
     const symbols = await query<{
         symbol: string;
-    }>('SELECT DISTINCT symbol FROM holdings');
+    }>('SELECT DISTINCT symbol FROM portfolio_holdings');
     const spy = await loadSeries('SPY');
     for (const { symbol } of symbols)
         for (const driver of ['CL=F', 'DGS2', 'SPY']) {

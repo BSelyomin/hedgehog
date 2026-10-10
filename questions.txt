@@ -31,3 +31,27 @@ the original build log and retain historical blockers and provider choices for c
 10. Docker CLI reports that Docker Desktop WSL integration is not enabled. Enable it on the host before container validation.
 11. Automatic SEC 10-K discovery is not implemented. The cached risk-factors job accepts a manually downloaded filing risk-factor section and its source URL; confirm whether automatic acquisition is required.
 12. The initial Docker dependency stage uses npm install because no lockfile could be resolved offline. Generate and commit package-lock.json on a networked machine, then use npm ci and pin the database image digest for exact reproducibility.
+
+
+SnapTrade integration (2026-10-09)
+- Supply commercial test client ID/consumer key privately in .env to exercise the real hosted SANDBOX connection. Personal keys do not support separate Hedgehog users; production commercial keys cannot use the simulated sandbox broker. No credentials were available for a live provider test.
+- Verify the current List all user accounts primary schema and migrate account discovery from the documented, deprecated GET /accounts to GET /accounts/all. The new primary reference was inaccessible during implementation; no replacement field names were guessed.
+- Confirm required production brokerage coverage/access and refresh plan with SnapTrade. Hedgehog currently reads cached holdings, never triggers paid manual refreshes, and excludes positions without verified US listing/price/currency metadata.
+- Registration recovery: if SnapTrade registers a user but the response/local insert is lost, restore the matching provider user secret through an administrator-approved recovery process. The application does not reset existing external users automatically. Preserve the database and original SNAPTRADE_ENCRYPTION_KEY together.
+- Full npm test/lint require restoring missing Vitest/development dependencies. Network DNS access is unavailable here. Focused tests ran with a temporary Node test adapter; PostgreSQL smoke tests used an already-cached PGlite package outside the repo. Docker execution and real SnapTrade sandbox verification still need a normal local environment.
+- The integration changes remain uncommitted because this environment makes .git read-only (git add could not create index.lock).
+
+
+Application run/test after credentials added (2026-10-09)
+- SnapTrade API credentials are present. The supplied encryption key was 32 bytes represented as hex; converted the same key bytes to the required base64 format in private .env. Sandbox mode, APP_URL and Compose configuration now validate. No key values were logged, and .env remains ignored by Git.
+- Cannot start the application in this managed session: Docker socket access returns permission denied, Next.js port 3000 bind returns EPERM, and outbound DNS to SnapTrade returns EAI_AGAIN. Backend startup also cannot reach the configured database. No app process was left running after the failed startup attempt.
+- Frontend production build, production/focused-test TypeScript checks, core accuracy checks, 35 focused cases through the temporary Node test adapter, and both PostgreSQL-engine smoke tests passed. Smoke tests mock SnapTrade; they do not authenticate the supplied API keys or exercise the real hosted portal.
+- Native npm test/lint remain blocked by missing Vitest/development dependencies. Complete a real sandbox test from a normal terminal using docker compose up -d --build, then visit http://localhost:3000, sign in, and connect/select a sandbox account on Brokerages.
+
+
+SnapTrade data conversion / non-JSON error (2026-10-09)
+- The reported Unexpected token I error is reproduced when the frontend receives plain-text Internal Server Error from the API proxy/backend. Added a runtime API proxy that returns structured JSON for unreachable or malformed upstream responses, plus defensive browser parsing. The exact failing endpoint/deployment cannot be inspected here; Docker access, local port binding and outbound DNS are restricted. If the backend remains unreachable after rebuilding, inspect its startup/database/migration logs locally.
+- Verified current positions and historical activity schemas in SnapTrade's primary documentation. Current position quantities/prices are decimal strings; activities use numeric quantities/prices, nested symbols/currencies and data/pagination. Separate typed converters preserve missing values and cash-flow signs; historical activity never becomes a current holding value.
+- Added owned-account read-only activity API and View trades and activity UI. Actual provider credentials/response verification still requires an environment with network access.
+- SnapTrade's activities docs now flag the legacy /api/v1 path prefix as deprecated while its request-signature guide still explicitly requires that prefix in signatures. Retained the existing documented signing/request path; reconcile these primary-doc instructions with SnapTrade before changing production request signing. The endpoint itself has no planned sunset per the activity reference.
+- Conversion/error-handler validation passed: frontend production build, TypeScript checks, core accuracy checks, 49 focused cases via the temporary Node runner, prior PostgreSQL smoke tests, and a combined frontend-proxy/Express/PostgreSQL/SnapTrade-fixture smoke test (including activity ownership). Native Vitest/lint remain blocked by missing development dependencies; .git remains read-only.

@@ -9,6 +9,9 @@ import { Earnings } from './screens/earnings';
 import { TrackRecord } from './screens/track-record';
 import { AccountProvider, useAccount } from './auth';
 import { AccountScreen } from './screens/account';
+import { Brokerages } from './screens/brokerages';
+import { api } from './common';
+import type { HoldingsResponse } from '../../shared/types';
 
 export default function Hedgehog() {
     return <AccountProvider><Shell/></AccountProvider>;
@@ -30,10 +33,11 @@ function Shell() {
         return () => window.removeEventListener('hashchange', change);
     }, []);
 
-    const tabs = [['overview', 'Overview'], ['calendar', 'Calendar'], ['earnings', 'Earnings'], ['moves', 'Moves'], ['track-record', 'Track record']];
+    const tabs = [['brokerages', 'Brokerages'], ['overview', 'Overview'], ['calendar', 'Calendar'], ['earnings', 'Earnings'], ['moves', 'Moves'], ['track-record', 'Track record']];
     let screen;
     switch (route) {
         case 'signup': case 'signin': case 'account': screen = <AccountScreen signup={route === 'signup'}/>; break;
+        case 'brokerages': screen = <Brokerages/>; break;
         case 'overview': screen = <Overview/>; break;
         case 'calendar': screen = <Calendar/>; break;
         case 'event': screen = <EventPage ticker={id}/>; break;
@@ -60,9 +64,23 @@ function Shell() {
             {notice && <p className="account-notice" role="status">{notice}</p>}
             {checking ? <p role="status">Loading your session…</p> : error ?
                 <div><p role="alert" className="error">{error}</p><button onClick={() => void refresh()}>Retry connection</button></div> :
-                <div key={session?.sessionKey}>{screen}</div>
+                <div key={session?.sessionKey}><PortfolioSource route={route}/>{screen}</div>
             }
         </main>
         <footer>Not financial advice. Odds from Kalshi. Price history from Yahoo Finance and FRED.</footer>
     </>;
+}
+
+function PortfolioSource({ route }: { route: string }) {
+    const [portfolio, setPortfolio] = useState<HoldingsResponse | null>(null);
+    useEffect(() => {
+        let active = true;
+        api<HoldingsResponse>('/holdings').then(data => { if (active) setPortfolio(data); }).catch(() => { if (active) setPortfolio(null); });
+        return () => { active = false; };
+    }, [route]);
+    return portfolio?.brokerageHoldings?.length ? <p role="status" className="account-notice">
+        {portfolio.sandbox ? 'Sandbox portfolio: includes simulated SnapTrade positions.' : 'Portfolio includes SnapTrade positions valued from quantity × provider price.'}
+        {' '}These are cached holdings.{portfolio.asOf && <> Holdings source updated <time dateTime={portfolio.asOf}>{new Date(portfolio.asOf).toLocaleString()}</time>.</>}
+        {' '}<a href="#brokerages">Sources and account selection</a>
+    </p> : null;
 }

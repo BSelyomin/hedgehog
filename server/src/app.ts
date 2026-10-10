@@ -1,8 +1,9 @@
 import express from 'express';
 import { authRouter } from './auth/routes.ts';
+import { brokerageRouter } from './brokerages/routes.ts';
 import { loadSession, protectWrites } from './auth/session.ts';
 import { query, iso } from './db.ts';
-import { getHoldings, saveHoldings, validateHoldings } from './services/holdings.ts';
+import { getHoldings, saveHoldings, validateHoldings, portfolioRevision } from './services/holdings.ts';
 import { exposure, calendar, eventDetail } from './services/exposure.ts';
 import { moves } from './services/moves.ts';
 import { earnings } from './services/earnings.ts';
@@ -22,6 +23,7 @@ catch {
 app.use(loadSession);
 app.use(protectWrites);
 app.use('/auth', authRouter);
+app.use('/brokerages', brokerageRouter);
 app.get('/holdings', async (_req, res) => { res.json(await getHoldings(res.locals.session)); });
 app.post('/holdings', async (req, res) => { let holdings; try {
     holdings = validateHoldings(req.body?.holdings);
@@ -49,11 +51,11 @@ app.get('/briefing', async (_req, res) => { const date = new Date().toISOString(
     text: string;
     audio: Buffer | null;
     as_of: Date | null;
-}>('SELECT * FROM briefings WHERE session_id=$1 AND day=$2', [res.locals.session, date]); const row = rows[0]; res.json({ date, text: row?.text ?? null, audioUrl: row?.audio ? '/api/briefing/audio' : null, asOf: iso(row?.as_of) }); });
+}>('SELECT * FROM briefings WHERE session_id=$1 AND day=$2 AND portfolio_revision=$3', [res.locals.session, date, portfolioRevision(await getHoldings(res.locals.session))]); const row = rows[0]; res.json({ date, text: row?.text ?? null, audioUrl: row?.audio ? '/api/briefing/audio' : null, asOf: iso(row?.as_of) }); });
 app.get('/briefing/audio', async (_req, res) => { const rows = await query<{
     audio: Buffer;
     as_of: Date;
-}>('SELECT audio,as_of FROM briefings WHERE session_id=$1 AND day=CURRENT_DATE AND audio IS NOT NULL', [res.locals.session]); if (!rows.length) {
+}>('SELECT audio,as_of FROM briefings WHERE session_id=$1 AND day=CURRENT_DATE AND audio IS NOT NULL AND portfolio_revision=$2', [res.locals.session, portfolioRevision(await getHoldings(res.locals.session))]); if (!rows.length) {
     res.status(404).json({ error: 'Briefing audio not ready', asOf: null });
     return;
 } res.set('Cache-Control', 'private, no-store'); res.set('X-Data-As-Of', iso(rows[0].as_of)!); res.type('audio/mpeg').send(rows[0].audio); });

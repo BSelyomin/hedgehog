@@ -40,3 +40,7 @@ Move components reconcile mathematically, with unavailable values when aligned c
 Docker setup and Yahoo price loading have been verified locally. Kalshi connections currently reset from both the Windows host and Docker, so market data remains unavailable in this environment. Snowflake needs user-supplied credentials and an optional reporting index before live AI validation. Human sector mappings and series-tag approval are still required. See [VALIDATION.md](VALIDATION.md) for current checks and the historical phase log; production readiness is not certified.
 
 [NUMBERS.md](NUMBERS.md) maps displayed numbers to sources. [SUBMISSION.md](SUBMISSION.md) is a draft for human review; it avoids unverified completion claims.
+
+## Brokerage accounts
+
+Read-only SnapTrade linking is available under **Brokerages** for signed-in users, with separate sandbox and live modes. Manual entry and CSV imports remain available. Configure commercial test keys and follow [SNAPTRADE.md](SNAPTRADE.md) for sandbox setup and the test checklist. Docker passes the connector settings to the backend.

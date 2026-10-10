@@ -6,7 +6,7 @@ import { yahoo } from './prices.ts';
 export async function stockTags() {
     const symbols = new Set([...(await seedFile<string[]>('demo_symbols')), ...(await query<{
             symbol: string;
-        }>('SELECT DISTINCT symbol FROM holdings')).map(r => r.symbol)]);
+        }>('SELECT DISTINCT symbol FROM portfolio_holdings')).map(r => r.symbol)]);
     const allowed = await seedFile<string[]>('tags');
     for (const symbol of symbols) {
         if (allowed.includes(symbol))

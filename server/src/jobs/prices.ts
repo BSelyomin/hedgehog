@@ -6,7 +6,7 @@ export const yahoo = new YahooFinance();
 export async function prices() {
     const symbols = new Set([...(await seedFile<string[]>('demo_symbols')), ...(await query<{
             symbol: string;
-        }>('SELECT DISTINCT symbol FROM holdings')).map(r => r.symbol), 'SPY', 'CL=F']);
+        }>('SELECT DISTINCT symbol FROM portfolio_holdings')).map(r => r.symbol), 'SPY', 'CL=F']);
     const start = new Date();
     start.setUTCFullYear(start.getUTCFullYear() - 10);
     for (const symbol of symbols) {
