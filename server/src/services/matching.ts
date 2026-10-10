@@ -67,9 +67,10 @@ export function matchHolding(holding: Holding, eventTags: string[], stockTags: s
     const faint = reliable[0], lead = rankDrivers(holding.symbol, measurements)[0];
     if (faint && lead) {
         const size = effect(faint), daily = driverFor(faint.driver)?.period === 'day';
-        const why = daily && size !== null ? `a typical move in it moves ${holding.symbol} about ${Math.round(size / lead.typicalEffect * 100)}% as much as a typical move in ${lead.driver}`
+        // One decimal, so that a share just under the floor does not read as the floor itself.
+        const why = daily && size !== null ? `a typical move in it moves ${holding.symbol} about ${(size / lead.typicalEffect * 100).toFixed(1)}% as much as a typical move in ${lead.driver}`
             : `${holding.symbol} has no sizeable link to that kind of driver day to day; ${lead.driver} matters most to it`;
-        return { ...holding, type: 'Related', lead, sensitivity: null, evidence: `Measured against ${faint.driver}, but small: ${why}. Under the ${MATERIAL_SHARE * 100}% floor for a link, so no move estimate is shown.` };
+        return { ...holding, type: 'Related', lead, sensitivity: null, evidence: `Measured against ${faint.driver}, but small: ${why}. Under the ${Math.round(MATERIAL_SHARE * 100)}% floor for a link, so no move estimate is shown.` };
     }
     return { ...holding, type: 'Related', evidence: `Shared reviewed tags: ${shared.join(', ')}. No reliable sensitivity; no move estimate shown.`, sensitivity: null };
 }

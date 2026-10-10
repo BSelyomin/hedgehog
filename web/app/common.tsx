@@ -46,12 +46,12 @@ export const linkMeaning: Record<LinkType, { means: string; basis: string; limit
     },
     Measured: {
         means: 'The holding’s price has moved reliably with the driver behind this event: oil, Treasury yields, mortgage rates or the stock market.',
-        basis: 'Measured from the holding’s past daily price changes (weekly for mortgage rates). It counts only with at least 60 observations and a 95% range that excludes zero, and only when a typical move in the driver moves the holding at least a fifth as much as its biggest driver does.',
+        basis: 'Measured from the holding’s past daily price changes (weekly for mortgage rates). It counts only with at least 60 observations and a 95% range that excludes zero, and only when a typical move in the driver moves the holding at least a tenth as much as its biggest driver does.',
         limit: 'It describes the past, not what this event’s outcome will do. Each link says which driver matters most to the holding.',
     },
     Related: {
         means: 'The holding shares a reviewed topic with the event, but no link is drawn from its price history.',
-        basis: 'Either no reliable relationship showed up, or the measured one is under a fifth of what the holding’s biggest driver does to it, so no number is shown.',
+        basis: 'Either no reliable relationship showed up, or the measured one is under a tenth of what the holding’s biggest driver does to it, so no number is shown.',
         limit: 'Worth knowing about, not a measured effect. The Overview leaves these out.',
     },
 };

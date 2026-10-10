@@ -1,5 +1,25 @@
 # Validation and phase status
 
+## Link floor at a tenth, and job locks that cannot be left behind (2026-10-10)
+
+All 378 tests and both TypeScript checks pass. The password-hashing test again exceeded its
+five-second limit once while the stack was busy and passed on the next run.
+
+- **Floor lowered from a fifth to a tenth**, by decision. On the stored portfolio the Oil theme
+  is now TLT, XOM, DAL, GLD, ITB, UAL and USO, naming XOM and USO as the holdings it matters
+  most to; JPM, at 6%, stays out. Measured links rose from 1,419 to 2,316 and a typical
+  Overview row holds seven holdings. Three links sit within a point of the line (ITB to oil,
+  NFLX to each Treasury yield), so they can come and go as measurements refresh; the evidence
+  shows the share to one decimal so that 9.8% does not read as the 10% floor.
+- **Job locks.** Against the live database, a session holding a test lock with a four-second
+  idle timeout was ended by the server and its lock freed within seven seconds; one sending a
+  statement every 1.5 seconds kept its lock for nine. With the new code running, the sessions
+  holding the poll and price-history locks each sent their heartbeat within a 38-second watch,
+  odds kept being stored, and no pooled connection was dropped. A backend still running older
+  code can leave a lock behind as before.
+- **Backfill.** Interrupted twice by rebuilds and resumed each time; it had finished 146 of
+  515 series before the first. Five series failed once and are retried on the next pass.
+
 ## Empty books, the link floor and the track-record backfill (2026-10-10)
 
 All 374 tests and both TypeScript checks pass; the stack was rebuilt on each change. One run

@@ -12,22 +12,44 @@ import { earningsDates } from './earnings-dates.ts';
 import { oddsCandles } from './odds-candles.ts';
 import { profiles } from './profiles.ts';
 const reportDates = () => earningsDates().catch(() => console.warn('Earnings report dates unavailable'));
+// A job's lock lives on a database session, so that only one backend sharing the database runs
+// the job. If that backend died without closing the session (a laptop going to sleep, a killed
+// container behind the database's proxy), the session stayed open and held the lock: on
+// 2026-10-10 that stopped every backend polling for an hour. The session now asks the server to
+// end it after LOCK_SECONDS without a statement, and the job sends one every HEARTBEAT_MS while
+// it runs, so a dead backend's lock is gone within about two minutes.
+export const LOCK_SECONDS = 120;
+export const HEARTBEAT_MS = 30000;
 export async function runJob(name: string, job: () => Promise<void>) {
     const client = await pool.connect();
-    const lock = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) locked', [`hedgehog:${name}`])).rows[0].locked;
-    if (!lock) {
-        client.release();
-        return;
-    }
+    let held = false, beat: ReturnType<typeof setInterval> | undefined;
     try {
-        await job();
-    }
-    catch {
-        console.warn('Job failed; will retry:', name);
+        await client.query(`SET idle_session_timeout = '${LOCK_SECONDS}s'`);
+        held = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) locked', [`hedgehog:${name}`])).rows[0].locked;
+        if (!held)
+            return;
+        beat = setInterval(() => { client.query('SELECT 1').catch(() => {}); }, HEARTBEAT_MS);
+        beat.unref();
+        try {
+            await job();
+        }
+        catch {
+            console.warn('Job failed; will retry:', name);
+        }
     }
     finally {
-        await client.query('SELECT pg_advisory_unlock(hashtext($1))', [`hedgehog:${name}`]);
-        client.release();
+        clearInterval(beat);
+        try {
+            if (held)
+                await client.query('SELECT pg_advisory_unlock(hashtext($1))', [`hedgehog:${name}`]);
+            // The connection goes back to the pool, where sitting idle is normal.
+            await client.query('RESET idle_session_timeout');
+            client.release();
+        }
+        catch {
+            // The session is already gone, and its lock with it. Do not reuse the connection.
+            client.release(true);
+        }
     }
 }
 export function scheduler() {

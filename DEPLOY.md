@@ -109,6 +109,21 @@ again after thirty days. To classify newly added tickers at once:
 docker compose exec backend npm run job -- profiles
 ```
 
+### If odds stop updating
+
+Each scheduled job runs under a database lock so that only one backend sharing the database
+runs it. A backend running code from before 2026-10-10 that dies mid-job can leave its session
+open, and the lock with it, for about an hour; current code ends such a session within two
+minutes. To see who holds a job and when it last did anything:
+
+```sql
+SELECT a.pid, a.state, a.backend_start, a.state_change, left(a.query, 60)
+FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid WHERE l.locktype = 'advisory';
+```
+
+A holder whose `state_change` is minutes old while nothing is being stored is dead;
+`SELECT pg_terminate_backend(<pid>);` frees the job.
+
 When the database is read-only the backend still starts. It serves stored data, skips migrations
 and scheduled jobs, reports `readOnly: true` from `/health` (the app shows a notice), and answers
 any attempt to save with a plain message. It checks every minute and applies migrations and starts

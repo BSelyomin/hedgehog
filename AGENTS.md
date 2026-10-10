@@ -24,7 +24,7 @@ data can't support a number, show no number.
   on screen) with no number.
 - A reliable measurement is not enough for a link. With ten years of prices almost every
   holding is reliably tied to almost every driver, however faintly. A measurement draws a link
-  only when a typical move in its driver moves the holding at least `MATERIAL_SHARE` (a fifth)
+  only when a typical move in its driver moves the holding at least `MATERIAL_SHARE` (a tenth)
   as much as a typical move in the holding's biggest driver. Below that it is a Topic link whose
   evidence says how it compares, with no estimate.
 - Probabilities are the bid–ask midpoint, never the last trade. A book with no bid and no offer
@@ -96,6 +96,10 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
   call Kalshi from the browser.
 - Poll every 5 minutes. Back off on 429 and 5xx responses. Log and skip a bad market rather than
   failing the whole run.
+- Every scheduled job runs under a database lock (`runJob` in `server/src/jobs/scheduler.ts`), so
+  that only one of the backends sharing the database runs it. The lock's session ends itself
+  after two minutes without a statement and the job sends a heartbeat while it runs, so a
+  backend that dies cannot hold a job for long. Keep both when changing how jobs are locked.
 - Store every market's details, but odds history only for series a holding could link to. Storing
   it for all markets filled the database in 17 hours. A database trigger enforces this for any
   backend that shares the database.
@@ -133,7 +137,7 @@ per company ticker for company markets. Never create tags outside this list.
    KPI markets, earnings-call mention markets).
 2. **Measured:** the holding shares a tag with the market *and* `measured_links` has a reliable
    link between the holding and that tag's driver that is big enough to count (`materialRows` in
-   `server/src/services/matching.ts`): at least a fifth of the holding's biggest daily driver. A
+   `server/src/services/matching.ts`): at least a tenth of the holding's biggest daily driver. A
    weekly driver cannot be put on that scale, so it counts when a daily driver of its family
    does.
 3. **Related:** a shared tag only. Show it, labeled, with no sensitivity number.
