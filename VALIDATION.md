@@ -1,5 +1,16 @@
 # Validation and phase status
 
+## Full database, read-only mode and odds storage (2026-10-10)
+
+The shared Tiger Data service reached 2,965 MB and turned read-only; 2,815 MB of it was 17 hours of odds history (9.9 million rows, about 141,000 per poll). The backend then crash-looped at startup because applying migrations writes.
+
+- **Read-only mode.** The backend now starts on a read-only database, serves stored data and reports it. Checked live: `/health` returned `readOnly: true`, pages loaded, and an attempted save returned "The database is read-only right now, so changes cannot be saved."
+- **Cleanup, approved by the user.** In one transaction, the 500,993 rows for the 8,137 markets in linkable series were kept, 9,424,657 others were deleted, and migration 010 was applied. The database is 282 MB. The kept history covers its full original range.
+- **Guard.** A rolled-back test insert was accepted for a linked market and rejected for an unlinked one. The first poll afterwards stored 7,906 odds rows while updating details for all 148,908 markets.
+- **Dropped connections.** When Tiger Data lifted the read-only flag it closed open connections and the server exited on the unhandled pool error. Docker restarted it; a pool error listener now keeps it running.
+
+All 191 tests and strict TypeScript checks pass. Not yet observed: the compression and retention policies acting on a chunk, which happens after a day and after eight days.
+
 ## Asset types, rate drivers and "what matters most" (2026-10-10)
 
 All 188 tests and strict TypeScript checks pass in a Node 24 container, and the Next.js production build succeeds. Migrations 008 and 009 applied to the shared database.
