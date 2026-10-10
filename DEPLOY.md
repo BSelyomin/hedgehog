@@ -404,7 +404,8 @@ docker compose exec backend npm run job -- review-tags
 the six macro series approved during setup. Run `approve-tag SERIES_TICKER TAG` only after
 reviewing the specific proposed pair, then run `backfill` to build category track records.
 Backfill reads both live and archived markets, normalizes their distinct candlestick fields,
-and accepts only bid/ask observations at the 24-hour cutoff (within one minute before it).
+and reads the quote standing at the 24-hour cutoff: the last hourly close at or before it, at
+most seven days old.
 Unavailable or unsupported history is omitted rather than replaced with last-trade prices.
 
 ## Track-record evidence and portfolio CSV

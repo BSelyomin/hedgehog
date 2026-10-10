@@ -14,71 +14,52 @@ Multiple thresholds can share an event; even different event IDs can share one r
 Easy questions and missing quotes can bias the percentage. This is not calibration,
 investment performance, or an estimate of the next event's probability.
 
-## Official data and bounded collection
+## Where the history comes from
 
-Use Kalshi GET /historical/markets with reviewed series_ticker, cursor and limit=100 (archive filters are mutually exclusive). Recent final markets are fetched with GET /markets?status=settled.
-Combo markets are rejected by their mve_collection_ticker/mve_selected_legs fields.
-Only finalized, non-provisional binary Yes/No results with settlement_ts are accepted.
-close_time anchors the horizon; settlement_ts is stored separately, never substituted
-for close_time. Quotes use GET /historical/markets/{ticker}/candlesticks; recent markets
-first use GET /series/{series}/markets/{ticker}/candlesticks and fall back to the archive.
-The collector requests only the minute surrounding each target and retains a valid
-bid/ask candle ending within 60 seconds before it. No other horizon substitutes.
+Each timeframe reads one store, and no store is a copy of another.
 
-Quotes at/after a sourced event_releases timestamp, Kalshi occurrence_datetime (when
-no sourced timestamp exists), or final settlement are excluded. These release fields
-are incomplete and occurrence times may be administrative: close-relative scoring
-is not proof that every quote preceded the actual public outcome announcement.
-Missing quotes remain missing; API outages throw without advancing the checkpoint.
+- **24 hours** reads `settled_markets`, the track record the trust score also uses. Its reading
+  is the quote standing 24 hours before close: the close of the last hourly candlestick at or
+  before that moment, at most seven days old. Kalshi publishes a candlestick only when the quote
+  changes, so an earlier one still stands; asking for the exact minute found a quote for about
+  one market in six. `npm run job -- backfill` fills it for every series a holding can link to.
+- **1 hour, 7 days and 30 days** read `forecast_observations`, filled by
+  `npm run job -- backfill-horizons [SERIES...]`. That collector keeps only a bid and ask from
+  the minute before the mark, so these timeframes score far fewer questions. A market that was
+  not yet listed at a mark is noted as unscored without asking Kalshi.
 
-Migration 014 only creates track_entities, track_markets, track_quotes and track_sync.
-The collector writes only these new tables. It does not rewrite settled_markets,
-forecast_observations, odds_snapshots, holdings, tags or trust scores. A market's identity
-and outcome are stored once, with at most four compact quote/status rows; no candle
-series or raw API responses are retained. Missing statuses cost a small row to document
-coverage. Old records are retained; the new page intentionally does not copy their odds.
+Left out of every rating, never estimated: a quote published at or after a verified release in
+`event_releases`, an exactly even quote, and a market with no reading. Release times are known
+for few events, so a quote taken relative to close is not proof that it preceded the public
+result.
 
-Run after applying migrations:
+The page first had a store of its own (`track_markets`, `track_quotes`, `track_sync`, with
+`track_company_series` and `track_benchmark_series` naming extra series), filled by a collector
+that was off unless switched on. On a database where it had not run the page showed "No history
+yet" beside a full `settled_markets`. Migration 017 removes those five tables and the
+`track-history`, `track-companies` and `track-funds` jobs.
 
-    npm run job -- track-entities
-    npm run job -- track-history KXCPI
+The nightly job runs `backfill-horizons` last and for a set number of markets
+(`HORIZON_MARKETS` in `server/src/jobs/scheduler.ts`), carrying on the night after. Unbounded, it
+would ask Kalshi for up to four quotes for every settled market of every reviewed series.
 
-A history invocation handles at most 25 final markets across three reviewed series by
-default, capped internally at 50 markets/six series. It processes one listing page per
-source/series and checkpoints its offset/cursor. Repeat to continue. Complete scans can
-restart to discover newer history and refresh outcomes; valid quotes are cached.
-No large backfill is started automatically. Set TRACK_HISTORY_ENABLED=true to opt into
-one bounded collection plus identity refresh hourly at :40 (restart backend afterward).
-The page can remain sparse until those bounded collections accumulate usable history.
+## Names
 
-Company metadata uses the existing Yahoo Finance client: EQUITY is a company;
-ETF/MUTUALFUND is a fund and INDEX is an index. Unsupported/missing identities do not
-appear as invented companies. Lookup is catalog search, not unrestricted ticker discovery.
+`track_entities` holds Yahoo's name and type for each ticker in the tag list: EQUITY is a
+company, ETF and MUTUALFUND a fund, INDEX an index. It covers tickers nobody holds, so a company
+can be looked up before it is bought. `npm run job -- track-entities` names up to twenty at a
+time and runs hourly with the price jobs; a holding it has not reached is named from its Yahoo
+profile in `security_profiles`. Unsupported or missing identities do not appear as invented
+companies. Lookup is a search of this catalogue, not unrestricted ticker discovery.
 
 The existing GET /track-record and all trust-score calculations retain their original
 calibration behavior. The previous detailed UI module remains available for its existing
 component tests, but is not rendered by the primary page.
 
-Monitor actual table/index sizes before increasing collection budgets. New normalized
-storage grows with unique settled questions and has no additional full-history timeseries.
-The existing five-minute odds table remains a separate storage concern; this change does
-not alter its policies or assume that a local Docker database represents Tiger cloud usage.
+## Companies
 
-## Company coverage extension
-
-Migration 015 adds track_company_series, with the official series URL, title and matching
-settlement-source evidence. `npm run job -- track-companies` discovers identities for
-verified company holdings from GET /series. It requires either an issuer settlement source
-and an explicit company title/exact earnings-series symbol, or an unambiguous normalized
-company name of at least six characters in the title and an identified settlement source.
-Unmatched, ambiguous and malformed metadata is skipped. Entertainment rankings and
-election categories are excluded; proposed AI tags alone are never approved or copied.
-This mapping is separate from existing series_tags and does not change trust scoring.
-
-`npm run job -- track-company-history` continues a bounded company-history collection.
-At most 25 final markets are processed, with at most five per series; the original horizon
-checks apply. The collector can request only a selected horizon for a small initial sample
-without manufacturing other horizons. Company percentages describe company-specific
+A company's record covers the series tagged with its ticker and reviewed in `series_tags`, the
+same tags that draw a Direct link everywhere else. Percentages describe company-specific
 questions (including earnings-call words), not how accurately stock returns were predicted.
 The linked-holdings disclosure caps its content at 220px with keyboard-accessible vertical scrolling.
 
@@ -86,11 +67,11 @@ The linked-holdings disclosure caps its content at 220px with keyboard-accessibl
 
 The primary page has three separate tabs: Asset holdings, Companies, and ETFs & index
 funds. The fund view treats a fund/index as one record and never expands constituents.
-The public S&P 500 record uses verified index-price series registered by
-`npm run job -- track-funds`: KXINX, KXINXU, KXINXAB, KXINXW, KXINXM and KXINXY,
-validated against the official catalog's Financials category, price-question title and
-.INX:INDEXSP settlement-source URL. Collect via the existing bounded track-history job.
-Migration 016 only adds track_benchmark_series; existing tags and trust remain unchanged.
+The public S&P 500 record uses a reviewed list of index-price series
+(`SP500_BENCHMARK_SERIES`): KXINX, KXINXU, KXINXAB, KXINXW, KXINXM and KXINXY, checked against
+the official catalog's Financials category, price-question title and .INX:INDEXSP
+settlement-source URL. Only the ones a holding can link to are in the track record, so the
+benchmark's history is what the backfill holds for those.
 
 SPY is linked to this benchmark using State Street's published fund information. This
 is a score of S&P 500 questions, not a score of SPY share-price tracking differences.

@@ -21,3 +21,14 @@ it('reuses asset-specific rules and keeps property geography requirements', asyn
     expect(themeLinks(['FL'],links).map(l=>l.symbol)).toEqual(['HOME']);
     expect(themeLinks(['TX'],links)).toEqual([]);
 });
+it('keeps a series’ tags and event titles together however the rows are interleaved, and reads recent yields only', async () => {
+    mocks.getHoldings.mockResolvedValue({holdings:[{symbol:'XOM',valueUsd:100},{symbol:'HOME',valueUsd:1000,assetType:'property',details:{state:'Florida'}}]});
+    mocks.query.mockImplementation(async (sql:string) => sql.includes('stock_tags') ? [{symbol:'XOM',tag:'oil'}] : sql.includes('FROM events') ? [{series_ticker:'MIX',title:'Texas housing prices'},{series_ticker:'OTHER',title:'Brent close'},{series_ticker:'MIX',title:'Florida housing prices'}] : []);
+    const links = await historyLinks('owner',[{series_ticker:'MIX',tag:'geopolitics'},{series_ticker:'OTHER',tag:'oil'},{series_ticker:'MIX',tag:'oil'},{series_ticker:'MIX',tag:'housing'}]);
+    // The oil tag reaches XOM, and the second of the series' titles names the property's state.
+    expect(themeLinks(['MIX'],links).map(l=>l.symbol)).toEqual(['HOME','XOM']);
+    expect(themeLinks(['OTHER'],links).map(l=>l.symbol)).toEqual(['XOM']);
+    expect([...links.keys()]).toEqual(['MIX','OTHER']);
+    const yields = mocks.query.mock.calls.map(([sql]) => String(sql)).find(sql => sql.includes("IN('DGS2','DGS10')"));
+    expect(yields).toContain("ts>now()-interval '30 days'");
+});

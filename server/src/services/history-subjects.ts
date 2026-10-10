@@ -8,6 +8,11 @@ export const HISTORY_SUBJECTS = [
     {id:'mortgage',title:'Mortgage rates',tags:['mortgage-rates']},
     {id:'credit',title:'Credit',tags:['credit-defaults']},
 ] as const;
+// The S&P 500 index-price series that stand for the benchmark SPY tracks. Chosen by a person and
+// checked against Kalshi's series catalog: each is in its Financials category, titled as an S&P 500
+// price question, and settles on the index itself (.INX). Markets on which companies join or
+// leave the index are not among them.
+export const SP500_BENCHMARK_SERIES = ['KXINX', 'KXINXU', 'KXINXAB', 'KXINXW', 'KXINXM', 'KXINXY'];
 export function subjectSeries(id:string,tags:{series_ticker:string;tag:string}[]):string[] {
     const subject=HISTORY_SUBJECTS.find(s=>s.id===id);
     if (!subject) return [];

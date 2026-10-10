@@ -218,6 +218,8 @@ export async function backfillHorizons(options: {series?: string[]; maxMarkets?:
                             continue;
                         }
                         const target = Math.floor(Date.parse(m.close_time)/1000)-hours*3600;
+                        // A market not yet listed at the mark has no quote there; Kalshi is not asked.
+                        if (m.open_time && Date.parse(m.open_time) > target*1000) { await recordSkip(m,s,'no_quote',hours); continue; }
                         const params = {start_ts:String(target-60),end_ts:String(target),period_interval:'1'};
                         const odds = oddsAtHorizon(await loadCandles(s.series_ticker,m.ticker,params,historical),m.close_time,hours);
                         if (!odds) { await recordSkip(m,s,'no_quote',hours); continue; }

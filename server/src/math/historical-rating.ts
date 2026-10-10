@@ -1,13 +1,20 @@
 import type { HistoricalRating } from '../../../shared/types.ts';
-export interface RatingObservation {event: string;bid: number|null;ask: number|null;outcome: number;status: string}
+// An earlier quote and how the question ended. The quote is a bid and an ask, or the midpoint
+// alone where that is all the record keeps (settled_markets).
+export interface RatingObservation {event: string;bid?: number|null;ask?: number|null;probability?: number|null;outcome: number;status: string}
+const midpoint=(r: RatingObservation): number|null=>{
+    if(r.probability!==undefined)return r.probability!==null&&Number.isFinite(r.probability)&&r.probability>=0&&r.probability<=1?r.probability:null;
+    const {bid,ask}=r;
+    return bid==null||ask==null||!Number.isFinite(bid)||!Number.isFinite(ask)||bid<0||ask>1||bid>ask?null:(bid+ask)/2;
+};
 // Observed favored-outcome agreement, not a probability of the next event or calibration.
 export function historicalRating(rows: RatingObservation[]): HistoricalRating {
     let evaluated=0,matched=0,missing=0,tied=0,excluded=0;
     const events=new Set<string>();
     for(const r of rows) {
         if(r.status==='missing') {missing++;continue;}
-        if(r.status!=='quoted'||r.bid===null||r.ask===null||!Number.isFinite(r.bid)||!Number.isFinite(r.ask)||r.bid<0||r.ask>1||r.bid>r.ask||![0,1].includes(r.outcome)) {excluded++;continue;}
-        const p=(r.bid+r.ask)/2;
+        const p=r.status==='quoted'?midpoint(r):null;
+        if(p===null||![0,1].includes(r.outcome)) {excluded++;continue;}
         if(p===.5) {tied++;continue;}
         evaluated++;events.add(r.event);
         if((p>.5&&r.outcome===1)||(p<.5&&r.outcome===0))matched++;

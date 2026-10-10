@@ -122,6 +122,10 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | `stock_tags` | symbol, tag, link_type ('direct', 'measured', 'related') | sector table + 10-K job |
 | `measured_links` | symbol, driver, b, se, low, high, days, reliable, computed_at, effect | nightly job |
 | `settled_markets` | ticker, category, prob_24h_before, outcome (0/1), close_time, odds_time, series_ticker, event_ticker, title | backfill |
+| `forecast_observations` | ticker, horizon_hours (1, 24, 168 or 720), series_ticker, event_ticker, title, category, yes_bid, yes_ask, outcome, close_time, odds_time | `backfillHorizons`: the quote in the minute before each mark |
+| `backfill_skips` | ticker, horizon_hours, series_ticker, category, reason ('no_quote' or 'outcome_known'), close_time | `backfillHorizons`: settled markets it could not score |
+| `event_releases` | event_ticker PK, title, released_at, source_url | seeded from `server/seed/event_releases.json` (written by a human from official release pages) |
+| `track_entities` | symbol PK, name, kind ('company', 'fund' or 'index') | `trackEntities`, hourly: Yahoo's name and type for each ticker in the tag list |
 | `holdings` | session_id, symbol, value_usd, asset_type ('security', 'cash', 'treasury', 'bond', 'property'), details | add-holdings screen |
 | `sector_tags` | sector, tag | seeded from `server/seed/sector_tags.json` (written by a human) |
 | `earnings_reports` | symbol, accession, filing_date, report_date, source_url | earnings-dates job (SEC EDGAR) |
@@ -213,6 +217,24 @@ For each category, take settled markets, read the odds **24 hours before close**
 (not at close), and pair them with the outcome. Report count, `avgMiss`, Brier score, and the
 calibration buckets. Headline example: "When Kalshi said 70%, it happened X% of the time" uses the
 65–75 bucket.
+
+The Track record page (`GET /track-record/ratings`, `server/src/services/track-ratings.ts`) rates
+each theme, company and fund by how often the side the earlier odds favoured was the one that
+happened, at a chosen timeframe before close.
+
+- **One store per timeframe, no copies.** At 24 hours the page reads `settled_markets`, the
+  record above. The 1-hour, 7-day and 30-day timeframes read `forecast_observations`, filled by
+  `backfillHorizons`, which keeps only a quote from the minute before the mark and so scores far
+  fewer markets. Do not add another table for the same history: a page reading a store that
+  only its own collector fills is empty on every database where that collector has not run.
+- **Which series.** Reviewed tags in `series_tags` only. The S&P 500 benchmark is the reviewed
+  list `SP500_BENCHMARK_SERIES`.
+- **Left out, never estimated:** a quote published at or after a verified release in
+  `event_releases`, an exactly even quote, and a market with no reading (`backfill_skips`).
+- **Names** come from `track_entities`, which covers tickers nobody holds so that a company can
+  be looked up; a holding it has not reached is named from `security_profiles`.
+- `backfillHorizons` asks Kalshi for up to four quotes a market. The nightly job gives it
+  `HORIZON_MARKETS` markets and runs it last; do not run it unbounded on a schedule.
 
 ## Categories
 

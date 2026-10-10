@@ -1,5 +1,42 @@
 # Validation and phase status
 
+## Track record page reads the history that exists (2026-10-10)
+
+All 480 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390
+pixels with the feature-tour portfolio in a temporary guest session, cleared afterwards: no
+browser errors and no sideways page scroll.
+
+- **What was wrong.** After the track-record merge the page showed "No history yet" for every
+  theme. It read a store of its own (`track_markets`, `track_quotes`) that only its own collector
+  filled, and that collector is off unless switched on. All of its tables were empty on the
+  shared database, beside 19,658 scored markets in `settled_markets`.
+- **Now, at 24 hours,** it reads `settled_markets`: Direct company markets 93.6% of 9,489
+  questions (A), Oil 95.8% of 3,844 (A), Inflation 90.8% of 3,079 (A), Treasury yields 90.0% of
+  1,634 (B), Fed rates 95.7% of 928 (A), Stock market 99.1% of 116 (A). Companies are rated from
+  their reviewed ticker tags (Netflix 98.0% of 6,204, Tesla 82.7% of 208, Apple 88.9% of 117
+  with too few event IDs for a grade); looking up a company not held works (Nvidia 90.0% of
+  361). Funds: TLT 90.0% of 1,550; the S&P 500 benchmark 41 of 41 across four event IDs, which
+  is "Limited history". Exactly even quotes are left out (53 across the six themes).
+- **The 1-hour, 7-day and 30-day timeframes are still empty.** They read
+  `forecast_observations`, which has no rows here; its collector keeps only a quote from the
+  exact minute before the mark. The nightly job now gives it 300 markets a night and runs it
+  after the summaries and briefings. Unbounded, as merged, it would have asked Kalshi for up to
+  four quotes for each of about 109,000 settled markets while holding the nightly lock.
+- **Tables.** Of the nine added by the merge, five had no use left and were dropped by migration
+  017, all empty when dropped: `track_markets`, `track_quotes` and `track_sync` (a second copy of
+  the history), `track_company_series` (series matched to companies by name without review) and
+  `track_benchmark_series` (six rows mirroring a list now in the code). Four stay:
+  `track_entities` (names 106 of the 107 tickers in the tag list, 48 of which nothing else
+  named), `forecast_observations`, `backfill_skips` and `event_releases` (eight verified CPI
+  release times).
+- **Speed.** The page took about 5 s to load, 4.5 s of it matching 4,499 reviewed series to
+  the holdings by searching the full tag and event lists again for each series. Grouped once,
+  and with the latest-yields read bounded to 30 days, a load takes 1.5 to 1.8 s.
+- **Not checked against Kalshi's site:** the percentages are what the stored readings give. A
+  release time is known for eight events only, so a quote taken a day before close is not
+  proof that it preceded the public result; none of the stored 24-hour quotes fell after one of
+  those eight releases.
+
 ## Track-record backfill: the full pass, and very large series (2026-10-10)
 
 All 430 tests and both TypeScript checks pass.

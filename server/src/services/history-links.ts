@@ -16,15 +16,23 @@ export async function historyLinks(session: string, tags: {series_ticker: string
         query<{symbol: string; tag: string}>('SELECT symbol,tag FROM stock_tags WHERE symbol=ANY($1)', [symbols]),
         query<MeasuredRow>('SELECT * FROM measured_links WHERE symbol=ANY($1)', [symbols]),
         query<{series_ticker: string; title: string}>('SELECT DISTINCT series_ticker,title FROM events WHERE series_ticker=ANY($1)', [[...new Set(tags.map(t => t.series_ticker))]]),
-        holdings.some(h => !isSecurity(h)) ? query<{symbol: string; close: number}>("SELECT DISTINCT ON(symbol) symbol,close FROM prices WHERE symbol IN('DGS2','DGS10') ORDER BY symbol,ts DESC") : Promise.resolve([]),
+        // Bounded below: prices are stored in weekly chunks over ten years, and an open-ended read opens them all.
+        holdings.some(h => !isSecurity(h)) ? query<{symbol: string; close: number}>("SELECT DISTINCT ON(symbol) symbol,close FROM prices WHERE symbol IN('DGS2','DGS10') AND ts>now()-interval '30 days' ORDER BY symbol,ts DESC") : Promise.resolve([]),
     ]);
     const context = { now: Date.now(), shortYield: yields.find(y => y.symbol === 'DGS2')?.close ?? null, longYield: yields.find(y => y.symbol === 'DGS10')?.close ?? null };
-    for (const series of new Set(tags.map(t => t.series_ticker))) {
-        const ownTags = tags.filter(t => t.series_ticker === series).map(t => t.tag);
+    // Grouped once. Thousands of series are reviewed, and searching the full lists again for each
+    // one took four seconds of a five-second page load.
+    const grouped = <T, V>(rows: T[], key: (row: T) => string, value: (row: T) => V) => {
+        const groups = new Map<string, V[]>();
+        for (const row of rows) { const list = groups.get(key(row)); if (list) list.push(value(row)); else groups.set(key(row), [value(row)]); }
+        return groups;
+    };
+    const seriesTags = grouped(tags, t => t.series_ticker, t => t.tag), holdingTags = grouped(stockTags, t => t.symbol, t => t.tag), titles = grouped(events, e => e.series_ticker, e => e.title);
+    for (const [series, ownTags] of seriesTags) {
         const links = holdings.flatMap(h => {
             let link: HoldingLink | null;
-            if (isSecurity(h)) link = matchHolding(h, ownTags, stockTags.filter(t => t.symbol === h.symbol).map(t => t.tag), measurements);
-            else link = events.filter(e => e.series_ticker === series).map(e => assetLink(h, ownTags, e.title, context)).find(l => l !== null) ?? null;
+            if (isSecurity(h)) link = matchHolding(h, ownTags, holdingTags.get(h.symbol) ?? [], measurements);
+            else link = (titles.get(series) ?? []).map(title => assetLink(h, ownTags, title, context)).find(l => l !== null) ?? null;
             return link ? [{symbol: link.symbol, type: link.type, evidence: link.evidence}] : [];
         });
         if (links.length) result.set(series, links);
