@@ -196,12 +196,41 @@ describe('the Moves screen', () => {
         expect(card).toMatch(/<li><span>Will ExxonMobil card spend be above 104\? <span class="note">closed <time[^>]+>[^<]+<\/time> · 8 of 9 markets resolved Yes<\/span><\/span>/);
         expect(card).not.toContain('Odds that moved');
     });
-    it('shows a driver’s events a few at a time', () => {
+    it('shows a driver’s events a page at a time, each list with its own pages', () => {
         const many = Array.from({ length: 9 }, (_, i) => ({ ...movedEvents[1], ticker: `E${i}`, shown: [] }));
         const html = renderToStaticMarkup(<DriverEventList intro="" moved={many} settled={scopeEvents(settledEvents, null, '', false)}/>);
         expect(html.match(/<li>/g)).toHaveLength(6 + 2);
         expect(html).toContain('<h4>Odds that moved <span class="note">· 9</span></h4>');
-        expect(html).toContain('>Show more · 3 left</button>');
+        // Nine odds moves make two pages of six; the two settled events fit on one and get no pager.
+        expect(html).toContain('<nav class="pager" aria-label="Pages of odds that moved"><button disabled="">Previous</button><span>Page 1 of 2</span><button>Next</button></nav>');
+        expect(html.match(/class="pager"/g)).toHaveLength(1);
+        expect(html).not.toContain('Show more');
+    });
+    it('pages the lists of settled events and odds that moved', () => {
+        const many = { ...data, movedEvents: Array.from({ length: 12 }, (_, i) => ({ ...movedEvents[1], ticker: `E${i}`, title: `Event ${i}` })) };
+        const html = renderToStaticMarkup(<MoveView data={many} exposure={null} chosen={null} theme="" focus="" setFocus={() => {}}/>);
+        expect(html).toContain('<section class="card move-events" id="moves-odds"><h3>Odds that moved <span class="note">· 12 events</span></h3>');
+        // The first five of twelve, with the count and the way on.
+        expect(html.slice(html.indexOf('id="moves-odds"')).match(/class="event-row"/g)).toHaveLength(5);
+        expect(html).toContain('<p class="note pager-range">Showing 1 to 5 of 12</p><nav class="pager" aria-label="Pages of odds that moved"><button disabled="">Previous</button><span>Page 1 of 3</span><button>Next</button></nav>');
+        expect(html).toContain('Event 4</a>');
+        expect(html).not.toContain('Event 5</a>');
+        // Two settled events fit on one page: no pager and no range line.
+        const settled = html.slice(html.indexOf('id="moves-settled"'), html.indexOf('id="moves-odds"'));
+        expect(settled).not.toMatch(/class="pager"|pager-range/);
+        expect(html).not.toContain('Show more');
+    });
+    it('offers a bar that jumps to each section of the screen', () => {
+        const html = view();
+        expect(html).toContain('<nav class="section-nav" aria-label="Sections of this page"><button class="active" aria-current="true">Top</button><button class="">Looking at</button><button class="">Change</button><button class="">What mattered most</button><button class="">By holding</button><button class="">Settled · 2</button><button class="">Odds that moved · 2</button></nav>');
+        // Every button has a section to go to; the top of the screen is the heading the whole screen draws.
+        for (const id of ['moves-view', 'moves-change', 'moves-drivers', 'moves-holdings', 'moves-settled', 'moves-odds'])
+            expect(html.match(new RegExp(`id="${id}"`, 'g')), id).toHaveLength(1);
+        // A holding with no daily price has no drivers, so that section is not offered.
+        const cash = view('SAVINGS');
+        expect(cash).not.toContain('>What mattered most</button>');
+        expect(cash).toContain('<section class="card " id="moves-change">');
+        expect(cash).toContain('>Odds that moved · 1</button>');
     });
     it('says once what every holding lacks, and under a row only what that row lacks', () => {
         const split = 'The market split is not shown for a window that ends before the latest session: the stored measurement includes later prices.';

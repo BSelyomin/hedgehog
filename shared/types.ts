@@ -367,6 +367,17 @@ export const FORECAST_HORIZONS = [
     { hours: 24, label: '24 hours' },
     { hours: 1, label: '1 hour' },
 ] as const;
+/** How the Track record page can order its records. Applied before the lists are paged. */
+export const TRACK_SORTS = [
+    { key: 'history', label: 'Most questions scored' },
+    { key: 'accuracy-high', label: 'Highest accuracy' },
+    { key: 'accuracy-low', label: 'Lowest accuracy' },
+    { key: 'name', label: 'Name, A to Z' },
+] as const;
+export type TrackSort = typeof TRACK_SORTS[number]['key'];
+/** A grade to keep; 'none' keeps the records with too little history to be graded. */
+export const TRACK_GRADES = ['A', 'B', 'C', 'D', 'none'] as const;
+export type TrackGrade = typeof TRACK_GRADES[number];
 export interface HistoricalRating {
     accuracy: number | null;
     grade: 'A' | 'B' | 'C' | 'D' | null;

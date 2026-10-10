@@ -117,10 +117,47 @@ export function ReloadButton({ onReload, label = 'Reload' }: { onReload: () => P
         {error && <p className="error" role="alert">{error}</p>}</div>;
 }
 
-export function Card({ children, className = '' }: {
+export function Card({ children, className = '', id }: {
     children: ReactNode;
     className?: string;
-}) { return <section className={`card ${className}`}>{children}</section>; }
+    id?: string;
+}) { return <section className={`card ${className}`} id={id}>{children}</section>; }
+
+// Previous and next for a list shown a page at a time. Nothing is drawn for a single page.
+export function Pager({ page, pages, onPage, label }: { page: number; pages: number; onPage: (page: number) => void; label: string }) {
+    if (pages <= 1)
+        return null;
+    return <nav className="pager" aria-label={label}>
+        <button disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</button>
+        <span>Page {page} of {pages}</span>
+        <button disabled={page >= pages} onClick={() => onPage(page + 1)}>Next</button>
+    </nav>;
+}
+
+// A bar that stays at the top of a long screen and jumps to its sections. The app's routes live
+// in the address's hash, so these are buttons that scroll, not links to an anchor.
+export function SectionNav({ sections }: { sections: { id: string; label: string }[] }) {
+    const ids = sections.map(section => section.id).join('|');
+    const [active, setActive] = useState(sections[0]?.id ?? '');
+    useEffect(() => {
+        // The current section is the last one whose top has passed under the bar.
+        const update = () => {
+            let current = ids.split('|')[0];
+            for (const id of ids.split('|')) {
+                const element = document.getElementById(id);
+                if (element && element.getBoundingClientRect().top <= 110)
+                    current = id;
+            }
+            setActive(current);
+        };
+        update();
+        window.addEventListener('scroll', update, { passive: true });
+        return () => window.removeEventListener('scroll', update);
+    }, [ids]);
+    return <nav className="section-nav" aria-label="Sections of this page">{sections.map(section =>
+        <button key={section.id} className={section.id === active ? 'active' : ''} aria-current={section.id === active ? 'true' : undefined}
+            onClick={() => document.getElementById(section.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{section.label}</button>)}</nav>;
+}
 
 export function Fresh({ asOf }: {
     asOf: string | null;

@@ -60,4 +60,6 @@ it('offers a latest-session view instead of selecting the calendar date by defau
  const html = renderToStaticMarkup(<Moves/>);
  expect(html).toContain('Latest trading session');
  expect(html).toContain('type="date" value=""');
+ // The bar's first jump goes to this heading.
+ expect(html).toContain('<div class="row" id="moves-top"><div><h1>What moved your portfolio</h1>');
 });

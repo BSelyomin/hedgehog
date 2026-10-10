@@ -1,5 +1,29 @@
 # Validation and phase status
 
+## Track record filters and layout; Moves paging and section bar (2026-10-10)
+
+All 488 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390
+pixels with the feature-tour portfolio in a temporary guest session, cleared afterwards: no
+browser errors, no sideways page scroll, no control under 44 pixels.
+
+- **Track record, linked holdings.** Opened, a theme's holdings run the full width of its card
+  (1,295 of 1,345 pixels) as tiles, four across at 1440 and one at 390, with no scrolling box
+  inside. The fund tab no longer says "Related to 1 of your holdings" of a fund that is the
+  holding: TLT reads "You hold this fund: $10,000.00 · 2.4% of portfolio" and the S&P 500
+  benchmark "Tracked by SPY, which you hold".
+- **Track record, order and filters.** Ordered by highest accuracy the themes run Stock market
+  99.1%, Oil 95.8%, Fed rates 95.7%, Direct company markets 93.6%, Inflation 90.8%, Treasury
+  yields 90.0%. Grade B alone leaves Treasury yields, and on the Companies tab Alphabet, Tesla
+  and Amazon. "Only records with history" leaves ten companies and two funds. Clearing returns
+  to the default order.
+- **Moves, paging.** Over the week, 40 settled events show five to a page over eight pages and
+  112 with odds that moved over 23, each with "Showing 1 to 5 of 112". Turning a page returns
+  to the top of that list. A driver's events inside a row page their two lists separately (six
+  pages of odds and two of settled events for USO through oil). Nothing says "Show more".
+- **Moves, section bar.** The bar stays at the top while the page scrolls and marks the
+  section in view. Each jump lands the section 76 pixels down, below the 61-pixel bar, and
+  "Top" returns to the window controls. At 390 pixels it stays one line and scrolls sideways.
+
 ## Track record page reads the history that exists (2026-10-10)
 
 All 480 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390

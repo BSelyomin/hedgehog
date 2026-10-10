@@ -1,4 +1,4 @@
-import type { TrackRatingsResponse, TrackRatingItem } from '../../../shared/types.ts';
+import type { TrackGrade, TrackRatingsResponse, TrackRatingItem, TrackSort } from '../../../shared/types.ts';
 import { FORECAST_HORIZONS } from '../../../shared/types.ts';
 import { query, iso } from '../db.ts';
 import { historicalRating } from '../math/historical-rating.ts';
@@ -19,7 +19,8 @@ const HISTORY = {
             FROM forecast_observations s LEFT JOIN event_releases r ON r.event_ticker=s.event_ticker WHERE s.horizon_hours=$1`,
         skips: `SELECT k.series_ticker,k.reason FROM backfill_skips k WHERE k.horizon_hours=$1 AND NOT EXISTS(SELECT 1 FROM forecast_observations s WHERE s.ticker=k.ticker AND s.horizon_hours=k.horizon_hours)` },
 };
-export async function trackRatings(session:string,horizonHours=24,page=1,search='',fundPage=1):Promise<TrackRatingsResponse> {
+// `view` orders the records and narrows them: by grade, or to those with any scored question.
+export async function trackRatings(session:string,horizonHours=24,page=1,search='',fundPage=1,view:{sort?:TrackSort;grade?:TrackGrade|'';scored?:boolean}={}):Promise<TrackRatingsResponse> {
     if(!FORECAST_HORIZONS.some(h=>h.hours===horizonHours))throw new Error('Unsupported forecast horizon');
     const history=horizonHours===24?HISTORY.day:HISTORY.other;
     const [tags,entities,rows,skips,portfolio]=await Promise.all([
@@ -52,6 +53,11 @@ export async function trackRatings(session:string,horizonHours=24,page=1,search=
     });
     const dataFirst=(a:TrackRatingItem,b:TrackRatingItem)=>b.rating.evaluated-a.rating.evaluated||a.name.localeCompare(b.name);
     themes.sort(dataFirst);
+    // A record with no percentage goes last whichever way accuracy is ordered.
+    const byAccuracy=(direction:1|-1)=>(a:TrackRatingItem,b:TrackRatingItem)=>(a.rating.accuracy===null?1:0)-(b.rating.accuracy===null?1:0)||direction*((a.rating.accuracy??0)-(b.rating.accuracy??0))||dataFirst(a,b);
+    const order=view.sort==='name'?(a:TrackRatingItem,b:TrackRatingItem)=>a.name.localeCompare(b.name)||dataFirst(a,b):view.sort==='accuracy-high'?byAccuracy(-1):view.sort==='accuracy-low'?byAccuracy(1):dataFirst;
+    const kept=(item:TrackRatingItem)=>(!view.scored||item.rating.evaluated>0)&&(!view.grade||(view.grade==='none'?item.rating.grade===null:item.rating.grade===view.grade));
+    const arrange=(items:TrackRatingItem[])=>items.filter(kept).sort(order);
     const heldSymbols=new Set(portfolio.holdings.filter(h=>!h.assetType||h.assetType==='security').map(h=>h.symbol));
     const term=search.trim().toLowerCase();
     const allCompanies=companies.flatMap(e=>{
@@ -61,7 +67,7 @@ export async function trackRatings(session:string,horizonHours=24,page=1,search=
         if(term?!e.symbol.toLowerCase().includes(term)&&!e.name.toLowerCase().includes(term):!heldSymbols.has(e.symbol)&&!ownLinks.length)return [];
         return [{id:e.symbol,symbol:e.symbol,name:e.name,rating:summarize(series),kind:'company' as const,linkedHoldings:enrich(ownLinks),relatedThemes:themes.filter(t=>t.id!=='companies'&&t.linkedHoldings.some(h=>h.symbol===e.symbol)).map(t=>t.name)}];
     });
-    allCompanies.sort(dataFirst);
+    const shownCompanies=arrange(allCompanies);
     // Public benchmark record; SPY's individual constituents are never expanded.
     const allFunds:TrackRatingItem[]=[{id:'sp500',name:'S&P 500',kind:'benchmark',scope:'S&P 500 index-level predictions · benchmark tracked by SPY',rating:summarize(SP500_BENCHMARK_SERIES),
         linkedHoldings:enrich(portfolio.holdings.filter(h=>h.symbol==='SPY').map(h=>({symbol:h.symbol,type:'Related' as const,evidence:'SPY tracks the S&P 500. This record evaluates index outcomes; it is not a separate forecast record for SPY share prices.'})))}];
@@ -69,10 +75,10 @@ export async function trackRatings(session:string,horizonHours=24,page=1,search=
         const own=tags.filter(t=>t.tag===e.symbol).map(t=>t.series_ticker);
         allFunds.push({id:e.symbol,symbol:e.symbol,name:e.name,kind:'fund',scope:own.length?'Questions directly about this fund or index':'No verified fund-specific or benchmark history mapped yet',rating:summarize(own),linkedHoldings:enrich([{symbol:e.symbol,type:'Related',evidence:'This fund is a saved portfolio holding. Broad interest-rate or inflation questions are not substituted for forecasts of this fund.'}])});
     }
-    allFunds.sort(dataFirst);
-    const pageSize=10,totalCompanies=allCompanies.length,safePage=Math.max(1,Math.min(page,Math.max(1,Math.ceil(totalCompanies/pageSize))));
-    const safeFundPage=Math.max(1,Math.min(fundPage,Math.max(1,Math.ceil(allFunds.length/pageSize))));
+    const shownFunds=arrange(allFunds);
+    const pageSize=10,totalCompanies=shownCompanies.length,safePage=Math.max(1,Math.min(page,Math.max(1,Math.ceil(totalCompanies/pageSize))));
+    const safeFundPage=Math.max(1,Math.min(fundPage,Math.max(1,Math.ceil(shownFunds.length/pageSize))));
     const asOf=iso(rows.reduce<Date|null>((latest,r)=>!latest||r.loaded_at>latest?r.loaded_at:latest,null));
-    return {asOf,horizonHours,themes,funds:allFunds.slice((safeFundPage-1)*pageSize,safeFundPage*pageSize),fundPage:safeFundPage,totalFunds:allFunds.length,companies:allCompanies.slice((safePage-1)*pageSize,safePage*pageSize),page:safePage,pageSize,totalCompanies,
+    return {asOf,horizonHours,themes:arrange(themes),funds:shownFunds.slice((safeFundPage-1)*pageSize,safeFundPage*pageSize),fundPage:safeFundPage,totalFunds:shownFunds.length,companies:shownCompanies.slice((safePage-1)*pageSize,safePage*pageSize),page:safePage,pageSize,totalCompanies,
         fundSymbols:portfolio.holdings.filter(h=>entities.some(e=>e.symbol===h.symbol&&e.kind!=='company')).map(h=>h.symbol)};
 }

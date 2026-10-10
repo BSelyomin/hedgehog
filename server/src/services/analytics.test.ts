@@ -216,6 +216,13 @@ it('keeps query timing counts isolated across simultaneous requests', async () =
     for (const result of results) assert.match(String(result.headers['server-timing']), /sql_count;desc="6 queries"/);
 });
 
+it('accepts only the listed orders, grades and history filter for the track record ratings', async () => {
+    const app = createApp();
+    for (const bad of ['sort=newest', 'grade=E', 'grade=a', 'scored=yes', 'sort='])
+        assert.deepEqual([bad, (await request(app, `/track-record/ratings?${bad}`)).status], [bad, 400]);
+    for (const good of ['', 'sort=accuracy-low&grade=none&scored=1', 'sort=name&grade=A&scored=0', 'grade='])
+        assert.deepEqual([good, (await request(app, `/track-record/ratings?${good}`)).status], [good, 200]);
+});
 it('opens the window a day, a week, a month or a quarter before its last close', async () => {
     for (const [range, back] of [['day', '1 day'], ['week', '7 days'], ['month', '1 month'], ['quarter', '3 months']] as const) {
         const result = await moves('guest', '2026-10-09', undefined, range);

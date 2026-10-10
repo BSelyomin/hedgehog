@@ -233,6 +233,12 @@ happened, at a chosen timeframe before close.
   `event_releases`, an exactly even quote, and a market with no reading (`backfill_skips`).
 - **Names** come from `track_entities`, which covers tickers nobody holds so that a company can
   be looked up; a holding it has not reached is named from `security_profiles`.
+- **Order and filters.** The records can be ordered by history, accuracy or name and narrowed
+  to a grade or to those with any scored question (`TRACK_SORTS`, `TRACK_GRADES`). The server
+  applies both before it pages a list, so a page is always a page of what was asked for.
+- **Linked holdings** of a theme or company open across the whole card, a tile each. A fund is
+  itself the holding and a benchmark is tracked by one, so their cards state the position
+  instead of "related to your holdings".
 - `backfillHorizons` asks Kalshi for up to four quotes a market. The nightly job gives it
   `HORIZON_MARKETS` markets and runs it last; do not run it unbounded on a schedule.
 
@@ -322,6 +328,9 @@ screen narrows it (`web/app/screens/move-scope.ts`).
   holdings table names the linked event whose odds moved most and opens the rest inside the
   row (`driverEvents`, `DriverEventList`), and each bar under "What mattered most" does the
   same. Opening them never moves the reader away from the row.
+- **Getting around.** The screen is long. A bar of jumps stays at its top (`SectionNav` in
+  `web/app/common.tsx`; buttons that scroll, because the routes live in the address's hash),
+  and every list of events is shown a page at a time (`Pager`), in its section and inside a row.
 - **What is missing.** The table has no column for it, since most rows lack nothing. A reason
   every listed holding shares is said once above the table (`sharedReasons`); a row carries a
   note only for what it alone lacks, or when its figures come from other closes than the
@@ -384,7 +393,8 @@ against mock data while the server is built.
 
 `POST /holdings` · `GET /exposure` · `GET /calendar?days=14` · `GET /event/:ticker` ·
 `GET /odds/:ticker?range=day|week|month|all` ·
-`GET /moves?date=&range=day|week|month|quarter` · `GET /earnings` · `GET /earnings/:symbol` · `GET /track-record` · `GET /briefing`
+`GET /moves?date=&range=day|week|month|quarter` · `GET /earnings` · `GET /earnings/:symbol` · `GET /track-record` ·
+`GET /track-record/ratings?horizon=&sort=&grade=&scored=&search=&page=&fundPage=` · `GET /briefing`
 
 Every response includes `asOf` (when the data was last updated).
 

@@ -16,7 +16,8 @@ import { earnings, earningsList } from './services/earnings.ts';
 import { holdingsHistory } from './services/holdings-history.ts';
 import { HISTORY_SUBJECTS } from './services/history-subjects.ts';
 import { trackRecord } from './services/track-record.ts';
-import { FORECAST_HORIZONS } from '../../shared/types.ts';
+import { FORECAST_HORIZONS, TRACK_GRADES, TRACK_SORTS } from '../../shared/types.ts';
+import type { TrackGrade } from '../../shared/types.ts';
 // What a failed request tells the browser. Postgres reports 25006 when a write reaches a
 // database that is accepting reads only, for example because its storage is full.
 export function errorResponse(error: unknown): { status: number; error: string } {
@@ -84,10 +85,12 @@ app.get('/holdings-history', async (req,res) => {
 });
 app.get('/track-record/ratings', async (req,res) => {
     const horizon=Number(req.query.horizon??24),page=Number(req.query.page??1),fundPage=Number(req.query.fundPage??1),search=req.query.search??'';
-    if(![1,24,168,720].includes(horizon)||!Number.isSafeInteger(page)||page<1||!Number.isSafeInteger(fundPage)||fundPage<1||typeof search!=='string'||search.length>80) {
+    const sort=TRACK_SORTS.find(s=>s.key===(req.query.sort??'history'))?.key,grade=req.query.grade??'',scored=req.query.scored??'0';
+    if(![1,24,168,720].includes(horizon)||!Number.isSafeInteger(page)||page<1||!Number.isSafeInteger(fundPage)||fundPage<1||typeof search!=='string'||search.length>80
+        ||!sort||(grade!==''&&!TRACK_GRADES.some(g=>g===grade))||(scored!=='0'&&scored!=='1')) {
         res.status(400).json({error:'Invalid history filters'});return;
     }
-    res.json(await trackRatings(res.locals.session,horizon,page,search,fundPage));
+    res.json(await trackRatings(res.locals.session,horizon,page,search,fundPage,{sort,grade:grade as TrackGrade|'',scored:scored==='1'}));
 });
 app.get('/track-record', async (req, res) => {
     const horizon = req.query.horizon === undefined ? 24 : Number(req.query.horizon);

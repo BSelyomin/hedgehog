@@ -1,8 +1,8 @@
 'use client';
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { DriverChange, DriverMove, ExposureResponse, HoldingMove, MoveLink, MoveRange, MovedEvent, MovesResponse, SettledEvent, SettledMarket } from '../../../shared/types';
-import { money, percent, number, href, dateText, useData, assetLabel, Card, Fresh, Status, Empty, LinkChip, ReloadButton } from '../common';
+import { money, percent, number, href, dateText, useData, assetLabel, Card, Fresh, Status, Empty, LinkChip, ReloadButton, Pager, SectionNav } from '../common';
 import { Info } from '../explain';
 import { describeLeadMove, driverName, driverPhrase } from './sensitivity';
 import { CategoryFilter } from './category-controls';
@@ -45,7 +45,7 @@ export function Moves() {
     const selection = useCategorySelection();
     const exposure = useData<ExposureResponse>('/exposure').data;
     return <>
-        <div className="row"><div><h1>What moved your portfolio</h1><p>Your holdings at two closes, beside the Kalshi events of the same window</p></div><label>Window ends<input type="date" value={date || data?.date || ''} onChange={e => setDate(e.target.value)}/></label></div>
+        <div className="row" id="moves-top"><div><h1>What moved your portfolio</h1><p>Your holdings at two closes, beside the Kalshi events of the same window</p></div><label>Window ends<input type="date" value={date || data?.date || ''} onChange={e => setDate(e.target.value)}/></label></div>
         <div className="actions move-controls">
             <div className="toggle" role="group" aria-label="Length of the window">{RANGES.map(option => <button key={option.key} aria-pressed={option.key === range} className={option.key === range ? 'active' : ''} onClick={() => setRange(option.key)}>{option.label}</button>)}</div>
             <ReloadButton onReload={() => reload()}/><button disabled={!date} onClick={() => setDate('')}>Latest trading session</button>
@@ -75,13 +75,16 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
     const topicOnly = scopeEvents(data.settledEvents, symbols, theme, true).length + scopeEvents(data.movedEvents, symbols, theme, true).length
         - scopeEvents(data.settledEvents, symbols, theme, false).length - scopeEvents(data.movedEvents, symbols, theme, false).length;
     const market = data.driverChanges.find(change => change.driver === 'SPY');
+    const priced = totals.securities > 0;
     return <>
+        <SectionNav sections={[{ id: 'moves-top', label: 'Top' }, { id: 'moves-view', label: 'Looking at' }, { id: 'moves-change', label: 'Change' }, ...(priced ? [{ id: 'moves-drivers', label: 'What mattered most' }] : []),
+            { id: 'moves-holdings', label: 'By holding' }, { id: 'moves-settled', label: `Settled · ${settled.length}` }, { id: 'moves-odds', label: `Odds that moved · ${moved.length}` }]}/>
         {data.notes.map(note => <p className="note" key={note}>{note}</p>)}
         <p className="note window-note">{data.startDate
             ? <>From the close on <time dateTime={data.startDate}>{session(data.startDate)}</time> to the close on <time dateTime={data.date}>{session(data.date)}</time>. </>
             : <>Ending at the close on <time dateTime={data.date}>{session(data.date)}</time>; no earlier close is stored to open the window. </>}
             This compares the holdings you have now at both closes, as if you had held the same amount throughout: each value you entered is read as its worth at the latest close and scaled by the price. Purchases and sales inside the window are not known.</p>
-        <Card className="move-scope"><h2>Looking at</h2>
+        <Card className="move-scope" id="moves-view"><h2>Looking at</h2>
             <div className="scope-row">
                 <div className="category-filter">
                     <label>Holding<select aria-label="Holding" value={focus} onChange={event => setFocus(event.target.value)}>
@@ -94,8 +97,8 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
             </div>
             {focus && chosen && <p className="note">With one holding picked, the asset class applies only to the table below. The event theme still narrows the events.</p>}
         </Card>
-        {totals.securities === 0 ? <Card><Empty>{focus ? `${focus} has no daily price, so it has no move over a window. It is worth ${money(rows[0]?.valueUsd ?? null)} as entered.` : 'None of the holdings in view has a daily price, so they have no move over a window.'} Events linked to {focus ? 'it' : 'them'} are still listed below.</Empty></Card> : <>
-            <div className="stats">
+        {!priced ? <Card id="moves-change"><Empty>{focus ? `${focus} has no daily price, so it has no move over a window. It is worth ${money(rows[0]?.valueUsd ?? null)} as entered.` : 'None of the holdings in view has a daily price, so they have no move over a window.'} Events linked to {focus ? 'it' : 'them'} are still listed below.</Empty></Card> : <>
+            <div className="stats" id="moves-change">
                 <Card><span className="muted">{subject}: worth at the two closes</span>
                     <p className="closes"><span className="note">{data.startDate ? session(data.startDate) : 'First close'}</span><strong className="mono">{money(totals.startValue)}</strong></p>
                     <p className="closes"><span className="note">{session(data.date)}</span><strong className="mono">{money(totals.endValue)}</strong></p></Card>
@@ -106,9 +109,9 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
                 <Card><span className="muted">Beyond the market</span><strong className="number">{totals.beyondMarket === null ? 'Unavailable' : signed(totals.beyondMarket, money)}</strong>
                     <span className="note">The change less the market estimate</span></Card>
             </div>
-            <LeadDrivers drivers={whole ? data.drivers : scopeDrivers(rows)} changes={data.driverChanges} missing={data.missingDrivers} subject={focus || undefined} events={through}/>
+            <div id="moves-drivers" className="jump-target"><LeadDrivers drivers={whole ? data.drivers : scopeDrivers(rows)} changes={data.driverChanges} missing={data.missingDrivers} subject={focus || undefined} events={through}/></div>
         </>}
-        <Card><h2>By holding</h2>
+        <Card id="moves-holdings"><h2>By holding</h2>
             <p className="note">Pick a holding to look at it alone: its change, what mattered most for it, and the Kalshi events linked to it.</p>
             <label className="move-search">Search holdings<input type="search" placeholder="Ticker, e.g. AAPL" value={search} onChange={e => setSearch(e.target.value)}/></label>
             <p className="note">Search filters the rows below. Totals above cover {data.unpricedValue > 0 ? `listed securities; ${money(data.unpricedValue)} in cash, bonds held directly and property has no daily price and is left out` : 'your full portfolio'}.</p>
@@ -141,15 +144,15 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
         <p className="note">{data.oddsWindow ? <>Kalshi is read over the same window as the prices: from <time dateTime={data.oddsWindow.from}>{dateText(data.oddsWindow.from)}</time> to <time dateTime={data.oddsWindow.to}>{dateText(data.oddsWindow.to)}</time>, the two closes. </> : 'No window could be set, so no events are listed. '}
             Sharing a window is not proof of cause. Only a Related link is set beside a holding’s move, and then through its driver: the estimate is the holding’s past association with that driver, not an effect of the event.</p>
         {topicOnly > 0 && <label className="topic-toggle"><input type="checkbox" checked={topics} onChange={event => setTopics(event.target.checked)}/> Also show {topicOnly} linked only by a shared topic, with no measured connection</label>}
-        <EventSection key={`settled|${focus}|${theme}|${topics}`} title="Settled in this window" count={settled.length} unit="event"
+        <EventSection key={`settled|${focus}|${theme}|${topics}`} id="moves-settled" title="Settled in this window" count={settled.length} unit="event"
             about="Markets that closed inside the window and have a result, with the odds Kalshi gave 24 hours before each closed. Each event leads with the result furthest from those odds."
             empty={`No linked event settled in this window${focus || chosen || theme ? ' for what is in view' : ''}.`}>
-            {shown => settled.slice(0, shown).map(event => <SettledCard key={event.ticker} event={event} rows={data.holdings} changes={data.driverChanges}/>)}
+            {(from, to) => settled.slice(from, to).map(event => <SettledCard key={event.ticker} event={event} rows={data.holdings} changes={data.driverChanges}/>)}
         </EventSection>
-        <EventSection key={`moved|${focus}|${theme}|${topics}`} title="Odds that moved" count={moved.length} unit="event"
+        <EventSection key={`moved|${focus}|${theme}|${topics}`} id="moves-odds" title="Odds that moved" count={moved.length} unit="event"
             about="Markets still open at the last close whose bid–ask midpoint moved 3 points or more between the two closes, biggest first. Only quotes no wider than 10 cents at both ends are compared: a wider quote’s midpoint jumps when one side of the book steps back."
             empty={`No linked market with a narrow quote at both closes moved 3 points or more${focus || chosen || theme ? ' for what is in view' : ''}.`}>
-            {shown => moved.slice(0, shown).map(event => <MovedCard key={event.ticker} event={event} rows={data.holdings} changes={data.driverChanges}/>)}
+            {(from, to) => moved.slice(from, to).map(event => <MovedCard key={event.ticker} event={event} rows={data.holdings} changes={data.driverChanges}/>)}
         </EventSection>
     </>;
 }
@@ -170,25 +173,26 @@ function DriverCell({ holding, behind, open, onToggle }: { holding: HoldingMove;
 }
 
 // The Kalshi events behind a driver, opened where the driver is named: those whose odds moved,
-// biggest first, then those that settled, a few at a time.
+// biggest first, then those that settled, each list a page at a time.
 export function DriverEventList({ intro, moved, settled }: { intro: string; moved: Scoped<MovedEvent>[]; settled: Scoped<SettledEvent>[] }) {
-    const [shown, setShown] = useState(LIST);
-    const left = Math.max(0, moved.length - shown) + Math.max(0, settled.length - shown);
+    const [movedPage, setMovedPage] = useState(1), [settledPage, setSettledPage] = useState(1);
+    const page = <T,>(list: T[], current: number) => list.slice((current - 1) * LIST, current * LIST);
     return <div className="driver-events">
         <p className="note">{intro}</p>
         {moved.length > 0 && <><h4>Odds that moved <span className="note">· {moved.length}</span></h4>
-            <ul className="event-markets">{moved.slice(0, shown).map(event => {
+            <ul className="event-markets">{page(moved, movedPage).map(event => {
                 const lead = event.markets[0];
                 return <li key={event.ticker}><span><a href={href('event', lead.ticker)}>{event.title}</a> <span className="note">{lead.title}{event.moved > 1 ? `, and ${event.moved - 1} more of its markets` : ''}</span></span>
                     <span className="outcome"><span className="mono">{percent(lead.from)} → {percent(lead.to)}</span> <strong className={`mono ${tone(lead.changePoints)}`}>{points(lead.changePoints)}</strong></span></li>;
-            })}</ul></>}
+            })}</ul>
+            <Pager page={movedPage} pages={Math.ceil(moved.length / LIST)} onPage={setMovedPage} label="Pages of odds that moved"/></>}
         {settled.length > 0 && <><h4>Settled <span className="note">· {settled.length}</span></h4>
-            <ul className="event-markets">{settled.slice(0, shown).map(event => {
+            <ul className="event-markets">{page(settled, settledPage).map(event => {
                 const lead = event.markets[0];
                 return <li key={event.ticker}><span>{event.title ?? lead.title} <span className="note">{event.title ? `${lead.title} · ` : ''}closed <time dateTime={event.closeTime}>{dateText(event.closeTime)}</time>{event.settled > 1 ? ` · ${event.yes} of ${event.settled} markets resolved Yes` : ''}</span></span>
                     <Outcome market={lead}/></li>;
-            })}</ul></>}
-        {left > 0 && <button onClick={() => setShown(shown + LIST * 2)}>Show more · {left} left</button>}
+            })}</ul>
+            <Pager page={settledPage} pages={Math.ceil(settled.length / LIST)} onPage={setSettledPage} label="Pages of settled events"/></>}
     </div>;
 }
 
@@ -217,14 +221,19 @@ export function LeadDrivers({ drivers, changes, missing, subject, events }: { dr
     </Card>;
 }
 
-// A list of events, a few at a time.
-function EventSection({ title, count, unit, about, empty, children }: { title: string; count: number; unit: string; about: string; empty: string; children: (shown: number) => ReactNode }) {
-    const [shown, setShown] = useState(PAGE);
-    return <Card className="move-events"><h3>{title} <span className="note">· {count} {unit}{count === 1 ? '' : 's'}</span></h3>
+// A list of events, a page at a time. Turning the page goes back to the top of the list.
+function EventSection({ id, title, count, unit, about, empty, children }: { id: string; title: string; count: number; unit: string; about: string; empty: string; children: (from: number, to: number) => ReactNode }) {
+    const [page, setPage] = useState(1);
+    const top = useRef<HTMLElement>(null), turned = useRef(false);
+    // Once the new page is drawn, not before: the cards differ in height from page to page.
+    useEffect(() => { if (turned.current) { turned.current = false; top.current?.scrollIntoView({ block: 'start' }); } }, [page]);
+    const pages = Math.max(1, Math.ceil(count / PAGE)), current = Math.min(page, pages), from = (current - 1) * PAGE, to = Math.min(count, current * PAGE);
+    return <section className="card move-events" id={id} ref={top}><h3>{title} <span className="note">· {count} {unit}{count === 1 ? '' : 's'}</span></h3>
         <p className="note">{about}</p>
-        {count ? children(shown) : <Empty>{empty}</Empty>}
-        {count > shown && <button onClick={() => setShown(shown + PAGE * 2)}>Show more · {count - shown} left</button>}
-    </Card>;
+        {count ? children(from, to) : <Empty>{empty}</Empty>}
+        {pages > 1 && <p className="note pager-range">Showing {from + 1} to {to} of {count}</p>}
+        <Pager page={current} pages={pages} onPage={next => { turned.current = true; setPage(next); }} label={`Pages of ${title.toLowerCase()}`}/>
+    </section>;
 }
 
 // What each link in view has to do with the moves, one line per kind of link.

@@ -1,59 +1,84 @@
 'use client';
 import { useState } from 'react';
-import type { TrackRatingItem, TrackRatingsResponse } from '../../../shared/types';
-import { FORECAST_HORIZONS } from '../../../shared/types';
+import type { TrackGrade, TrackRatingItem, TrackRatingsResponse, TrackSort } from '../../../shared/types';
+import { FORECAST_HORIZONS, TRACK_SORTS } from '../../../shared/types';
 import { useData, Card, Fresh, Status, Empty, percent, money, LinkChip, ReloadButton } from '../common';
 export function filterLinkedHoldings(holdings:TrackRatingItem['linkedHoldings'],search:string) {
     const term=search.trim().toLowerCase();
     return holdings.filter(h=>!term||h.symbol.toLowerCase().includes(term)||h.name?.toLowerCase().includes(term));
 }
+// The holdings a record is linked to. Opened, it runs the full width of the card, a tile for each
+// holding, so nothing is squeezed into the card's last column.
 export function HoldingDisclosure({name,holdings}:{name:string;holdings:TrackRatingItem['linkedHoldings']}) {
     const [search,setSearch]=useState('');
     const visible=filterLinkedHoldings(holdings,search);
     return <details className="rating-disclosure"><summary>Related to {holdings.length} of your holdings</summary>
-        <label className="rating-holding-search">Search holdings<input aria-label={`Search holdings for ${name}`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Ticker or name"/></label>
-        <p className="note rating-scroll-hint">{visible.length} of {holdings.length} holdings · Scroll within this list ↓</p>
-        <div className="rating-holdings-scroll" role="region" aria-label={`${name} linked holdings`} tabIndex={0}>
-        {visible.length?<ul className="rating-holding-list">{visible.map(h=><li key={h.symbol}>
+        <div className="rating-holdings-head">
+            <label className="rating-holding-search">Search holdings<input aria-label={`Search holdings for ${name}`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Ticker or name"/></label>
+            <p className="note" role="status">{visible.length} of {holdings.length} holdings · Portfolio amounts are the values you entered.</p>
+        </div>
+        {visible.length?<ul className="rating-holding-list" aria-label={`${name} linked holdings`}>{visible.map(h=><li key={h.symbol}>
             <div className="rating-holding-top"><strong>{h.symbol}</strong><LinkChip type={h.type}/></div>
             {h.name&&<p className="note">{h.name}</p>}
             <p className="rating-holding-value">{h.valueUsd!=null?<><strong className="mono">{money(h.valueUsd)}</strong>{h.share!=null&&<span> · {percent(h.share)} of portfolio</span>}</>:'Portfolio amount unavailable'}</p>
             <p className="note">{h.evidence}</p>
-        </li>)}</ul>:<p className="note">No holdings match your search.</p>}</div>
-        <p className="note">Portfolio amounts are the values you entered.</p>
+        </li>)}</ul>:<p className="note">No holdings match your search.</p>}
     </details>;
 }
+// A fund is itself the holding, and a benchmark is tracked by one, so "related to your holdings"
+// says nothing there. This states the position plainly.
+export function FundPosition({item}:{item:TrackRatingItem}) {
+    const held=item.linkedHoldings[0],benchmark=item.kind==='benchmark';
+    if(!held)return <p className="note">{benchmark?'You hold no fund that tracks this index.':'Not among your saved holdings.'}</p>;
+    return <p className="note rating-position">{benchmark?<>Tracked by <strong>{held.symbol}</strong>, which you hold</>:'You hold this fund'}
+        {held.valueUsd!=null?<>: <strong className="mono">{money(held.valueUsd)}</strong>{held.share!=null&&<> · {percent(held.share)} of portfolio</>}.</>:'.'}
+        {' '}{benchmark?'The record rates questions about the index, not the fund’s share price.':'The record covers only questions about this fund itself, never broad rate or inflation questions.'}</p>;
+}
 export function RatingCard({item}:{item:TrackRatingItem}) {
-    const r=item.rating;
+    const r=item.rating,fund=item.kind==='fund'||item.kind==='benchmark';
     return <Card className="rating-row"><div className="rating-identity"><h2>{item.symbol?`${item.symbol} · ${item.name}`:item.name}</h2>
         {item.relatedThemes?.length ? <p className="note">Linked themes: {item.relatedThemes.join(' · ')}</p> : null}
-        {item.scope?<p className="note">{item.scope}</p>:item.kind!=='fund'&&item.kind!=='benchmark'&&item.symbol&&<p className="note">Company-specific questions, including earnings-call mentions</p>}
+        {item.scope?<p className="note">{item.scope}</p>:!fund&&item.symbol&&<p className="note">Company-specific questions, including earnings-call mentions</p>}
         </div><div className={`rating-result${r.accuracy!==null?' has-score':''}`}><p className="big mono">{r.accuracy===null?'—':percent(r.accuracy)}</p>
         <p><strong>{r.grade?`${r.grade} · `:''}{r.label}</strong></p></div><div className="rating-context">
         <p className="note">{r.evaluated?`${r.matched} of ${r.evaluated} questions matched the favored outcome · ${r.eventCount} event IDs`:r.missing?`${r.missing} settled questions checked; historical quotes are missing at this timeframe.`:r.tied?'Available quotes had no favored outcome (50/50).':item.kind==='fund'?'No usable fund-specific or benchmark history collected at this timeframe.':item.symbol?'No company-specific history collected at this timeframe.':'No usable earlier quotes and final outcomes collected at this timeframe.'}</p>
         {r.accuracy!==null&&!r.grade&&<p className="note">An observed percentage, with too little history to assign a grade.</p>}
-        {item.linkedHoldings.length>0?<HoldingDisclosure name={item.name} holdings={item.linkedHoldings}/>:!item.relatedThemes?.length&&<p className="note">No reviewed connection to your current holdings.</p>}
-        </div></Card>;
+        {fund?<FundPosition item={item}/>:!item.linkedHoldings.length&&!item.relatedThemes?.length&&<p className="note">No reviewed connection to your current holdings.</p>}
+        </div>
+        {!fund&&item.linkedHoldings.length>0&&<HoldingDisclosure name={item.name} holdings={item.linkedHoldings}/>}
+        </Card>;
 }
+const GRADES:{key:TrackGrade;label:string}[]=[{key:'A',label:'A · 90% or more'},{key:'B',label:'B · 75% to 89.9%'},{key:'C',label:'C · 50% to 74.9%'},{key:'D',label:'D · below 50%'},{key:'none',label:'No grade yet'}];
 export function TrackRecord({initialView='assets'}:{initialView?:string}={}) {
     const [view,setView]=useState(['companies','funds'].includes(initialView)?initialView:'assets');
     const [fundPage,setFundPage]=useState(1);
     const [horizon,setHorizon]=useState(24),[page,setPage]=useState(1),[search,setSearch]=useState(''),[draft,setDraft]=useState('');
-    const {data,error,reload}=useData<TrackRatingsResponse>(`/track-record/ratings?horizon=${horizon}&page=${page}&fundPage=${fundPage}&search=${encodeURIComponent(search)}`);
+    // How the records are ordered and which are kept. The server applies both before it pages the lists.
+    const [sort,setSort]=useState<TrackSort>('history'),[grade,setGrade]=useState<TrackGrade|''>(''),[scored,setScored]=useState(false);
+    const filtered=sort!=='history'||grade!==''||scored;
+    const first=()=>{setPage(1);setFundPage(1);};
+    const {data,error,reload}=useData<TrackRatingsResponse>(`/track-record/ratings?horizon=${horizon}&page=${page}&fundPage=${fundPage}&search=${encodeURIComponent(search)}&sort=${sort}&grade=${grade}&scored=${scored?1:0}`);
+    const list=data?(view==='assets'?data.themes:view==='companies'?data.companies:data.funds):[];
     return <><div className="row"><h1>How often did Kalshi get it right?</h1><ReloadButton onReload={reload}/></div>
         <p>See how earlier Kalshi predictions compared with real outcomes, before you put weight on today's odds.</p>
-        <div className="toolbar"><label>Prediction timeframe<select value={horizon} onChange={e=>{setHorizon(Number(e.target.value));setPage(1);setFundPage(1);}}>{FORECAST_HORIZONS.map(h=><option key={h.hours} value={h.hours}>{h.label} before trading close</option>)}</select></label></div>
+        <div className="toolbar"><label>Prediction timeframe<select value={horizon} onChange={e=>{setHorizon(Number(e.target.value));first();}}>{FORECAST_HORIZONS.map(h=><option key={h.hours} value={h.hours}>{h.label} before trading close</option>)}</select></label></div>
         <p className="note">We compare the outcome favored by the earlier odds with Kalshi’s final Yes or No result. Trading close and settlement are separate times.</p>
         <div className="toggle history-tabs" role="tablist" aria-label="Track record views" onKeyDown={e=>{
             if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
             e.preventDefault();const tabs=['assets','companies','funds'],index=tabs.indexOf(view);const next=e.key==='Home'?'assets':e.key==='End'?'funds':tabs[(index+(e.key==='ArrowRight'?1:2))%3];setView(next);document.getElementById(`rating-${next}`)?.focus();
         }}>{['assets','companies','funds'].map(id=><button key={id} id={`rating-${id}`} role="tab" tabIndex={view===id?0:-1} aria-selected={view===id} aria-controls="rating-panel" className={view===id?'active':''} onClick={()=>setView(id)}>{id==='assets'?'Asset holdings':id==='companies'?'Companies':'ETFs & index funds'}</button>)}</div>
+        <div className="toolbar rating-filters" role="group" aria-label="Sort and filter the records">
+            <label>Sort by<select aria-label="Sort by" value={sort} onChange={e=>{setSort(e.target.value as TrackSort);first();}}>{TRACK_SORTS.map(option=><option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
+            <label>Grade<select aria-label="Grade" value={grade} onChange={e=>{setGrade(e.target.value as TrackGrade|'');first();}}><option value="">Any grade</option>{GRADES.map(option=><option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
+            <label className="rating-check"><input type="checkbox" checked={scored} onChange={e=>{setScored(e.target.checked);first();}}/> Only records with history</label>
+            {filtered&&<button className="reset-filters" onClick={()=>{setSort('history');setGrade('');setScored(false);first();}}>Clear sorting and filters</button>}
+        </div>
         {view==='companies'&&<form className="toolbar" onSubmit={e=>{e.preventDefault();setSearch(draft.trim());setPage(1);}}><label>Look up a company<input value={draft} maxLength={80} onChange={e=>setDraft(e.target.value)} placeholder="Company name or ticker"/></label><button type="submit">Search</button>{search&&<button type="button" onClick={()=>{setSearch('');setDraft('');setPage(1);}}>My linked companies</button>}</form>}
         <Status error={error} loading={!data&&!error}/><Fresh asOf={data?.asOf??null}/>
         {data&&<div id="rating-panel" role="tabpanel" aria-labelledby={`rating-${view}`}>
             <p>{view==='funds'?'Evaluate funds and benchmarks as single records. S&P 500 predictions are used for SPY’s benchmark; constituent companies are not expanded.':view==='assets'?'Compare the record of each market theme. Expand a row to see its reviewed connection to your holdings.':search?`Company search results for “${search}”.`:'Your company holdings and companies with reviewed portfolio links. Linked themes provide context; percentages score company-specific questions.'}</p>
-            <div className="rating-list">{(view==='assets'?data.themes:view==='companies'?data.companies:data.funds).map(item=><RatingCard key={item.id} item={item}/>)}</div>
-            {view==='companies'&&!data.companies.length&&<Empty>{search?'No matching verified company in the current catalog.':'No linked companies yet. Add holdings or look up a company.'}</Empty>}
+            <div className="rating-list">{list.map(item=><RatingCard key={item.id} item={item}/>)}</div>
+            {!list.length&&<Empty>{grade!==''||scored?'No record matches these filters. Clear them to see every record.':view==='companies'?(search?'No matching verified company in the current catalog.':'No linked companies yet. Add holdings or look up a company.'):'No records to show yet.'}</Empty>}
             {view==='companies'&&data.totalCompanies>data.pageSize&&<nav className="toolbar" aria-label="Company pages"><button disabled={data.page===1} onClick={()=>setPage(data.page-1)}>Previous</button><span>Page {data.page} of {Math.ceil(data.totalCompanies/data.pageSize)}</span><button disabled={data.page*data.pageSize>=data.totalCompanies} onClick={()=>setPage(data.page+1)}>Next</button></nav>}
             {view==='funds'&&data.totalFunds>data.pageSize&&<nav className="toolbar" aria-label="Fund pages"><button disabled={data.fundPage===1} onClick={()=>setFundPage(data.fundPage-1)}>Previous</button><span>Page {data.fundPage} of {Math.ceil(data.totalFunds/data.pageSize)}</span><button disabled={data.fundPage*data.pageSize>=data.totalFunds} onClick={()=>setFundPage(data.fundPage+1)}>Next</button></nav>}
             {view==='companies'&&<p className="note">Funds and indexes{data.fundSymbols.length?` (${data.fundSymbols.join(', ')})`:''} have a separate ETFs &amp; index funds tab. Their constituent companies are not automatically expanded into this list.</p>}
