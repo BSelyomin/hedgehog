@@ -1,5 +1,10 @@
 # Validation and phase status
 
+## Plain-language track-record view (2026-10-09)
+
+The default view leads with evidence size and average probability/outcome gap, an around-70% comparison with a small-sample warning, four actual outcomes, and relevant current portfolio events. Chart, Brier score, bucket counts and full observation timestamps are collapsed under details. Category filter wording and an all-categories-relevant message explain identical filtered views. The rendering check verifies the comparison, outcome labels and closed detail sections. No forecasting math or source observations changed.
+
+
 ## Track-record evidence feature (2026-10-09)
 
 The page now explains forecasting history separately from portfolio returns, exposes category sample sizes and date ranges, renders calibration-group counts and recent settled observations, and filters categories using session-scoped reviewed portfolio tags. Added known-answer aggregation and rendering tests cover absent history, portfolio relevance, a two-market Brier score of 0.29, the 30-market eligibility threshold, twelve-example limits and evidence timestamps. The expanded CSV reuses the repository’s 25-symbol demo allocation.
