@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { OddsHistoryResponse, OddsRange } from '../../../shared/types';
 import { percent, dateText, useData, Status, Empty } from '../common';
 import { RANGES, timeTicks, probabilityAxis, stepPath, nearestIndex, readingStats } from './odds-chart-scale';
@@ -26,6 +26,7 @@ export function OddsChart({ ticker, name }: { ticker: string; name: string }) {
 const HEIGHT = 330, TOP = 14, BOTTOM = 258, LEFT = 62, RIGHT = 14;
 
 export function OddsPlot({ data }: { data: OddsHistoryResponse }) {
+    const fillId = useId();
     const frame = useRef<HTMLDivElement>(null);
     // Drawn at the width it is shown, so axis text stays readable on a phone.
     const [width, setWidth] = useState(720);
@@ -54,7 +55,7 @@ export function OddsPlot({ data }: { data: OddsHistoryResponse }) {
     return <>
         <div className="odds-plot" ref={frame} onPointerMove={e => follow(e.clientX)} onPointerDown={e => follow(e.clientX)} onPointerLeave={() => setActive(null)}>
             <svg viewBox={`0 0 ${width} ${HEIGHT}`} role="img" aria-label={`${view.title}: chance of yes went from ${percent(stats.start)} to ${percent(stats.latest)}, between ${percent(stats.low)} and ${percent(stats.high)}.`}>
-                <defs><linearGradient id="odds-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#5AA2FF" stopOpacity=".22"/><stop offset="1" stopColor="#5AA2FF" stopOpacity="0"/></linearGradient></defs>
+                <defs><linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#5AA2FF" stopOpacity=".22"/><stop offset="1" stopColor="#5AA2FF" stopOpacity="0"/></linearGradient></defs>
                 {axis.ticks.map(level => <g key={level}>
                     <line x1={LEFT} x2={right} y1={y(level / 100)} y2={y(level / 100)} className="grid"/>
                     <text x={LEFT - 8} y={y(level / 100) + 4} textAnchor="end" className="tick">{level}%</text>
@@ -65,7 +66,7 @@ export function OddsPlot({ data }: { data: OddsHistoryResponse }) {
                 </g>)}
                 <text transform={`translate(14 ${(TOP + BOTTOM) / 2}) rotate(-90)`} textAnchor="middle" className="axis-title">Chance of yes (bid–ask midpoint)</text>
                 <text x={(LEFT + right) / 2} y={BOTTOM + 46} textAnchor="middle" className="axis-title">{ticks.some(tick => tick.hourly) ? 'Time (your time zone)' : 'Date'}</text>
-                <path d={`${line}V${BOTTOM}H${marks[0].x}Z`} className="area"/>
+                <path d={`${line}V${BOTTOM}H${marks[0].x}Z`} className="area" style={{ fill: `url(#${fillId})` }}/>
                 <path d={line} className="line"/>
                 {mark ? <><line x1={mark.x} x2={mark.x} y1={TOP} y2={BOTTOM} className="crosshair"/><circle cx={mark.x} cy={mark.y} r="5" className="dot"/></>
                     : <circle cx={last.x} cy={last.y} r="4" className="dot"/>}

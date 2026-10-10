@@ -1,5 +1,21 @@
 # Validation and phase status
 
+## Paginated outcomes and expandable history (2026-10-10)
+
+Event details show five outcomes per page. Each outcome independently opens its own history
+chart; opening or closing one does not close the others. Expansion choices are remembered
+while paging within the event. Each visible chart has independent range controls and a unique
+SVG gradient identifier. A link to a specific market opens that market on the correct page.
+The trust breakdown names the outcome it describes.
+
+All 254 tests, both workspace TypeScript checks and the frontend production build pass.
+The frontend was rebuilt and recreated. Live Chrome checks used an isolated AAPL guest
+portfolio, cleared afterwards: a 17-outcome S&P event produced four pages (5/5/5/2), two
+charts stayed open together with different ranges, closing one preserved the other, expansion
+survived paging away and back, and a direct link selected the final market on page four.
+Screenshots were inspected at desktop and 320-pixel width; checks at 390 and 320 pixels found
+no horizontal page overflow or browser JavaScript errors. API probabilities are unchanged.
+
 ## Event history, frontend checks and storage (2026-10-10)
 
 The event chart now reads one selected market through `/odds/:ticker`, with day, week,
