@@ -10,6 +10,8 @@ import { TrackRecord } from './screens/track-record';
 import { AccountProvider, useAccount } from './auth';
 import { AccountScreen } from './screens/account';
 import { Brokerages } from './screens/brokerages';
+import { useData } from './common';
+import type { HealthResponse } from '../../shared/types';
 
 export default function Hedgehog() {
     return <AccountProvider><Shell/></AccountProvider>;
@@ -17,6 +19,7 @@ export default function Hedgehog() {
 
 function Shell() {
     const { session, checking, error, notice, refresh } = useAccount();
+    const health = useData<HealthResponse>('/health');
     const [route, setRoute] = useState('holdings'), [id, setId] = useState('');
     useEffect(() => {
         function change() {
@@ -59,6 +62,7 @@ function Shell() {
             }</div>
         </header>
         <main>
+            {health.data?.readOnly && <p className="account-notice" role="status">The database is read-only right now. You are seeing saved data: odds are not updating and changes cannot be saved.</p>}
             {notice && <p className="account-notice" role="status">{notice}</p>}
             {checking ? <p role="status">Loading your session…</p> : error ?
                 <div><p role="alert" className="error">{error}</p><button onClick={() => void refresh()}>Retry connection</button></div> :

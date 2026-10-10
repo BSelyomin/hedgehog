@@ -1,5 +1,103 @@
 # Validation and phase status
 
+## Earnings screen rebuilt to the design (2026-10-10)
+
+All 221 tests and strict TypeScript checks pass in a Node 24 container, and the Next.js production build succeeds. Migration 011 applied; one poll filled strike values for 75,638 markets.
+
+Checked against the running app with the 25-holding example portfolio in a temporary guest session, cleared afterwards:
+
+- **Who is listed.** 12 of 25 holdings have an earnings call Kalshi has dated, soonest first: JPM and GS on Oct 13 through COST on Dec 10. Holdings without one, such as XOM, are not listed.
+- **Call dates.** Netflix, Mastercard and United now show Kalshi's stated days (Oct 20, Oct 29, Oct 14) instead of the occurrence times they carried (Nov 4, Nov 13, March 31, 2027). JPM reads "before the market opens" and AAPL "after the close"; Tesla, Amazon and Alphabet, which carry Kalshi's default 10:00 am, show the day only.
+- **Lead metric.** Apple headcount in 2026: levels at 92%, 86%, 67%, 44%, 15%, 17%, with even odds between 168,000 and 170,000. United passengers flown in 2026: between 186 million and 188 million. Netflix headcount skips the 17,500 level, whose quote straddles 50%.
+- **Results only.** Apple shows two events, its earnings call and headcount; its product, lawsuit and price markets are no longer on this screen.
+- **Call topics.** Apple: 17 words, led by "iPhone 18" at 92.5%.
+- **Past moves.** Apple's typical move over its last eight reports is 3.1%, which is $310.82 on a $10,000 position.
+
+Not verified: the screen in a browser. Not built, as agreed: year-ago values from filings.
+
+## Full database, read-only mode and odds storage (2026-10-10)
+
+The shared Tiger Data service reached 2,965 MB and turned read-only; 2,815 MB of it was 17 hours of odds history (9.9 million rows, about 141,000 per poll). The backend then crash-looped at startup because applying migrations writes.
+
+- **Read-only mode.** The backend now starts on a read-only database, serves stored data and reports it. Checked live: `/health` returned `readOnly: true`, pages loaded, and an attempted save returned "The database is read-only right now, so changes cannot be saved."
+- **Cleanup, approved by the user.** In one transaction, the 500,993 rows for the 8,137 markets in linkable series were kept, 9,424,657 others were deleted, and migration 010 was applied. The database is 282 MB. The kept history covers its full original range.
+- **Guard.** A rolled-back test insert was accepted for a linked market and rejected for an unlinked one. The first poll afterwards stored 7,906 odds rows while updating details for all 148,908 markets.
+- **Dropped connections.** When Tiger Data lifted the read-only flag it closed open connections and the server exited on the unhandled pool error. Docker restarted it; a pool error listener now keeps it running.
+
+All 191 tests and strict TypeScript checks pass. Not yet observed: the compression and retention policies acting on a chunk, which happens after a day and after eight days.
+
+## Asset types, rate drivers and "what matters most" (2026-10-10)
+
+All 188 tests and strict TypeScript checks pass in a Node 24 container, and the Next.js production build succeeds. Migrations 008 and 009 applied to the shared database.
+
+Checked against the running app with a temporary guest portfolio of ten holdings (AAPL, XOM, TLT, SPY, an oil fund, a real-estate fund, cash, a Treasury note, a corporate bond and a Florida property), cleared afterwards:
+
+- **Drivers ranked.** TLT moves 15.7% per point of the 10-year yield, close to its duration, and that yield ranks first for it (typical daily effect 0.84% against 0.09% for the stock market). Crude oil ranks ahead of the stock market for XOM (0.78% against 0.42%) and for the oil fund (2.07% against 0.15%). AAPL has only the stock market.
+- **Measurement fixes.** With the negative crude close of 2020-04-20 excluded, XOM's oil coefficient is 0.266. SPY no longer carries links to oil or rates.
+- **Calculated figures.** $50,000 of cash: $500 a year per point of rate. A $10,000 4% note maturing 2036: modified duration 7.85 years at the 5.22% 10-year yield, so $785.44 per point. A $200,000 adjustable mortgage: $2,000 a year per point. An invalid maturity is rejected.
+- **Property.** The Florida property linked to 15 events: mortgage-rate markets (calculated) and national housing markets (no number). It did not link to Canadian or other states' housing markets.
+- **Moves.** Opens on the latest completed session. Totals reconcile (176.66 = 209.83 − 33.17), state the $470,000 with no daily price, and name the two yields FRED had not yet published. On 2026-10-07 crude oil (−$121.26) outweighed the stock market (−$84.01).
+- **Speed.** The snapshot lookup was running for every market in the table. Filtering first cut the exposure request from about 31 seconds to 3, and Moves from timing out to under 5.
+
+Not verified: the screens in a browser. Driver estimates on Moves overlap and are compared, not summed; the page says so.
+
+## Earnings filters, link accuracy, event dates and report dates (2026-10-10)
+
+All 156 tests and strict TypeScript checks pass in a Node 24 container, and the Next.js production build succeeds. Migrations 004 to 007 applied to the shared database on restart.
+
+Checked against the running app with the 25-holding example portfolio in a temporary guest session:
+
+- Withdrawing 103 incorrect mappings reduced linked events from 622 to 425. DAL, BAC and XOM each keep one company event (previously 23, 5 and 25).
+- Apple's 17 earnings-call outcomes are classified as call mentions (none were before). Two S&P 500 range ladders now qualify for scaling; the first has 27 outcomes with a raw midpoint sum of 101.5%.
+- 421 of 425 linked events carry a Kalshi event date. The 14-day calendar holds 73 events by event date against 70 by market close.
+- With `SEC_USER_AGENT` unset, the earnings response returns no history and says why. With it set, the earnings-dates job loaded report dates from live EDGAR for 23 of the 25 holdings (SPY and TLT file none). Apple's and JPMorgan's last eight match their results days, and each move reconciles with the stored closes. XOM has one report because its ticker now maps to a new registrant (see SOURCES.md).
+
+Not verified: the screens in a browser. `git fetch` could not authenticate from the agent's shell, so the merge used the local copy of origin/main at a5b17b3.
+
+Known issues found in review and not changed here: the Moves market split is unavailable for completed sessions, one extreme crude-oil return in April 2020 distorts oil coefficients, and each poll stores about 140,000 odds rows with no retention policy.
+
+## Subject evidence and event context (2026-10-09)
+
+All 122 tests, strict TypeScript checks and the production build pass. Migration 004 applied locally and identity recovery verified all 127 stored observations: 126 inflation contracts across 49 event identifiers and one interest-rate contract in one event. Company and stock-market subject views correctly report no verified history. Stored probabilities and outcomes are not changed by identity recovery.
+
+Added subject-level comparisons using reviewed series tags, while preserving category-level trust calculations. A known-answer test verifies inflation and Fed observations stay in their matching views and two contracts in one event count as one identified event. Identity recovery is tested to update only metadata and ignore unrequested markets. The UI keeps the existing chart and calculation details, adds subject selection and a focused portfolio event with explicit stored link evidence.
+
+
+## Plain-language track-record view (2026-10-09)
+
+The default view leads with evidence size and average probability/outcome gap, an around-70% comparison with a small-sample warning, four actual outcomes, and relevant current portfolio events. Chart, Brier score, bucket counts and full observation timestamps are collapsed under details. Category filter wording and an all-categories-relevant message explain identical filtered views. The rendering check verifies the comparison, outcome labels and closed detail sections. No forecasting math or source observations changed.
+
+
+## Track-record evidence feature (2026-10-09)
+
+The page now explains forecasting history separately from portfolio returns, exposes category sample sizes and date ranges, renders calibration-group counts and recent settled observations, and filters categories using session-scoped reviewed portfolio tags. Added known-answer aggregation and rendering tests cover absent history, portfolio relevance, a two-market Brier score of 0.29, the 30-market eligibility threshold, twelve-example limits and evidence timestamps. The expanded CSV reuses the repository’s 25-symbol demo allocation.
+
+Live database initially contains no settled observations. A backfill of the three approved company series returned no usable exact 24-hour quotes for the settled ExxonMobil sample. No synthetic history was inserted.
+
+
+## Base merge for morning briefing (2026-10-09)
+
+Merged origin/main at dee8f81 into feature/morning-briefing. Briefing routes now live in createApp alongside account middleware; authenticated and guest portfolio ownership and write protections are preserved. Session cleanup remains scheduled alongside independent morning briefing retries. All 116 tests, TypeScript checks and the production build pass, including briefing-specific account isolation and cross-site/stale-session write rejection.
+
+
+## Focused briefing and refresh (2026-10-09)
+
+The spoken script prioritizes the completed-session takeaway and one event. A session-scoped refresh endpoint and overview button regenerate the current day while retaining cached audio after failures. Audio browser caching is disabled. All 80 tests, TypeScript checks and the production build pass, including explicit refresh before the scheduled time and bypassing the daily cache.
+
+
+## Conversational briefing update (2026-10-09)
+
+The script now uses an opening takeaway, explanatory transitions, holding-specific watchlist context, spoken dates/times and directional dollar amounts. Existing tests verify the completed-session amounts, omission of stale quotes, missing data and numeric validation with the new wording. All 79 tests, TypeScript checks and the production build pass.
+
+## Morning briefing feature (2026-10-09)
+
+The morning briefing uses the latest stored SPY session before today's New York date, explicitly dates the move, selects this week's top linked events with a nearest-upcoming fallback, and omits stale single-outcome odds. Generation begins at 8 a.m. New York with independent hourly retries and startup catch-up. Per-session/day advisory locks prevent overlapping voice requests. Existing daily audio remains cached. Text and audio endpoints share the New York date.
+
+Validation: 79 Vitest tests pass, including six content/timezone tests and four job tests for prior-session selection, the morning cutoff, cached audio, concurrent generation and retry after a voice failure. Strict TypeScript checks and the Next.js production build pass in an isolated Node 24 container using the project's installed dependencies. No new dependencies or migrations are required.
+
+Snowflake tagging, expanded company/sector coverage, continuous hosting and historical earnings-report moves are outside this feature. Current briefings honestly report unavailable prices or market associations; this change does not certify those separate integrations.
+
+
 ## Current migration: Snowflake Cortex (2026-10-09)
 
 Gemini has been replaced with Snowflake Cortex REST completions for series tagging and supplied

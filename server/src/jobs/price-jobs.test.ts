@@ -72,7 +72,8 @@ it('persists the source date and syncs driver tags with measured beta reliabilit
     assert.ok(Math.abs(Number(beta[2]) - 1.5) < 1e-8);
     assert.equal(beta[6], 100);
     assert.equal(beta[7], true);
-    assert.equal(beta[8], '2026-10-09');
+    assert.ok(Number(beta[8]) > 0, 'Typical driver effect is retained');
+    assert.equal(beta[9], '2026-10-09');
     assert.deepEqual(addedTags, [['AAPL', ['sp500']]]);
-    assert.deepEqual(removedTags, [['AAPL', ['oil']], ['AAPL', ['fed-rates', 'inflation']], ['AAPL', ['sp500']]]);
+    assert.deepEqual(removedTags, [['AAPL', ['sp500']], ['AAPL', ['oil']], ['AAPL', ['fed-rates', 'inflation']], ['AAPL', ['treasury-yields']], ['AAPL', ['mortgage-rates']]]);
 });

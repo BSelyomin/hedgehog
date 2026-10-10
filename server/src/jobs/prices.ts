@@ -3,11 +3,13 @@ import { query } from '../db.ts';
 import { seedFile } from '../seed.ts';
 import { storePrices } from './price-storage.ts';
 import { completedPriceDate } from '../services/price-date.ts';
+import { CONTROL, DRIVERS } from '../config/drivers.ts';
 export const yahoo = new YahooFinance();
 export async function prices() {
-    const symbols = new Set(['SPY', ...(await seedFile<string[]>('demo_symbols')), ...(await query<{
+    // Only listed securities have a price history; cash, bonds held directly and property do not.
+    const symbols = new Set([CONTROL, ...(await seedFile<string[]>('demo_symbols')), ...(await query<{
             symbol: string;
-        }>('SELECT DISTINCT symbol FROM portfolio_holdings')).map(r => r.symbol), 'CL=F']);
+        }>("SELECT DISTINCT symbol FROM portfolio_holdings WHERE asset_type='security'")).map(r => r.symbol), ...DRIVERS.filter(d => d.source === 'yahoo').map(d => d.key)]);
     const start = new Date();
     start.setUTCFullYear(start.getUTCFullYear() - 10);
     const cutoff = completedPriceDate();
@@ -31,24 +33,30 @@ export async function prices() {
         }
     }
     if (!process.env.FRED_API_KEY) {
-        console.warn('FRED_API_KEY missing; DGS2 unavailable');
+        console.warn('FRED_API_KEY missing; yield series unavailable');
         return;
     }
-    try {
-        const url = new URL('https://api.stlouisfed.org/fred/series/observations');
-        url.search = new URLSearchParams({ series_id: 'DGS2', api_key: process.env.FRED_API_KEY, file_type: 'json', observation_start: start.toISOString().slice(0, 10) }).toString();
-        const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
-        if (!response.ok)
-            throw new Error('FRED load failed');
-        const data = await response.json() as {
-            observations: {
-                date: string;
-                value: string;
-            }[];
-        };
-        await storePrices('DGS2', data.observations.flatMap(row => row.value !== '.' && Number.isFinite(Number(row.value))
-            ? [{ date: row.date, close: Number(row.value) }] : []));
-    } catch {
-        console.warn('FRED load failed; stock measurements can still run');
+    for (const driver of DRIVERS.filter(d => d.source === 'fred')) {
+        try {
+            const url = new URL('https://api.stlouisfed.org/fred/series/observations');
+            url.search = new URLSearchParams({ series_id: driver.key, api_key: process.env.FRED_API_KEY, file_type: 'json', observation_start: start.toISOString().slice(0, 10) }).toString();
+            const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+            if (!response.ok)
+                throw new Error('FRED load failed');
+            const data = await response.json() as {
+                observations: {
+                    date: string;
+                    value: string;
+                }[];
+            };
+            const rows = data.observations.flatMap(row => row.date <= cutoff && row.value !== '.' && Number.isFinite(Number(row.value))
+                ? [{ date: row.date, close: Number(row.value) }] : []);
+            await storePrices(driver.key, rows);
+            console.log('Yield history loaded', driver.key, rows.length);
+        }
+        catch {
+            // One unavailable series must not stop the others or the measurements that follow.
+            console.warn('FRED load failed for series', driver.key);
+        }
     }
 }

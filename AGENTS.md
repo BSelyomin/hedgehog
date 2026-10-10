@@ -8,12 +8,20 @@ endpoint that sends money anywhere.
 
 ## The one rule that matters most: accuracy
 
-Every number on screen is either read straight from a data source or measured from price history,
-and the UI says which. When the data can't support a number, show no number.
+Every number on screen is read straight from a data source, measured from price history, or
+calculated exactly from the terms the user entered for a holding, and the UI says which. When the
+data can't support a number, show no number.
 
 - Never hard-code how much a stock moves when an event happens. Sensitivities come only from
   `measured_links`, computed from historical data.
-- A link that fails `checkSensitivity` is shown as **Related** with no number.
+- A **Calculated** figure is arithmetic on a holding's own terms: yearly interest on a cash balance
+  per point of rate, a bond's price change from its modified duration, yearly interest on an
+  adjustable mortgage balance. It never comes from a regression and is always labelled Calculated.
+- When a holding has several measured drivers, always show which matters most. Importance is the
+  typical effect, |b| × the driver's typical daily change, so oil, yields and the stock market
+  compare on one scale. A link on a minor driver says what matters more.
+- A link that fails `checkSensitivity` stays unmeasured (API type `Related`, labelled **Topic**
+  on screen) with no number.
 - Probabilities are the bid–ask midpoint, never the last trade.
 - AI-written text (Snowflake Cortex) never introduces a number that isn't in the data passed to it.
   Code checks this (see "Snowflake Cortex").
@@ -23,7 +31,7 @@ and the UI says which. When the data can't support a number, show no number.
 
 ## Stack
 
-npm workspaces monorepo, Node 20+, TypeScript everywhere.
+npm workspaces monorepo, Node 24+, TypeScript everywhere.
 
 ```
 /web      Next.js (App Router) + Tailwind — screens only, no business logic
@@ -36,7 +44,8 @@ npm workspaces monorepo, Node 20+, TypeScript everywhere.
 | Database | Tiger Data (Postgres + TimescaleDB) via `pg` |
 | Scheduling | `node-cron` inside the server process |
 | Stock and oil prices | `yahoo-finance2` (daily closes) |
-| 2-year Treasury yield | FRED API, series `DGS2` |
+| Treasury yields and mortgage rate | FRED API, series `DGS2`, `DGS10`, `MORTGAGE30US` |
+| Past earnings-report dates | SEC EDGAR APIs via Node's built-in fetch |
 | Regression | `ml-matrix` (least squares) |
 | AI | Snowflake Cortex REST APIs via Node's built-in fetch |
 | Voice | ElevenLabs API, official JavaScript SDK |
@@ -48,6 +57,7 @@ Ask before adding any dependency not in this table.
 
 ```
 DATABASE_URL=
+COOKIE_SECURE=
 SNOWFLAKE_ACCOUNT_URL=
 SNOWFLAKE_PAT=
 SNOWFLAKE_CORTEX_MODEL=
@@ -57,13 +67,15 @@ SNOWFLAKE_SEARCH_SERVICE=
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
 FRED_API_KEY=
+SEC_USER_AGENT=
 ```
 
 Ship a `.env.example` with these names and no values. Never print keys in logs.
 
 ## Kalshi
 
-- Base URL: `https://api.elections.kalshi.com/trade-api/v2` (confirm on docs.kalshi.com).
+- Base URL: `https://external-api.kalshi.com/trade-api/v2`, the host in Kalshi's current docs
+  (confirm on docs.kalshi.com).
   Market-data endpoints are public; send no credentials.
 - Data hierarchy: series → events → markets.
 - Use the `*_dollars` price fields (`yes_bid_dollars`, `yes_ask_dollars`, …). The older cent
@@ -76,6 +88,9 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
   from the browser.
 - Poll every 5 minutes. Back off on 429 and 5xx responses. Log and skip a bad market rather than
   failing the whole run.
+- Store every market's details, but odds history only for series a holding could link to. Storing
+  it for all markets filled the database in 17 hours. A database trigger enforces this for any
+  backend that shares the database.
 
 ## Data model
 
@@ -83,15 +98,19 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 
 | Table | Columns | Filled by |
 | --- | --- | --- |
-| `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result | poller |
-| `odds_snapshots` | ts, ticker, yes_bid, yes_ask, mid, volume_24h, open_interest | poller, every 5 min |
+| `events` | ticker PK, series_ticker, title, description, category, mutually_exclusive, strike_date | poller |
+| `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result, strike_type, occurrence_time, expected_expiration_time, floor_strike, cap_strike | poller |
+| `odds_snapshots` | ts, ticker, yes_bid, yes_ask, mid, volume_24h, open_interest | poller, every 5 min, only for markets in `snapshot_series`; compressed after 1 day, dropped after 8 |
+| `snapshot_series` | series_ticker | poller: series a holding could link to (approved ticker, driver or asset-type tag) |
 | `prices` | ts (date), symbol, close | price loader, daily |
 | `series_tags` | series_ticker, tag, source ('snowflake', legacy 'gemini', or 'manual'), reviewed boolean | tagging job |
 | `stock_tags` | symbol, tag, link_type ('direct', 'measured', 'related') | sector table + 10-K job |
-| `measured_links` | symbol, driver, b, se, low, high, days, reliable, computed_at | nightly job |
+| `measured_links` | symbol, driver, b, se, low, high, days, reliable, computed_at, effect | nightly job |
 | `settled_markets` | ticker, category, prob_24h_before, outcome (0/1), close_time | backfill |
-| `holdings` | session_id, symbol, value_usd | add-holdings screen |
+| `holdings` | session_id, symbol, value_usd, asset_type ('security', 'cash', 'treasury', 'bond', 'property'), details | add-holdings screen |
 | `sector_tags` | sector, tag | seeded from `server/seed/sector_tags.json` (written by a human) |
+| `earnings_reports` | symbol, accession, filing_date, report_date, source_url | earnings-dates job (SEC EDGAR) |
+| `companies` | symbol, name | earnings-dates job (names from the SEC ticker file) |
 
 Tags come from a **fixed list** in `server/seed/tags.json`, for example: `fed-rates`,
 `inflation`, `oil`, `consumer-spending`, `recession`, `tariffs`, `sp500`, `jobs`, plus one tag
@@ -105,12 +124,22 @@ per company ticker for company markets. Never create tags outside this list.
    link between the holding and that tag's driver.
 3. **Related:** a shared tag only. Show it, labeled, with no sensitivity number.
 
+4. **Calculated:** the holding has no ticker (cash, a Treasury or CD, a bond, a property) and its
+   asset type shares a tag with the market. Where its terms give an exact figure, show it;
+   otherwise it is a Related link with no number. Property links only to housing and weather
+   markets that name its state or the whole country. Rules: `server/src/services/asset-links.ts`.
+
+Tickers, sector tags and measurements apply to listed securities only.
+
 Drivers used for measurement: `oil` → crude oil futures (`CL=F`); `fed-rates` and `inflation` →
-daily change in `DGS2`; `sp500` → SPY (this one is the stock's beta).
+daily change in `DGS2`; `treasury-yields` → daily change in `DGS10`; `mortgage-rates` → weekly
+change in `MORTGAGE30US`; `sp500` → SPY (this one is the stock's beta). The list lives in
+`server/src/config/drivers.ts`; add a driver there and nowhere else.
 
 Exposure for an event: `linkedValue` = sum of the values of holdings linked to it;
 `share` = `linkedValue / totalValue`. These show reach, not how much a holding would move.
-Sort links Direct → Measured → Related.
+Sort links Direct → Calculated → Measured → Related. On screen these read Direct, Calculated,
+Related and Topic (see UI).
 
 ## Math (port of `hedgehog_math.py`, in `server/src/math/`)
 
@@ -158,16 +187,41 @@ calibration buckets. Headline example: "When Kalshi said 70%, it happened X% of 
 ## Move explainer
 
 For a day: each holding's dollar move; `fromMarket = beta × SPY return × value`;
-`beyondMarket = actual − fromMarket`. The totals must add up exactly. List linked markets whose
+`beyondMarket = actual − fromMarket`. The totals must add up exactly and cover listed securities;
+state the value of holdings with no daily price. Also compare each measured driver's estimated part
+of the day (sensitivity × the driver's change × value) and highlight the largest. Those estimates
+overlap, so they are compared and never summed; name any driver whose change is not published yet. List linked markets whose
 midpoint moved 3+ points in the last 24 hours. Connect a market to a holding's move only when the
 link is Measured; otherwise say it moved the same day, nothing more.
 
 ## Earnings preview
 
-For holdings with company markets: bracket ladders scaled so they sum to 100% (show the raw sum
-in a note), other KPI markets with their trust score, mention markets, and the stock's move after
-each of the last 8 reports (close before → close after). If you can't find a free source for past
-report dates, skip that card and say so in the PR.
+Laid out as in `/design`: upcoming reports on the left, then the chosen company's preview.
+
+- **Who appears:** only holdings whose next earnings call Kalshi has dated, soonest first. A
+  holding without one is not shown on this screen. The date is the one Kalshi states in the
+  call event's subtitle ("On Oct 29, 2026"). Its `occurrence_datetime` is used for the hour only
+  when it falls on that day: for about a third of these markets it holds a later administrative
+  date. Say "before the open" or "after the close" only with the call's own time; exactly
+  10:00 am New York is Kalshi's default and says nothing.
+- **Which markets:** only those about reported results: the earnings call, and numeric metrics
+  for a reporting period ("headcount in 2026", "bookings in Q3"). Products, lawsuits, executives,
+  prices, rankings and monthly third-party data stay on the other screens.
+- **Lead card:** one reported metric read from its ladder of "above X" markets, ordered by
+  Kalshi's strike. Say where even odds fall: the highest level whose bid is at least 50% and the
+  lowest whose ask is at most 50%. Never interpolate between them. A quote that straddles 50%,
+  as any quote wider than 50 cents must, says neither and shows no number. Give no reading when
+  no level is clearly on a side or the sides are out of order. These are separate markets, so
+  they are not scaled to add up. Kalshi lists
+  no company revenue brackets, which the design assumed.
+- **Bracket ladders** (mutually exclusive ranges) are still scaled so they sum to 100%, with the
+  raw sum in a note.
+- **Group trust** is the median trust score of the group's markets.
+- **Call topics:** the chance each word is said on the call.
+- **Past reports:** the stock's move across each of the last 8. Report dates are the SEC EDGAR
+  filing dates of 8-K filings carrying Item 2.02; the move runs from the last close before the
+  filing date to the first close after it. The typical move is the average size of those moves
+  (at least four), also shown in dollars on the holding.
 
 ## Snowflake Cortex
 
@@ -196,7 +250,7 @@ Every response type lives in `/shared/types.ts`. Write the types first; then the
 against mock data while the server is built.
 
 `POST /holdings` · `GET /exposure` · `GET /calendar?days=14` · `GET /event/:ticker` ·
-`GET /moves?date=` · `GET /earnings/:symbol` · `GET /track-record` · `GET /briefing`
+`GET /moves?date=` · `GET /earnings` · `GET /earnings/:symbol` · `GET /track-record` · `GET /briefing`
 
 Every response includes `asOf` (when the data was last updated).
 
@@ -206,7 +260,7 @@ Seven screens, matching the designs in `/design` (screenshots or exports from th
 
 1. Add holdings
 2. Exposure map (heatmap of holdings × events, plus a "By holding" view)
-3. Event calendar (next two weeks, filter All / Macro / Earnings)
+3. Event calendar (next two weeks by Kalshi event date, filter All / Company / Other)
 4. Event page (odds distribution, 1-week chart, trust score breakdown, linked holdings + evidence)
 5. Earnings preview
 6. Move explainer
@@ -214,8 +268,9 @@ Seven screens, matching the designs in `/design` (screenshots or exports from th
 
 Design tokens: background `#0E1116`, card `#151A21`, border `#2A313C`, text `#E8ECF1`,
 secondary text `#A3ADBA`, accent `#5AA2FF`, up `#7DB6FF`, down `#FF9F45`. Fonts: Space Grotesk
-(headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). Link chips: Direct = solid accent,
-Measured = `#24476E` fill, Related = dashed border. Touch targets ≥ 44 px; real `<button>` and
+(headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). Link chips use one vocabulary
+on every screen, set by the Overview: Direct = `#f87171` (red); Measured links are labelled
+"Related" = `#5aa2ff` (blue); Calculated = `#34d399` (green); unmeasured links are labelled "Topic" = dashed border. Touch targets ≥ 44 px; real `<button>` and
 `<a>` elements; works at phone width. Footer on every screen: "Not financial advice. Odds from
 Kalshi."
 

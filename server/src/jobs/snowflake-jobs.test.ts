@@ -41,12 +41,36 @@ describe('Snowflake jobs', () => {
         mocks.cortexJson.mockResolvedValue({ series: [{ series_ticker: 'SPORTS', tags: [] }] });
         await tagSeries();
         expect(mocks.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO series_tags'), expect.anything());
-        const hash = createHash('sha256').update(JSON.stringify([['oil', 'AAPL'], series.title, series.description])).digest('hex');
+        const hash = createHash('sha256').update(JSON.stringify([['oil', 'AAPL'], series.title, series.description, ''])).digest('hex');
         expect(mocks.query).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO job_state'), ['tag-series:SPORTS', hash]);
         mocks.cortexJson.mockClear();
         mocks.query.mockResolvedValueOnce([{ ...series, previous_hash: hash }]);
         await tagSeries();
         expect(mocks.cortexJson).not.toHaveBeenCalled();
+    });
+
+    it('reclassifies when source category changes and supplies that context to Cortex', async () => {
+        const series = { series_ticker: 'S1', title: 'An ambiguous title', description: '' };
+        const previous_hash = createHash('sha256').update(JSON.stringify([['oil', 'AAPL'], series.title, series.description, 'Sports'])).digest('hex');
+        mocks.query.mockResolvedValueOnce([{ ...series, category: 'Companies', previous_hash }]);
+        mocks.cortexJson.mockResolvedValue({ series: [{ series_ticker: 'S1', tags: [] }] });
+        await tagSeries();
+        expect(mocks.cortexJson).toHaveBeenCalledWith(expect.any(String), {
+            allowedTags: ['oil', 'AAPL'], series: [{ ...series, category: 'Companies' }]
+        }, expect.any(Object));
+    });
+
+    it('counts only newly inserted mappings and never changes an existing review state', async () => {
+        mocks.query.mockResolvedValueOnce([{ series_ticker: 'S1', title: 'Apple and oil', description: '' }])
+            .mockResolvedValueOnce([]).mockResolvedValueOnce([{ tag: 'oil' }]);
+        mocks.cortexJson.mockResolvedValue({ series: [{ series_ticker: 'S1', tags: ['AAPL', 'oil'] }] });
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+        await tagSeries();
+        expect(mocks.query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO series_tags'))).toEqual([
+            [expect.stringContaining("'snowflake',false) ON CONFLICT DO NOTHING RETURNING tag"), ['S1', 'AAPL']],
+            [expect.stringContaining("'snowflake',false) ON CONFLICT DO NOTHING RETURNING tag"), ['S1', 'oil']]
+        ]);
+        expect(log).toHaveBeenLastCalledWith('Series classification complete; new mappings', 1);
     });
 
     it('does not mark a malformed classification as successfully processed', async () => {

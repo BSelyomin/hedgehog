@@ -83,6 +83,65 @@ Open Add holdings at http://localhost:3000 and import `examples/fake-portfolio.c
 
 `FRED_API_KEY`, `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` retain their existing roles. Without Snowflake configuration, AI jobs skip generation while the rest of the application can run. No credentials belong in Git or browser environment variables.
 
+## Database storage and read-only mode
+
+Kalshi lists about 145,000 open markets. Storing a five-minute odds row for each wrote roughly
+500 MB an hour and filled a Tiger Data service in 17 hours, after which the service turned
+read-only. Migration `010_odds_storage.sql` keeps odds history only for series a holding could
+link to (about 7,000 markets), in daily chunks that are compressed after a day and dropped after
+eight. A trigger on `odds_snapshots` applies the same rule to any backend writing to the
+database, including one running older code.
+
+When the database is read-only the backend still starts. It serves stored data, skips migrations
+and scheduled jobs, reports `readOnly: true` from `/health` (the app shows a notice), and answers
+any attempt to save with a plain message. It checks every minute and applies migrations and starts
+the jobs by itself once writes are accepted again.
+
+To get a full service writable again, either raise its storage in the Tiger Data console or free
+space. Odds history is the only large table and it is rebuilt by the poller:
+
+```sql
+SET default_transaction_read_only = off;
+TRUNCATE odds_snapshots;
+```
+
+That removes the stored odds history (the one-week charts and day-over-day odds moves start
+again); current odds return with the next poll. Holdings, accounts, tags, prices, measurements
+and the track record are not touched.
+
+## Asset types and drivers
+
+Migration `008_asset_classes.sql` adds the holding type and its terms, and a typical effect to
+every measurement. After upgrading, load the new yield series and re-measure so drivers can be
+ranked:
+
+```powershell
+docker compose exec backend npm run job -- prices
+docker compose exec backend npm run job -- measure
+```
+
+`prices` loads `DGS2`, `DGS10` and `MORTGAGE30US` from FRED and needs `FRED_API_KEY`. Both jobs
+also run hourly and at startup, independently of optional AI jobs. Only listed securities are priced and measured; cash,
+Treasuries, bonds and property are entered with their terms on the Add holdings screen and need
+no job. The CSV import takes symbol,valueUsd for securities and optional columns for the other types; `examples/feature-tour.csv` uses them and `examples/README.md` says what each row shows. FRED publishes yields a day late,
+so Moves names the yield drivers it could not yet compare for the latest session.
+
+## Past earnings-report dates (SEC EDGAR)
+
+Set `SEC_USER_AGENT` in the root `.env` to a string that identifies you, for example
+`Hedgehog you@example.com`. SEC's fair-access policy requires a contact in the User-Agent;
+without it the job sends no request and the Earnings screen says report dates are unavailable.
+Then recreate the backend and load the dates:
+
+```powershell
+docker compose up -d
+docker compose exec backend npm run job -- earnings-dates
+```
+
+The job looks up each held symbol in EDGAR's ticker file, reads its filing list and stores the
+filing dates of 8-K filings carrying Item 2.02. It also runs nightly and at startup, independently of the price loader. Funds such as SPY and TLT file no such reports and show none. A move needs a close on
+both sides of the filing date, so run `prices` first for newly added holdings.
+
 ## Validation on a networked machine
 
 ```
@@ -256,11 +315,24 @@ proxy, and network time as well. Timings and counts contain no SQL, holdings,
 credentials, or user IDs. These headers measure your actual deployment; earlier
 embedded-database benchmarks did not include your network or pool contention.
 
+## Morning briefing
+
+Scheduled briefings run from 8 a.m. America/New_York, with independent hourly retries at :15 and a catch-up after price loading. Explicit Reload briefing can prepare a missing snapshot before 8 a.m. Content-based cache locks coalesce concurrent voice requests per session and holdings snapshot using the separate AI connection pool. Successful audio is reused across dates and market changes; failures remain eligible for retry. The snapshot records its original New York date and the audio endpoint checks its cache version.
+
+The move uses the latest stored completed SPY session (or a holding session if SPY is missing); it never treats an intraday candle as a completed session. Its date is spoken explicitly, and missing holding prices or beta estimates remain unavailable. The main linked event closing this week is selected by portfolio reach. If none close this week, the nearest upcoming event is included instead. Single-outcome bid–ask midpoint probabilities are spoken only with quotes at most 15 minutes old. Multi-outcome events keep their distributions on the event page. Historical odds changes are explicitly dated and do not imply causation.
+
+To generate after 8 a.m.: `docker compose exec backend npm run job -- briefings`. Open the overview to play audio or read the transcript. An existing MP3 for unchanged holdings is retained after a code update; the new wording starts with the next uncached holdings snapshot. Docker and the host must remain running. No email delivery or notification is implemented.
+
+Briefing wording follows a conversational sequence: the last completed session, available market context, then a holding-specific event watchlist. Directions are spoken as up/down with absolute dollar amounts, dates use month names, and quote times use New York time. The deterministic template still passes the numeric guard before speech; it does not add AI explanations or unsupported causes.
+
+Use **Reload briefing** on the overview to prepare text and MP3 for a changed holdings snapshot, including before the automatic morning run. POST `/briefing/reload` and its compatibility alias `/briefing/refresh` use the current guest or authenticated account session. Both reuse saved audio for unchanged holdings. Failed requests leave successful cached snapshots intact. Audio responses disable browser caching and check the snapshot version.
 # Coverage and portfolio review
 
-Overview includes linked events at all future dates. Calendar includes only those closing in
-the next 14 days, using Kalshi close times. Company tabs in Earnings require reviewed direct
-links; they are not a list of every stock in the portfolio or a complete earnings calendar.
+Overview includes linked events at all future dates. Calendar includes only those whose event
+date falls in the next 14 days. The event date is Kalshi's occurrence time, strike date or
+expected expiration, whichever is first still in the future, and otherwise the market close.
+These fields fill in as markets are next polled after migration `006_event_times.sql`.
+Company choices in Earnings require reviewed direct links; they are not a list of every stock in the portfolio or a complete earnings calendar.
 
 The fixed company catalog includes all 25 tickers in `examples/fake-portfolio-large.csv`.
 Other symbols can be imported and measured when Yahoo has sufficient history, but company
@@ -295,3 +367,21 @@ reviewing the specific proposed pair, then run `backfill` to build category trac
 Backfill reads both live and archived markets, normalizes their distinct candlestick fields,
 and accepts only bid/ask observations at the 24-hour cutoff (within one minute before it).
 Unavailable or unsupported history is omitted rather than replaced with last-trade prices.
+
+## Track-record evidence and portfolio CSV
+
+Track record reads verified settled Kalshi observations, not holdings CSV rows. It shows category sample sizes, close-date coverage, calibration groups, trust eligibility and up to twelve recent market observations with the exact stored quote/close times. Portfolio relevance uses reviewed series tags shared with the current guest or account holdings. This filter selects whole categories; it does not restrict the historical sample to individual stocks. The overview's global category trust calculations are unchanged.
+
+`examples/fake-portfolio-large.csv` supplies 25 allowed demo tickers at $10,000 each ($250,000 total). Import it to exercise broader portfolio matching. It replaces the current holdings when saved and contains invented portfolio allocations only; it does not populate historical market outcomes. Reviewed tags and verified historical bid–ask quotes are still required.
+
+The track-record main view explains the sample and compares around-70% quotes with observed outcomes. It keeps small-group warnings beside that comparison and links current events to the selected category. Technical charts and scores are under **Explore the details**. The category-linked filter says when all loaded categories are relevant, so identical views are expected rather than unexplained.
+
+## Subject-level forecasting evidence
+
+The track-record selector offers All history, Inflation, Interest rates, Company events and Stock market. Subject samples use exact series identities and reviewed tags; unknown or unclassified observations remain in All history. The original category aggregation and trust-score formula are unchanged. Subjects use the same calibration/Brier functions over their own matching observations. A focused current event explains the recorded Direct/Measured/Related holding evidence and opens the existing event page.
+
+Migration 004 adds nullable series/event/title identity to settled observations. It recovers known local catalog metadata without altering quotes or outcomes. New backfill rows retain those identifiers. Run `docker compose exec backend npm run job -- history-metadata` to recover missing identity from public live/archive market responses and their event metadata. Unavailable identities remain explicit; no ticker parsing or guessed subject labels are used. Distinct-event counts describe identified events, not statistically independent observations.
+
+## Combined holdings after merging asset support
+
+Migration `012_portfolio_asset_types.sql` extends the existing combined manual/SnapTrade view with asset types and terms. Rebuild the backend to apply it before running the jobs. Price loading, measurement, sector tags, and SEC dates include imported securities; cash, directly held bonds, and property retain their own terms. Saving or clearing manual/CSV holdings does not duplicate or remove connected positions. Both `/briefing/reload` and the compatibility `/briefing/refresh` route reuse audio for unchanged holdings; neither bypasses the content cache.

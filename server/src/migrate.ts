@@ -1,6 +1,16 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { pool } from './db.ts';
+import { pool, query } from './db.ts';
 import { seed } from './seed.ts';
+// A managed database can turn read-only, for example when its storage is full.
+export async function databaseReadOnly(): Promise<boolean> {
+    return (await query<{ transaction_read_only: string }>('SHOW transaction_read_only'))[0]?.transaction_read_only === 'on';
+}
+// Migration files not yet recorded as applied. Reads only, so it works on a read-only database.
+export async function pendingMigrations(): Promise<string[]> {
+    const names = (await readdir(new URL('../migrations/', import.meta.url))).filter(n => n.endsWith('.sql')).sort();
+    const applied = await query<{ name: string }>('SELECT name FROM schema_migrations').catch(() => []);
+    return names.filter(name => !applied.some(row => row.name === name));
+}
 export async function migrate() {
     const client = await pool.connect();
     try {

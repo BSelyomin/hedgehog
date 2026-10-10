@@ -9,16 +9,25 @@ import { query } from './db.ts';
 import { getHoldings, saveHoldings, validateHoldings } from './services/holdings.ts';
 import { exposure, calendar, eventDetail } from './services/exposure.ts';
 import { moves } from './services/moves.ts';
-import { earnings } from './services/earnings.ts';
+import { earnings, earningsList } from './services/earnings.ts';
 import { trackRecord } from './services/track-record.ts';
+// What a failed request tells the browser. Postgres reports 25006 when a write reaches a
+// database that is accepting reads only, for example because its storage is full.
+export function errorResponse(error: unknown): { status: number; error: string } {
+    if (error instanceof SyntaxError)
+        return { status: 400, error: 'Invalid JSON' };
+    if ((error as { code?: unknown } | null)?.code === '25006')
+        return { status: 503, error: 'The database is read-only right now, so changes cannot be saved. Viewing still works' };
+    return { status: 503, error: 'Data unavailable; check backend configuration' };
+}
 export function createApp() {
 const app = express();
 app.disable('x-powered-by');
 app.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 app.use(express.json({ limit: '32kb' }));
 app.get('/health', async (_req, res) => { try {
-    await query('SELECT 1');
-    res.json({ status: 'ok', asOf: new Date().toISOString() });
+    const mode = await query<{ transaction_read_only: string }>('SHOW transaction_read_only');
+    res.json({ status: 'ok', readOnly: mode[0]?.transaction_read_only === 'on', asOf: new Date().toISOString() });
 }
 catch {
     res.status(503).json({ error: 'Database unavailable', asOf: null });
@@ -49,11 +58,12 @@ app.get('/moves', async (req, res) => { const input = req.query.date ?? req.quer
     res.status(400).json({ error: 'Use a valid YYYY-MM-DD date', asOf: null });
     return;
 } res.json(await moves(res.locals.session, date)); });
+app.get('/earnings', async (_req, res) => { res.json(await earningsList(res.locals.session)); });
 app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase())); });
-app.get('/track-record', async (_req, res) => { res.json(await trackRecord()); });
+app.get('/track-record', async (_req, res) => { res.json(await trackRecord(res.locals.session)); });
 app.get('/briefing', async (_req, res) => { res.json(await briefingResponse(res.locals.session)); });
-app.post('/briefing/reload', async (_req, res) => {
-    await briefing(res.locals.session);
+app.post(['/briefing/reload', '/briefing/refresh'], async (_req, res) => {
+    await briefing(res.locals.session, true);
     res.json(await briefingResponse(res.locals.session));
 });
 app.get('/briefing/audio', async (req, res) => {
@@ -88,6 +98,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
     console.warn('API request failed', { method: req.method, route: req.route?.path ?? 'middleware',
         code: /^[A-Z0-9_]{5,24}$/.test(code) ? code : bad ? 'INVALID_JSON' : 'UNAVAILABLE' });
     res.status(bad ? 400 : 503).json({ error: bad ? 'Invalid JSON' :
+        code === '25006' ? errorResponse(error).error :
         code === '42P01' || code === '42703' ? 'Database schema is out of date. Restart the backend to apply migrations.' :
         code === '57014' ? 'Database request timed out. Try Reload; check backend database performance if it continues.' :
         'Data unavailable. Try Reload; check the backend connection and server logs if it continues.', asOf: null });

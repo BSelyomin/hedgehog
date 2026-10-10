@@ -8,6 +8,8 @@ import { summaries } from './summaries.ts';
 import { briefings } from './briefing.ts';
 import { backfill } from './backfill.ts';
 import { syncBrokerages } from '../brokerages/service.ts';
+import { earningsDates } from './earnings-dates.ts';
+const reportDates = () => earningsDates().catch(() => console.warn('Earnings report dates unavailable'));
 export async function runJob(name: string, job: () => Promise<void>) {
     const client = await pool.connect();
     const lock = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) locked', [`hedgehog:${name}`])).rows[0].locked;
@@ -33,11 +35,17 @@ export function scheduler() {
         await query('DELETE FROM auth_rate_limits WHERE resets_at<=now()');
     })));
     tasks.push(cron.schedule('20 * * * *', () => runJob('brokerages', syncBrokerages)));
+    tasks.push(cron.schedule('15 * * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }));
     void runJob('poll', poll);
     // Price/measurement availability must not wait for optional AI tagging.
-    const priceHistory = () => runJob('price-history', async () => { await prices(); await measure(); });
+    const priceHistory = async () => {
+        await runJob('price-history', async () => { await prices(); await measure(); });
+        void runJob('briefings', briefings);
+    };
     tasks.push(cron.schedule('10 * * * *', priceHistory));
     void priceHistory();
+    tasks.push(cron.schedule('30 22 * * *', () => runJob('earnings-dates', reportDates), { timezone: 'America/New_York' }));
+    void runJob('earnings-dates', reportDates);
     void runJob('bootstrap', async () => { await stockTags(); await tagSeries(); });
     return tasks;
 }

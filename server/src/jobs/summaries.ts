@@ -22,7 +22,7 @@ export async function summaries(ticker?: string, refreshSources = false) {
     const events = await query<{
         ticker: string;
         title: string;
-    }>(`SELECT DISTINCT e.ticker,e.title FROM events e JOIN series_tags t ON t.series_ticker=e.series_ticker AND t.reviewed=true JOIN stock_tags st ON st.tag=t.tag JOIN portfolio_holdings h ON h.symbol=st.symbol WHERE ($1::text IS NULL OR e.ticker=$1) ORDER BY e.ticker`, [ticker ?? null]);
+    }>(`SELECT DISTINCT e.ticker,e.title FROM events e JOIN series_tags t ON t.series_ticker=e.series_ticker AND t.reviewed=true JOIN stock_tags st ON st.tag=t.tag JOIN portfolio_holdings h ON h.symbol=st.symbol AND h.asset_type='security' WHERE ($1::text IS NULL OR e.ticker=$1) ORDER BY e.ticker`, [ticker ?? null]);
     for (const e of events) {
         try {
             const passages = await searchSources(e.title, refreshSources);

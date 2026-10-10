@@ -49,8 +49,10 @@ export async function backfill() {
             for (const m of page.markets) {
                 if (m.result !== 'yes' && m.result !== 'no')
                     continue;
-                if ((await query('SELECT ticker FROM settled_markets WHERE ticker=$1', [m.ticker])).length)
+                if ((await query('SELECT ticker FROM settled_markets WHERE ticker=$1', [m.ticker])).length) {
+                    await query('UPDATE settled_markets SET series_ticker=$2,event_ticker=$3,title=$4 WHERE ticker=$1', [m.ticker,s.series_ticker,m.event_ticker??null,m.title??null]);
                     continue;
+                }
                 try {
                     const target = Math.floor(Date.parse(m.close_time) / 1000) - 86400;
                     const params = { start_ts: String(target - 60), end_ts: String(target), period_interval: '1' };
@@ -59,7 +61,7 @@ export async function backfill() {
                         console.warn('No exact 24-hour bid/ask history', m.ticker);
                         continue;
                     }
-                    await query(`INSERT INTO settled_markets(ticker,category,prob_24h_before,outcome,close_time,odds_time) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, [m.ticker, s.category, odds.probability, m.result === 'yes' ? 1 : 0, m.close_time, new Date(odds.ts * 1000)]);
+                    await query(`INSERT INTO settled_markets(ticker,category,prob_24h_before,outcome,close_time,odds_time,series_ticker,event_ticker,title) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`, [m.ticker, s.category, odds.probability, m.result === 'yes' ? 1 : 0, m.close_time, new Date(odds.ts * 1000),s.series_ticker,m.event_ticker??null,m.title??null]);
                 }
                 catch {
                     failed = true;
@@ -75,4 +77,25 @@ export async function backfill() {
             await query(`INSERT INTO job_state(name,cursor) VALUES($1,$2) ON CONFLICT(name) DO UPDATE SET cursor=excluded.cursor,updated_at=now()`, [name, cursor]);
         } while (cursor);
     }
+}
+
+// Recover identity for existing observations without changing their quotes or outcomes.
+export async function historyMetadata() {
+    const rows=await query<{ticker:string}>('SELECT ticker FROM settled_markets WHERE series_ticker IS NULL OR event_ticker IS NULL OR title IS NULL');
+    const events=new Map<string,string|null>();
+    for(let i=0;i<rows.length;i+=100) {
+        const batch=rows.slice(i,i+100),wanted=new Set(batch.map(r=>r.ticker));
+        for(const path of ['/markets','/historical/markets']) {
+            const page=await kalshi<{markets:KalshiMarket[]}>(path,{tickers:batch.map(r=>r.ticker).join(','),limit:'100'});
+            for(const m of page.markets) {
+                if(!wanted.has(m.ticker)||!m.event_ticker) continue;
+                if(!events.has(m.event_ticker)) {
+                    try {const d=await kalshi<{event:{series_ticker:string}}>('/events/'+encodeURIComponent(m.event_ticker));events.set(m.event_ticker,d.event.series_ticker||null);}
+                    catch {events.set(m.event_ticker,null);}
+                }
+                await query('UPDATE settled_markets SET series_ticker=COALESCE(series_ticker,$2),event_ticker=COALESCE(event_ticker,$3),title=COALESCE(title,$4) WHERE ticker=$1',[m.ticker,events.get(m.event_ticker),m.event_ticker,m.title??null]);
+            }
+        }
+    }
+    console.log('Historical identity refresh complete');
 }

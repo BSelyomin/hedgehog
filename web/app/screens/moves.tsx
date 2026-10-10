@@ -1,21 +1,19 @@
 'use client';
 import { useState } from 'react';
 import type { MovesResponse } from '../../../shared/types';
-import { money, percent, number, href, useData, Card, Fresh, Status, Empty, ReloadButton } from '../common';
+import { money, percent, number, href, useData, assetLabel, Card, Fresh, Status, Empty, LinkChip, ReloadButton } from '../common';
+import { describeLeadMove, driverName } from './sensitivity';
 
 export function Moves() {
     const [search, setSearch] = useState('');
+    // No date asks the server for the latest completed session, so the page never opens on a day whose close is not in yet.
     const [date, setDate] = useState('');
     const { data, error, reload } = useData<MovesResponse>(date ? `/moves?date=${date}` : '/moves');
-    const visibleHoldings = data?.holdings.filter(h => h.symbol.toLowerCase().includes(search.trim().toLowerCase())) ?? [];
+    const term = search.trim().toLowerCase();
+    const rows = data?.holdings.filter(h => h.symbol.toLowerCase().includes(term)) ?? [];
     return <>
-        <div className="row">
-            <div><h1>What moved your portfolio</h1><p>Whole market, your individual stocks, and events that moved the same day</p></div>
-            <label>Price date<input type="date" value={date || data?.date || ''} onChange={e => setDate(e.target.value)}/></label>
-        </div>
-        <div className="actions"><ReloadButton onReload={() => reload()}/>
-            <button disabled={!date} onClick={() => setDate('')}>Latest trading session</button>
-        </div>
+        <div className="row"><div><h1>What moved your portfolio</h1><p>Whole market, your individual stocks, and events that moved the same day</p></div><label>Price date<input type="date" value={date || data?.date || ''} onChange={e => setDate(e.target.value)}/></label></div>
+        <div className="actions"><ReloadButton onReload={() => reload()}/><button disabled={!date} onClick={() => setDate('')}>Latest trading session</button></div>
         <Status error={error} loading={!data && !error}/><Fresh asOf={data?.asOf ?? null}/>
         {data && <>
             {data.notes.map(note => <p className="note" key={note}>{note}</p>)}
@@ -26,25 +24,40 @@ export function Moves() {
                 <Card><span className="muted">Beyond the market</span><strong className="number">{money(data.beyondMarket)}</strong></Card>
                 <Card><span className="muted">SPY daily return</span><strong className="number">{percent(data.spyReturn)}</strong></Card>
             </div>
+            <LeadDrivers data={data}/>
             <Card><h2>By holding</h2>
                 <label className="move-search">Search holdings<input type="search" placeholder="Ticker, e.g. AAPL" value={search} onChange={e => setSearch(e.target.value)}/></label>
-                <p className="note">Search filters the rows below. Totals above cover your full portfolio.</p>
-                {!data.holdings.length ? <Empty>Add holdings to see their daily moves.</Empty> : <div className="scroll"><table>
-                    <thead><tr>{['Holding', 'Measured beta', 'Dollar move', 'From market', 'Beyond market', 'Data availability'].map(t => <th key={t}>{t}</th>)}</tr></thead>
-                    <tbody>{visibleHoldings.map(h => <tr key={h.symbol}>
-                        <td>{h.symbol}</td><td className="amount">{number(h.beta, 3)}</td><td className="amount">{money(h.actual)}</td>
-                        <td className="amount">{money(h.fromMarket)}</td><td className="amount">{money(h.beyondMarket)}</td>
-                        <td>{h.actual !== null && h.previousDate && <p className="note">Source closes: {h.previousDate} → {h.sourceDate}.</p>}{h.unavailableReasons.length ? h.unavailableReasons.join(' ') : 'Closing prices and measured beta available.'}</td>
-                    </tr>)}{!visibleHoldings.length && <tr><td colSpan={6}><Empty>No holdings match your search.</Empty></td></tr>}</tbody>
-                </table></div>}
-                <p className="note">From market = measured beta × SPY return × entered holding value. Beyond market = actual move − market component. Price sources: Yahoo daily closes. Beta uses up to five years of aligned daily returns. Missing history leaves only the unsupported results unavailable.</p>
-                {data.holdings.length > 0 && data.total === null && <p className="note">The portfolio total needs supported price moves over the same dates for every holding. Available individual moves are shown above.</p>}
+                <p className="note">Search filters the rows below. Totals above cover {data.unpricedValue > 0 ? `your listed securities; ${money(data.unpricedValue)} in cash, bonds held directly and property has no daily price and is left out` : 'your full portfolio'}.</p>
+                <div className="scroll"><table><thead><tr>{['Holding', 'Measured beta', 'Dollar move', 'From market', 'Beyond market', 'Biggest measured driver', 'Data availability'].map(t => <th key={t}>{t}</th>)}</tr></thead><tbody>
+                    {rows.map(h => h.assetType && h.assetType !== 'security' ? <tr key={h.symbol}><td>{h.symbol}<span className="note"> · {assetLabel[h.assetType]}</span></td><td colSpan={6} className="note">No daily price, so no daily move. Worth {money(h.valueUsd)} as entered.</td></tr> : <tr key={h.symbol}><td>{h.symbol}</td><td className="amount">{number(h.beta, 3)}</td><td className="amount">{money(h.actual)}</td><td className="amount">{money(h.fromMarket)}</td><td className="amount">{money(h.beyondMarket)}</td>
+                        <td className={h.drivers[0] && h.drivers[0].driver !== 'SPY' ? 'driver-cell lead' : 'driver-cell'}>{h.drivers[0] ? <>{driverName(h.drivers[0].driver)} <span className="mono">{money(h.drivers[0].contribution)}</span></> : 'Unavailable'}</td><td>{h.actual !== null && h.previousDate && <p className="note">Source closes: {h.previousDate} → {h.sourceDate}.</p>}{h.unavailableReasons.length ? h.unavailableReasons.join(' ') : 'Closing prices and measured beta available.'}</td></tr>)}
+                    {!rows.length && <tr><td colSpan={7}><Empty>No holdings match your search.</Empty></td></tr>}
+                </tbody></table></div>
+                <p className="note">From market = measured beta × SPY return × entered holding value. Beyond market = actual move − market component. Price sources: Yahoo daily closes. Missing history leaves the result unavailable.</p>
+                {data.total === null && data.holdings.some(h => !h.assetType || h.assetType === 'security') && <p className="note">The listed-security total needs supported price moves over the same dates for every listed holding. Available individual moves are shown above.</p>}
+                <p className="note">Biggest measured driver compares each driver’s estimated part of the move: its measured sensitivity × that day’s change × the holding’s value. It is highlighted when something other than the stock market mattered most.</p>
             </Card>
-            <h2>Kalshi markets that moved the same day</h2><p>Moving together is not proof of cause. Historical associations appear only for Measured links.</p>
+            <h2>Kalshi markets that moved the same day</h2>
+            <p>Moving together is not proof of cause. Historical associations appear only for Related links, which are backed by price measurements.</p>
             {data.oddsMoves.length ? data.oddsMoves.map(m => <Card key={m.ticker}>
                 <div className="row"><a className="event-title" href={href('event', m.ticker)}>{m.title}</a><strong className="mono blue">{number(m.changePoints)} pts</strong></div>
-                {m.links.map(l => <p key={l.symbol}><span className={`chip ${l.type}`}>{l.type}</span> {l.symbol} · {l.type === 'Measured' ? l.evidence : 'This event moved the same day; no connection to the holding’s move is inferred.'}</p>)}
+                {m.links.map(l => <p key={l.symbol}><LinkChip type={l.type}/> {l.symbol} · {l.type === 'Measured' ? l.evidence : 'This event moved the same day; no connection to the holding’s move is inferred.'}</p>)}
             </Card>) : <Card><Empty>No linked markets with a supported move of at least 3 points in this window.</Empty></Card>}
         </>}
     </>;
+}
+
+// Which driver accounted for the most on the day, across the whole portfolio.
+export function LeadDrivers({ data }: { data: MovesResponse }) {
+    const lead = describeLeadMove(data.drivers, money);
+    return <Card className="lead-drivers"><h2>What mattered most</h2>
+        {lead ? <>
+            <p className="driver-lead">{lead}</p>
+            <div className="driver-bars">{data.drivers.map((move, index) => <div key={move.driver} className={index === 0 ? 'driver-bar lead' : 'driver-bar'}>
+                <span>{driverName(move.driver)}</span><strong className={`mono ${move.contribution < 0 ? 'orange' : 'blue'}`}>{money(move.contribution)}</strong>
+            </div>)}</div>
+        </> : <Empty>No measured driver could be compared for this date.</Empty>}
+        {data.missingDrivers.length > 0 && <p className="note">Not compared, because this date’s change is not published yet: {data.missingDrivers.map(driverName).join(', ')}.</p>}
+        <p className="note">Each figure is a holding’s measured sensitivity × the driver’s change that day × the holding’s value, summed over holdings. The market figure is measured on its own and the others with the market held fixed, so they are compared here, not added up.</p>
+    </Card>;
 }
