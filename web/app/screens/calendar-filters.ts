@@ -38,7 +38,7 @@ export function filterCalendarEvents(events: ExposureEvent[], filters: CalendarF
             .some(text => text.toLowerCase().includes(search))) return false;
         return true;
     }).sort((a, b) => {
-        const dateOrder = Date.parse(a.closeTime) - Date.parse(b.closeTime);
+        const dateOrder = Date.parse(a.eventTime) - Date.parse(b.eventTime);
         switch (filters.sort) {
             case 'date-desc': return -dateOrder || a.ticker.localeCompare(b.ticker);
             case 'reach': return b.share - a.share || dateOrder || a.ticker.localeCompare(b.ticker);

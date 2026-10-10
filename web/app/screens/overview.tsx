@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { ExposureTable } from './exposure-table';
 import type { ExposureResponse, CalendarResponse, BriefingResponse } from '../../../shared/types';
-import { money, percent, dateText, href, api, useData, Card, Fresh, Status, LinkChip } from '../common';
+import { money, percent, dateText, href, api, useData, Card, Fresh, Status, LinkChip, EventDate } from '../common';
 
 export function Overview() {
     const { data, error } = useData<ExposureResponse>('/exposure');
@@ -37,10 +37,10 @@ export function Overview() {
 function EndingSoon() {
     const { data, error } = useData<CalendarResponse>('/calendar?days=14');
     const next = data?.events[0];
-    return <Card className="ending-soon"><span className="muted">Events ending soon</span>
+    return <Card className="ending-soon"><span className="muted">Events coming up</span>
         {error ? <p className="note">Upcoming events unavailable.</p> : !data ? <p className="note" role="status">Loading upcoming events…</p> : <>
             <strong className="number">{data.events.length}</strong><p className="note">In the next 14 days</p>
-            {next ? <><a href={href('event', next.ticker)}>{next.title}</a><p className="note">Next close: <time dateTime={next.closeTime}>{dateText(next.closeTime, true)}</time></p></> : <p className="note">No linked events close in this window.</p>}
+            {next ? <><a href={href('event', next.ticker)}>{next.title}</a><p className="note">Next: <EventDate event={next} showYear/></p></> : <p className="note">No linked events fall in this window.</p>}
         </>}
         <a href="#calendar">View upcoming events →</a>
     </Card>;

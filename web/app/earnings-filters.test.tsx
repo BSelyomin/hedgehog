@@ -8,7 +8,7 @@ function market(ticker: string, kind: Market['kind'], probability: number | null
     return { ticker, title: `Test ${ticker}`, subtitle: ticker, kind, probability, spread: null, asOf: null,
         trust: { total, band, spread: null, activity: null, depth: null, trackRecord: null, categoryCount: 0, spreadCents: null } };
 }
-const range: ExposureEvent = { ticker: 'RANGE', title: 'Apple revenue ranges', category: 'Companies', closeTime: '2026-11-03T00:00:00Z', share: .5, linkedValue: 100,
+const range: ExposureEvent = { ticker: 'RANGE', title: 'Apple revenue ranges', category: 'Companies', closeTime: '2026-11-03T00:00:00Z', eventTime: '2026-11-03T00:00:00Z', eventTimeSource: 'close', share: .5, linkedValue: 100,
     links: [{ symbol: 'AAPL', valueUsd: 100, type: 'Direct', evidence: 'Company tag', sensitivity: null }], mutuallyExclusive: true,
     markets: [market('LOWER', 'bracket', .2, 'Low', 0), market('UPPER', 'bracket', .4, 'High', 85)] };
 const calls: ExposureEvent = { ...range, ticker: 'CALL', title: 'Apple call topics', category: 'Mentions', closeTime: '2026-12-01T00:00:00Z', mutuallyExclusive: false,

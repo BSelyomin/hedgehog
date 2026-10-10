@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import type { EventResponse, HoldingLink, Market, OddsPoint } from '../../../shared/types';
-import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip } from '../common';
+import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip, EventDate } from '../common';
 import { describeSensitivity } from './sensitivity';
 
 export function EventPage({ ticker }: {
@@ -16,7 +16,7 @@ export function EventPage({ ticker }: {
         <Status error={error} loading={!data && !error}/>
         {data && <>
             <h1>{data.event.title}</h1>
-            <p>{dateText(data.event.closeTime)} · Kalshi close time</p>
+            <p><EventDate event={data.event} showYear/></p>
             <Fresh asOf={data.asOf}/>
             <div className="split">
                 <div>

@@ -12,11 +12,11 @@ function market(band: Market['trust']['band'], total: number | null): Market {
     };
 }
 const events: ExposureEvent[] = [
-    { ticker: 'COMPANY', title: 'Apple report', category: 'Companies', closeTime: '2026-11-03T00:00:00Z', share: 0.25, linkedValue: 200,
+    { ticker: 'COMPANY', title: 'Apple report', category: 'Companies', closeTime: '2026-11-03T00:00:00Z', eventTime: '2026-11-03T00:00:00Z', eventTimeSource: 'close', share: 0.25, linkedValue: 200,
         links: [link('AAPL', 'Direct'), link('MSFT', 'Related')], markets: [market('Low', 0), market('High', 85)], mutuallyExclusive: false },
-    { ticker: 'ECONOMY', title: 'Inflation release', category: 'Economics', closeTime: '2026-11-01T00:00:00Z', share: 0.75, linkedValue: 300,
+    { ticker: 'ECONOMY', title: 'Inflation release', category: 'Economics', closeTime: '2026-11-01T00:00:00Z', eventTime: '2026-11-01T00:00:00Z', eventTimeSource: 'close', share: 0.75, linkedValue: 300,
         links: [link('AAPL', 'Measured'), link('SPY', 'Measured'), link('MSFT', 'Related')], markets: [market('Medium', 65)], mutuallyExclusive: false },
-    { ticker: 'POLICY', title: 'Tax bill vote', category: 'Politics', closeTime: '2026-11-02T00:00:00Z', share: 0.1, linkedValue: 100,
+    { ticker: 'POLICY', title: 'Tax bill vote', category: 'Politics', closeTime: '2026-11-02T00:00:00Z', eventTime: '2026-11-02T00:00:00Z', eventTimeSource: 'close', share: 0.1, linkedValue: 100,
         links: [link('MSFT', 'Related')], markets: [market(null, null)], mutuallyExclusive: false },
 ];
 const filter = (overrides: Partial<CalendarFilters> = {}) => filterCalendarEvents(events, { ...defaultCalendarFilters, ...overrides });

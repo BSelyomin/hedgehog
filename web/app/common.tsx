@@ -16,6 +16,14 @@ export const href = (screen: string, id?: string) => `#${screen}${id ? `/${encod
 // (backed by a historical measurement) read "Related"; unmeasured shared-topic links read "Topic".
 export const linkLabel = (type: LinkType) => type === 'Measured' ? 'Related' : type === 'Related' ? 'Topic' : type;
 
+// Says which Kalshi field an event date came from, so a market close is never passed off as the event.
+export const eventTimeLabel = (source: ExposureEvent['eventTimeSource']) => ({ occurrence: 'Kalshi event time', strike: 'Kalshi strike date', expected: 'Kalshi expected resolution', close: 'Kalshi market close' })[source];
+
+export function EventDate({ event, showYear = false }: {
+    event: ExposureEvent;
+    showYear?: boolean;
+}) { return <><time dateTime={event.eventTime}>{dateText(event.eventTime, showYear)}</time> · {eventTimeLabel(event.eventTimeSource)}{event.eventTimeSource !== 'close' && <> · market closes <time dateTime={event.closeTime}>{dateText(event.closeTime, showYear)}</time></>}</>; }
+
 export function LinkChip({ type, children }: {
     type: LinkType;
     children?: ReactNode;
@@ -70,4 +78,4 @@ export function Progress({ value }: {
 export function EventList({ events, showYear = false }: {
     events: ExposureEvent[];
     showYear?: boolean;
-}) { return <>{events.map(e => <div className="event-row" key={e.ticker}><div className="row"><div><span className="chip plain">{e.links.some(l => l.type === 'Direct') ? 'Company' : e.category}</span><p className="note">{dateText(e.closeTime, showYear)} · Kalshi close time</p><a className="event-title" href={href('event', e.ticker)}>{e.title}</a><div className="link-chips" aria-label="Linked holdings">{e.links.map(l => <LinkChip key={l.symbol} type={l.type}>{l.symbol}</LinkChip>)}</div></div><div><strong className="mono">{money(e.linkedValue)}</strong><p className="note">{percent(e.share)} of portfolio</p><a href={href('event', e.ticker)}>View event →</a></div></div>{e.markets.length === 1 && <><span className="mono">{percent(e.markets[0].probability)} yes · bid–ask midpoint</span> <TrustBadge market={e.markets[0]}/></>}</div>)}</>; }
+}) { return <>{events.map(e => <div className="event-row" key={e.ticker}><div className="row"><div><span className="chip plain">{e.links.some(l => l.type === 'Direct') ? 'Company' : e.category}</span><p className="note"><EventDate event={e} showYear={showYear}/></p><a className="event-title" href={href('event', e.ticker)}>{e.title}</a><div className="link-chips" aria-label="Linked holdings">{e.links.map(l => <LinkChip key={l.symbol} type={l.type}>{l.symbol}</LinkChip>)}</div></div><div><strong className="mono">{money(e.linkedValue)}</strong><p className="note">{percent(e.share)} of portfolio</p><a href={href('event', e.ticker)}>View event →</a></div></div>{e.markets.length === 1 && <><span className="mono">{percent(e.markets[0].probability)} yes · bid–ask midpoint</span> <TrustBadge market={e.markets[0]}/></>}</div>)}</>; }

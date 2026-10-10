@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { preparePollPage } from './poll-storage.ts';
 import { oddsBeforeClose, normalizeHistoricalCandles } from './backfill.ts';
-import { isRangeLadder, marketKind } from '../services/kalshi.ts';
+import { eventTime, isRangeLadder, marketKind } from '../services/kalshi.ts';
 import type { KalshiEvent } from '../services/kalshi.ts';
 import { trustScore } from '../config/trust.ts';
 import { matchHolding } from '../services/matching.ts';
@@ -15,6 +15,12 @@ it('keeps valid markets when one market is invalid and retains fractional activi
     expect(page.events).toHaveLength(1);
     expect(page.markets).toHaveLength(1);
     expect(page.quotes[0]).toMatchObject({ mid: .37, volume_24h: .01, open_interest: 505.48 });
+    // Kalshi's timing fields are optional; a malformed one is stored as missing, not guessed.
+    expect(page.events[0].strike_date).toBeNull();
+    expect(page.markets[0]).toMatchObject({ occurrence_time: null, expected_expiration_time: null });
+    const timed = preparePollPage([{ ...event, strike_date: '2026-12-31T21:00:00Z', markets: [{ ...market, occurrence_datetime: '2026-10-29T21:00:00Z', expected_expiration_time: 'soon' }] }], new Date());
+    expect(timed.events[0].strike_date).toBe('2026-12-31T21:00:00Z');
+    expect(timed.markets[0]).toMatchObject({ occurrence_time: '2026-10-29T21:00:00Z', expected_expiration_time: null });
     const crossed = preparePollPage([{ ...event, markets: [{ ...market, yes_bid_dollars: '.80' }] }], new Date());
     expect(crossed.markets).toHaveLength(1);
     expect(crossed.quotes).toHaveLength(0);
@@ -39,6 +45,19 @@ it('classifies call-mention markets by Kalshi category and range ladders includi
     expect(isRangeLadder(true, ['between', 'custom'])).toBe(false);
     expect(isRangeLadder(true, ['between', null])).toBe(false);
     expect(marketKind('greater', 'Financials', 'S&P above 7000', false)).toBe('kpi');
+});
+it('dates an event by the most specific upcoming Kalshi time and falls back to the market close', () => {
+    const now = Date.parse('2026-10-10T00:00:00Z'), at = (iso: string) => new Date(iso);
+    const close = at('2026-11-12T15:00:00Z'), call = at('2026-10-29T21:00:00Z'), strike = at('2026-11-01T00:00:00Z'), expected = at('2026-11-05T00:00:00Z');
+    expect(eventTime(now, close, call, strike, expected)).toEqual({ time: call, source: 'occurrence' });
+    expect(eventTime(now, close, null, strike, expected)).toEqual({ time: strike, source: 'strike' });
+    expect(eventTime(now, close, null, null, expected)).toEqual({ time: expected, source: 'expected' });
+    expect(eventTime(now, close, null, null, null)).toEqual({ time: close, source: 'close' });
+    // Once the call has happened, the next date that matters is the market close.
+    expect(eventTime(Date.parse('2026-10-30T00:00:00Z'), close, call, null, null)).toEqual({ time: close, source: 'close' });
+    expect(eventTime(now, close, new Date('invalid'), null, null).source).toBe('close');
+    // A data release after trading stops is still the event date.
+    expect(eventTime(now, at('2026-11-07T03:29:00Z'), at('2026-11-14T05:00:00Z'), null, null).source).toBe('occurrence');
 });
 it('can award medium and high trust; no history is rescaled, not scored as zero', () => {
     expect(trustScore(1, 100000, 1000000, null, 0).band).toBe('High');

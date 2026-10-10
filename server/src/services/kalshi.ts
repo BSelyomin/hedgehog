@@ -6,6 +6,8 @@ export interface KalshiMarket {
     subtitle?: string;
     yes_sub_title?: string;
     close_time: string;
+    occurrence_datetime?: string;
+    expected_expiration_time?: string;
     status: string;
     result?: string;
     yes_bid_dollars?: string;
@@ -21,6 +23,7 @@ export interface KalshiEvent {
     sub_title?: string;
     category: string;
     mutually_exclusive: boolean;
+    strike_date?: string;
     markets?: KalshiMarket[];
 }
 export interface Candle {
@@ -67,6 +70,17 @@ export function marketKind(strikeType: string | null, category: string, title: s
     if (strikeType === 'between' || inRangeLadder)
         return 'bracket';
     return category === 'Mentions' || /mention/i.test(title) ? 'mention' : 'kpi';
+}
+export type EventTimeSource = 'occurrence' | 'strike' | 'expected' | 'close';
+// When the underlying event happens, from Kalshi's own fields, most specific first: the market's
+// occurrence_datetime, the event's strike_date, then expected_expiration_time. A time that has
+// already passed is skipped, because the next date that matters is then the market close.
+export function eventTime(now: number, closeTime: Date, occurrence: Date | null, strike: Date | null, expected: Date | null): { time: Date; source: EventTimeSource } {
+    const candidates: [EventTimeSource, Date | null][] = [['occurrence', occurrence], ['strike', strike], ['expected', expected]];
+    for (const [source, time] of candidates)
+        if (time && Number.isFinite(time.getTime()) && time.getTime() > now)
+            return { time, source };
+    return { time: closeTime, source: 'close' };
 }
 export function quote(bid: unknown, ask: unknown) {
     const b = numberField(bid), a = numberField(ask);

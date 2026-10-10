@@ -33,10 +33,14 @@ describe('link labels', () => {
         expect(renderToStaticMarkup(<LinkChip type="Direct">AAPL</LinkChip>)).toBe('<span class="chip Direct" title="Direct">AAPL</span>');
     });
     it('colours each linked holding by its connection in event lists', () => {
-        const event = { ticker: 'E', title: 'Oil above $90', category: 'Commodities', closeTime: '2026-11-03T00:00:00Z', linkedValue: 200, share: .5, mutuallyExclusive: false, markets: [],
+        const event = { ticker: 'E', title: 'Oil above $90', category: 'Commodities', closeTime: '2026-11-12T15:00:00Z', eventTime: '2026-10-29T21:00:00Z', eventTimeSource: 'occurrence', linkedValue: 200, share: .5, mutuallyExclusive: false, markets: [],
             links: [{ symbol: 'XOM', valueUsd: 100, type: 'Measured', evidence: '', sensitivity: null }, { symbol: 'DAL', valueUsd: 100, type: 'Related', evidence: '', sensitivity: null }] } as ExposureEvent;
         const html = renderToStaticMarkup(<EventList events={[event]}/>);
         expect(html).toContain('<span class="chip Measured" title="Related">XOM</span>');
         expect(html).toContain('<span class="chip Related" title="Topic">DAL</span>');
+        // The event date and the later market close are both shown, each labelled.
+        expect(html).toContain('<time dateTime="2026-10-29T21:00:00Z">');
+        expect(html).toContain('Kalshi event time');
+        expect(html).toContain('market closes <time dateTime="2026-11-12T15:00:00Z">');
     });
 });
