@@ -10,7 +10,7 @@ it('reports absent history and portfolio relevance separately',async()=>{
 });
 it('uses verified outcomes, retains evidence timestamps, and does not treat a small sample as trust eligible',async()=>{
  query.mockResolvedValueOnce([row('first',.7,1),row('second',.7,0)]).mockResolvedValueOnce([{count:'1'}]).mockResolvedValueOnce([{category:'Economics',symbol:'TLT'}]);
- const d=await trackRecord('session'),c=d.categories[0];expect(c.count).toBe(2);expect(c.brier).toBeCloseTo(.29);expect(c.avgMiss).toBeCloseTo(20);expect(c.headline70).toEqual({count:2,observedRate:.5});expect(c.eligibleForTrust).toBe(false);expect(c.examples[0].title).toBe('first');expect(c.examples[0].oddsTime).toBe('2026-09-30T00:00:00.000Z');expect(c.relevantHoldings).toEqual(['TLT']);
+ const d=await trackRecord('session'),c=d.categories[0];expect(c.count).toBe(2);expect(c.brier).toBeCloseTo(.29);expect(c.avgMiss).toBeCloseTo(20);expect(c.headline70).toEqual({count:2,observedRate:null,low:null,high:null});expect(c.baseRateBrier).toBeCloseTo(.25);expect(c.eligibleForTrust).toBe(false);expect(c.examples[0].title).toBe('first');expect(c.examples[0].oddsTime).toBe('2026-09-30T00:00:00.000Z');expect(c.relevantHoldings).toEqual(['TLT']);
 });
 it('limits examples without limiting statistics and applies the shared trust threshold',async()=>{
  query.mockResolvedValueOnce(Array.from({length:30},(_,i)=>row(String(i),.5,i%2))).mockResolvedValueOnce([{count:'1'}]);
@@ -23,6 +23,11 @@ it('groups history by verified subject tags without changing category statistics
  query.mockResolvedValueOnce([inflation,{...inflation,ticker:'second-cpi'},rates]).mockResolvedValueOnce([{count:'2'}]).mockResolvedValueOnce([{series_ticker:'KXCPI',tag:'inflation'},{series_ticker:'KXFEDCUT',tag:'fed-rates'}]);
  const d=await trackRecord();expect(d.categories[0].count).toBe(3);
  expect(d.subjects.find(s=>s.id==='inflation')?.record?.count).toBe(2);expect(d.subjects.find(s=>s.id==='inflation')?.eventCount).toBe(1);
- expect(d.subjects.find(s=>s.id==='rates')?.record?.headline70?.observedRate).toBe(0);
+ expect(d.subjects.find(s=>s.id==='rates')?.record?.headline70?.observedRate).toBeNull();expect(d.subjects.find(s=>s.id==='inflation')?.record?.eventCount).toBe(1);
  expect(d.subjects.find(s=>s.id==='companies')?.record).toBeNull();
+});
+
+it('reports the 65-75% rate with a range only once enough markets support it',async()=>{
+ query.mockResolvedValueOnce(Array.from({length:10},(_,i)=>row(String(i),.7,i<7?1:0))).mockResolvedValueOnce([{count:'1'}]);
+ const h=(await trackRecord()).categories[0].headline70!;expect(h.count).toBe(10);expect(h.observedRate).toBe(.7);expect(h.low).toBeCloseTo(.397,2);expect(h.high).toBeCloseTo(.892,2);
 });

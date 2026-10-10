@@ -1,5 +1,5 @@
 import type { Trust } from '../../../shared/types.ts';
-export const TRUST = { spreadMax: 30, activityMax: 25, depthMax: 20, trackMax: 25, spreadBest: 1, spreadWorst: 10, volumeLog: 5, interestLog: 6, missBest: 2, missWorst: 15, minSettled: 30, high: 80, medium: 60 } as const;
+export const TRUST = { spreadMax: 30, activityMax: 25, depthMax: 20, trackMax: 25, spreadBest: 1, spreadWorst: 10, volumeLog: 5, interestLog: 6, missBest: 2, missWorst: 15, minSettled: 30, minHeadline: 10, high: 80, medium: 60 } as const;
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 export function trustScore(spreadCents: number | null, volume24h: number | null, openInterest: number | null, avgMissPts: number | null, count: number): Trust {
     const valid = (n: number | null): n is number => n !== null && Number.isFinite(n) && n >= 0;

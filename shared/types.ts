@@ -143,9 +143,16 @@ export interface CategoryRecord {
     eligibleForTrust: boolean;
     relevantHoldings: string[];
     examples: SettledExample[];
+    // Distinct Kalshi events behind `count`; contracts in one event are not independent.
+    eventCount: number;
+    // Brier score of always predicting this sample's own Yes rate; the score to beat.
+    baseRateBrier: number;
     headline70: {
         count: number;
-        observedRate: number;
+        // null when too few markets to report a rate.
+        observedRate: number | null;
+        low: number | null;
+        high: number | null;
     } | null;
 }
 export interface HistorySubject {

@@ -1,6 +1,6 @@
 import type { TrackRecordResponse, CategoryRecord } from '../../../shared/types.ts';
 import { query, iso } from '../db.ts';
-import { brier, calibration } from '../math/statistics.ts';
+import { brier, calibration, wilson } from '../math/statistics.ts';
 import { HISTORY_SUBJECTS, subjectSeries } from './history-subjects.ts';
 import { TRUST } from '../config/trust.ts';
 export async function trackRecord(session?: string): Promise<TrackRecordResponse> {
@@ -21,13 +21,16 @@ export async function trackRecord(session?: string): Promise<TrackRecordResponse
         const probs = data.map(r => r.prob_24h_before), outcomes = data.map(r => r.outcome);
         const { avgMiss, buckets } = calibration(probs, outcomes);
         const headline = data.filter(r => r.prob_24h_before >= 0.65 && r.prob_24h_before < 0.75);
+        const yesRate = outcomes.reduce((s, o) => s + o, 0) / outcomes.length;
+        const shown = headline.length >= TRUST.minHeadline, yes = headline.reduce((s, r) => s + r.outcome, 0);
+        const range = shown ? wilson(yes, headline.length) : null;
         const closes = data.map(r => r.close_time.getTime());
-        return { category, count: data.length, avgMiss, brier: brier(probs, outcomes), buckets,
+        return { category, count: data.length, avgMiss, brier: brier(probs, outcomes), buckets, eventCount: new Set(data.flatMap(r => r.event_ticker ? [r.event_ticker] : [])).size, baseRateBrier: yesRate * (1 - yesRate),
             firstClose: new Date(Math.min(...closes)).toISOString(), lastClose: new Date(Math.max(...closes)).toISOString(),
             eligibleForTrust: data.length >= TRUST.minSettled,
             relevantHoldings: relevantCategories.find(c => c.category===category)?.holdings ?? [],
             examples: data.slice(0,12).map(r => ({ticker:r.ticker,title:r.title ?? r.ticker,probability:r.prob_24h_before,outcome:r.outcome,closeTime:r.close_time.toISOString(),oddsTime:r.odds_time.toISOString()})),
-            headline70: headline.length ? { count: headline.length, observedRate: headline.reduce((s, r) => s + r.outcome, 0) / headline.length } : null };
+            headline70: headline.length ? { count: headline.length, observedRate: shown ? yes / headline.length : null, low: range?.low ?? null, high: range?.high ?? null } : null };
     }
     for (const category of new Set(rows.map(r=>r.category))) categories.push(summarize(category,rows.filter(r=>r.category===category)));
     // Subject groupings are separate from the category statistics used in trust scoring.
