@@ -2,7 +2,7 @@
 
 | Screen | Number | Source / calculation |
 | --- | --- | --- |
-| Add holdings | Entered dollar values | User form or symbol,valueUsd CSV, persisted to holdings.value_usd |
+| Add holdings | Entered dollar values and terms | User form or CSV (symbol,valueUsd, plus optional type, maturity, coupon, state, mortgage, rental), persisted to holdings |
 | Overview | Portfolio value and holdings count | holdings; backend sums values |
 | Overview / Calendar / Event | Linked value and share | Sum of unique linked holdings / total entered holding value |
 | Overview / Calendar | Event and market counts | Database events and markets after reviewed-tag matching |

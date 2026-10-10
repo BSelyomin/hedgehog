@@ -123,7 +123,7 @@ docker compose exec backend npm run job -- measure
 `prices` loads `DGS2`, `DGS10` and `MORTGAGE30US` from FRED and needs `FRED_API_KEY`. Both jobs
 also run nightly and at startup. Only listed securities are priced and measured; cash,
 Treasuries, bonds and property are entered with their terms on the Add holdings screen and need
-no job. The CSV import remains symbol,valueUsd for securities. FRED publishes yields a day late,
+no job. The CSV import takes symbol,valueUsd for securities and optional columns for the other types; `examples/feature-tour.csv` uses them and `examples/README.md` says what each row shows. FRED publishes yields a day late,
 so Moves names the yield drivers it could not yet compare for the latest session.
 
 ## Past earnings-report dates (SEC EDGAR)

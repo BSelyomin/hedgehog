@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AccountUser, AssetType, Holding, HoldingsResponse } from '../../../shared/types';
 import { money, api, useData, assetLabel, Card, Fresh, Status, Empty } from '../common';
+import { CSV_COLUMNS, parseHoldingsCsv } from './holdings-csv';
 
 const STATES = ['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware', 'District of Columbia', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming'];
 // What each kind of holding can be linked on, said before the user fills it in.
@@ -71,13 +72,7 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
     } }
     async function importCsv(file: File | undefined) { if (!file)
         return; setBusy(true); setNotice(''); try {
-        const rows = (await file.text()).trim().split(/\r?\n/).map(s => s.split(',').map(v => v.trim()));
-        if (rows[0]?.[0]?.toLowerCase() === 'symbol')
-            rows.shift();
-        const parsed = rows.map(([symbol, value]) => ({ symbol: symbol.toUpperCase(), valueUsd: Number(value) }));
-        if (parsed.some(h => !h.symbol || !Number.isFinite(h.valueUsd) || h.valueUsd <= 0) || new Set(parsed.map(h => h.symbol)).size !== parsed.length)
-            throw new Error('CSV must contain unique symbol,valueUsd rows with positive values.');
-        setHoldings(parsed);
+        setHoldings(parseHoldingsCsv(await file.text()));
         setSearch('');
         setError('');
     }
@@ -120,13 +115,14 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
                     {!holdings.length ? <Empty>Add what you own to see which events reach your portfolio.</Empty> : !visibleHoldings.length && <Empty>No holdings match your search.</Empty>}
                 </div>
                 <div className="portfolio-actions">
-                    <label>Import CSV (symbol,valueUsd)<input disabled={busy || !saved.data} type="file" accept=".csv,text/csv" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; void importCsv(file); }}/></label>
+                    <label>Import CSV (symbol,valueUsd, plus optional type and terms)<input disabled={busy || !saved.data} type="file" accept=".csv,text/csv" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; void importCsv(file); }}/></label>
                     {error && <p className="error" role="alert">{error}</p>}
                     <div className="actions">
                         <button className="primary" onClick={() => void save()} disabled={busy || !saved.data || !holdings.length}>{busy ? 'Saving…' : 'Map my exposure →'}</button>
                         <button onClick={() => void clearPortfolio()} disabled={busy || !saved.data || (!holdings.length && (cleared || !saved.data.holdings.length))}>Clear portfolio</button>
                     </div>
                 </div>
+                <p className="note">CSV columns: <span className="mono">{CSV_COLUMNS}</span>. Stocks and funds need only the first two; the rest describe cash, Treasuries, bonds and property. Try <span className="mono">examples/feature-tour.csv</span>.</p>
                 {notice && <p role="status">{notice}</p>}
                 <p className="note">Clear portfolio immediately removes saved holdings {user ? 'from your account on every device' : 'for this guest session'}.</p>
                 <p className="note">Hedgehog reads odds and prices; it never trades. {user ? `Your portfolio is saved to ${user.email}.` : <>Your guest portfolio is stored on the server and linked to this browser. <a href="#signup">Create an account</a> to keep it across devices.</>}</p>
