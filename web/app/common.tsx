@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, FormEvent } from 'react';
 import type { Holding, HoldingsResponse, ExposureResponse, ExposureEvent, Market, CalendarResponse, EventResponse, MovesResponse, EarningsResponse, TrackRecordResponse, BriefingResponse, CategoryRecord, OddsPoint } from '../../shared/types';
 export const money = (n: number | null) => n === null ? 'Unavailable' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
@@ -15,8 +15,47 @@ export const href = (screen: string, id?: string) => `#${screen}${id ? `/${encod
 import { api } from '../lib/api-client';
 export { api, setSessionKey } from '../lib/api-client';
 
-export function useData<T>(path: string) { const [data, setData] = useState<T | null>(null), [error, setError] = useState(''); useEffect(() => { const controller = new AbortController(); setData(null); setError(''); api<T>(path, { signal: controller.signal }).then(setData).catch(e => { if (e.name !== 'AbortError')
-    setError(e.message); }); return () => controller.abort(); }, [path]); return { data, error }; }
+export function useData<T>(path: string) {
+    const [data, setData] = useState<T | null>(null), [error, setError] = useState('');
+    const controller = useRef<AbortController | null>(null);
+    const reload = useCallback(async (reloadPath?: string) => {
+        controller.current?.abort();
+        const request = new AbortController();
+        controller.current = request;
+        setError('');
+        try {
+            const result = await api<T>(reloadPath ?? path, { signal: request.signal, method: reloadPath ? 'POST' : 'GET', body: reloadPath ? '{}' : undefined });
+            if (!request.signal.aborted) setData(result);
+        } catch (e) {
+            if (!request.signal.aborted) {
+                const message = e instanceof Error ? e.message : 'Unable to reload data';
+                setError(message);
+                throw e;
+            }
+        }
+    }, [path]);
+    useEffect(() => {
+        setData(null);
+        void reload().catch(() => {});
+        return () => controller.current?.abort();
+    }, [reload]);
+    return { data, error, reload };
+}
+
+export function ReloadButton({ onReload, label = 'Reload' }: { onReload: () => Promise<unknown>; label?: string }) {
+    const [busy, setBusy] = useState(false), [error, setError] = useState('');
+    const mounted = useRef(true);
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+    async function reload() {
+        if (busy) return;
+        setBusy(true); setError('');
+        try { await onReload(); }
+        catch (e) { if (mounted.current) setError(e instanceof Error ? e.message : 'Unable to reload data'); }
+        finally { if (mounted.current) setBusy(false); }
+    }
+    return <div><button type="button" disabled={busy} aria-busy={busy} onClick={() => void reload()}>{busy ? 'Reloading…' : label}</button>
+        {error && <p className="error" role="alert">{error}</p>}</div>;
+}
 
 export function Card({ children, className = '' }: {
     children: ReactNode;

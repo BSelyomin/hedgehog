@@ -1,0 +1,181 @@
+{
+  "notice": "Controlled synthetic fixture and embedded PostgreSQL; injected delays are not live network measurements.",
+  "injected_per_query_delay_ms": 150,
+  "before_with_delay": {
+    "environment": "Production Next handler + real Express app + embedded PostgreSQL 17 (PGlite); no listening socket, browser hydration, network, TimescaleDB, or real providers",
+    "fixture": {
+      "holdings": 10,
+      "events": 200,
+      "markets": 400,
+      "oddsRows": 38400,
+      "priceRows": 127260,
+      "settledMarkets": 25000,
+      "briefingAudioBytes": 1048576
+    },
+    "endpoints": {
+      "/api/moves": {
+        "firstMs": 1518.26,
+        "samples": 3,
+        "medianMs": 1393.01,
+        "p95Ms": 1395.32,
+        "sqlCalls": 13,
+        "responseBytes": 2114,
+        "queries": {
+          "auth": {
+            "meanMs": 151.72,
+            "rowsPerCall": 1
+          },
+          "holdings": {
+            "meanMs": 151.71,
+            "rowsPerCall": 10
+          },
+          "brokerage holdings": {
+            "meanMs": 152.13,
+            "rowsPerCall": 0
+          },
+          "linked markets + latest odds": {
+            "meanMs": 163.52,
+            "rowsPerCall": 400
+          },
+          "series tags": {
+            "meanMs": 164.31,
+            "rowsPerCall": 1
+          },
+          "stock tags": {
+            "meanMs": 164.66,
+            "rowsPerCall": 10
+          },
+          "measurements": {
+            "meanMs": 159.02,
+            "rowsPerCall": 10
+          },
+          "all settled markets": {
+            "meanMs": 286.84,
+            "rowsPerCall": 25000
+          },
+          "latest price date": {
+            "meanMs": 152.21,
+            "rowsPerCall": 1
+          },
+          "latest stock closes": {
+            "meanMs": 151.98,
+            "rowsPerCall": 22
+          },
+          "24-hour odds": {
+            "meanMs": 153.88,
+            "rowsPerCall": 0
+          },
+          "price freshness scan": {
+            "meanMs": 166.09,
+            "rowsPerCall": 1
+          }
+        }
+      }
+    }
+  },
+  "after_with_delay": {
+    "environment": "Production Next handler + real Express app + embedded PostgreSQL 17 (PGlite); no listening socket, browser hydration, network, TimescaleDB, or real providers",
+    "fixture": {
+      "holdings": 10,
+      "events": 200,
+      "markets": 400,
+      "oddsRows": 38400,
+      "priceRows": 127260,
+      "settledMarkets": 25000,
+      "briefingAudioBytes": 1048576
+    },
+    "endpoints": {
+      "/api/moves": {
+        "firstMs": 704.56,
+        "samples": 3,
+        "medianMs": 617.18,
+        "p95Ms": 617.35,
+        "sqlCalls": 7,
+        "responseBytes": 2114,
+        "queries": {
+          "auth": {
+            "meanMs": 151.65,
+            "rowsPerCall": 1
+          },
+          "holdings": {
+            "meanMs": 151.72,
+            "rowsPerCall": 10
+          },
+          "brokerage holdings": {
+            "meanMs": 153,
+            "rowsPerCall": 0
+          },
+          "latest price date": {
+            "meanMs": 152.21,
+            "rowsPerCall": 22
+          },
+          "measurements": {
+            "meanMs": 152.87,
+            "rowsPerCall": 10
+          },
+          "stock tags": {
+            "meanMs": 153.38,
+            "rowsPerCall": 10
+          },
+          "24-hour odds": {
+            "meanMs": 153.66,
+            "rowsPerCall": 0
+          }
+        },
+        "serverTiming": "backend;dur=613.1, session;dur=151.4, holdings;dur=152.3, prices;dur=152.6, measurements;dur=153.5, tags;dur=154.1, odds;dur=154.5, sql_total;dur=1069.1;desc=\"Cumulative query time, including waits\", sql_count;desc=\"7 queries\""
+      }
+    }
+  },
+  "after_without_delay": {
+    "environment": "Production Next handler + real Express app + embedded PostgreSQL 17 (PGlite); no listening socket, browser hydration, network, TimescaleDB, or real providers",
+    "fixture": {
+      "holdings": 10,
+      "events": 200,
+      "markets": 400,
+      "oddsRows": 38400,
+      "priceRows": 127260,
+      "settledMarkets": 25000,
+      "briefingAudioBytes": 1048576
+    },
+    "endpoints": {
+      "/api/moves": {
+        "firstMs": 88.98,
+        "samples": 3,
+        "medianMs": 13.3,
+        "p95Ms": 15.67,
+        "sqlCalls": 7,
+        "responseBytes": 2114,
+        "queries": {
+          "auth": {
+            "meanMs": 0.95,
+            "rowsPerCall": 1
+          },
+          "holdings": {
+            "meanMs": 0.57,
+            "rowsPerCall": 10
+          },
+          "brokerage holdings": {
+            "meanMs": 1.61,
+            "rowsPerCall": 0
+          },
+          "latest price date": {
+            "meanMs": 1.6,
+            "rowsPerCall": 22
+          },
+          "measurements": {
+            "meanMs": 2.33,
+            "rowsPerCall": 10
+          },
+          "stock tags": {
+            "meanMs": 2.75,
+            "rowsPerCall": 10
+          },
+          "24-hour odds": {
+            "meanMs": 3.09,
+            "rowsPerCall": 0
+          }
+        }
+      }
+    }
+  }
+}

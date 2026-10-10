@@ -71,3 +71,28 @@ it('rejects oversized requests before forwarding them to the backend', async () 
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: 'x'.repeat(33 * 1024) }) }));
     assert.equal(response.status, 413); assert.equal((await response.json()).asOf, null);
 });
+it('ends a stalled API request with an actionable timeout rather than endless loading', async () => {
+    let cancelled = false;
+    globalThis.fetch = async (_url, options) => new Promise((_resolve, reject) => {
+        options!.signal!.addEventListener('abort', () => { cancelled = true; reject(new DOMException('Aborted', 'AbortError')); });
+    });
+    await assert.rejects(api('/exposure', undefined, 10), /timed out.*Reload/);
+    assert.equal(cancelled, true);
+});
+it('preserves navigation cancellation without reporting it as a timeout', async () => {
+    globalThis.fetch = async (_url, options) => new Promise((_resolve, reject) => {
+        options!.signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    });
+    const controller = new AbortController();
+    const pending = api('/moves', { signal: controller.signal }, 1000);
+    controller.abort();
+    await assert.rejects(pending, error => error instanceof Error && error.name === 'AbortError');
+});
+
+it('forwards backend timing metrics so the browser can diagnose a slow Moves request', async () => {
+    const timing = 'backend;dur=1234.5, odds;dur=950.0, sql_count;desc="7 queries"';
+    globalThis.fetch = async () => Response.json({ holdings: [], asOf: null }, { headers: { 'Server-Timing': timing } });
+    const result = await proxyApi(new Request('http://localhost:3000/api/moves'));
+    assert.equal(result.headers.get('server-timing'), timing);
+    assert.equal(result.headers.get('cache-control'), 'no-store');
+});

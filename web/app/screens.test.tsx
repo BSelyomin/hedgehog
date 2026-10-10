@@ -43,3 +43,21 @@ it('renders accessible account forms and explains guest portfolio ownership',()=
  expect(holdings).toContain('alex@example.com');
  expect(holdings).toContain('from your account on every device');
 });
+
+it('offers reload on pages that display cached analytics', () => {
+ for (const screen of [<Overview/>, <Calendar/>, <EventPage ticker="OIL"/>, <Moves/>, <Earnings/>, <TrackRecord/>]) {
+  expect(renderToStaticMarkup(screen)).toContain('>Reload</button>');
+ }
+});
+it('shows saved briefing controls even while exposure is still loading', () => {
+ const html = renderToStaticMarkup(<Overview/>);
+ expect(html).toContain('Loading your data');
+ expect(html).toContain('Your saved briefing');
+ expect(html).toContain('Reload briefing');
+});
+
+it('offers a latest-session view instead of selecting the calendar date by default', () => {
+ const html = renderToStaticMarkup(<Moves/>);
+ expect(html).toContain('Latest trading session');
+ expect(html).toContain('type="date" value=""');
+});

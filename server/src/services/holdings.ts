@@ -1,6 +1,6 @@
 import type { Holding } from '../../../shared/types.ts';
 import { pool, query, iso } from '../db.ts';
-import { createHash } from 'node:crypto';
+import { contentHash } from './ai-cache.ts';
 import { configuration, mode } from '../brokerages/client.ts';
 export function validateHoldings(input: unknown): Holding[] {
     if (!Array.isArray(input) || input.length > 100)
@@ -17,16 +17,15 @@ export function validateHoldings(input: unknown): Holding[] {
     });
 }
 export async function getHoldings(session: string) {
-    const rows = await query<{
-        symbol: string;
-        value_usd: string;
-        updated_at: Date;
-    }>('SELECT * FROM holdings WHERE session_id=$1 ORDER BY symbol', [session]);
-    const manualHoldings = rows.map(r => ({ symbol: r.symbol, valueUsd: Number(r.value_usd) }));
     const config = configuration();
-    const imported = session.startsWith('user:') && config.configured ? await query<{ symbol: string; value_usd: string; updated_at: Date }>(
-        `SELECT h.* FROM brokerage_holdings h JOIN snaptrade_users u ON h.session_id='user:' || u.user_id::text AND h.mode=u.mode
-         WHERE h.session_id=$1 AND h.mode=$2 AND u.client_hash=$3 ORDER BY h.symbol`, [session, mode(), config.clientHash]) : [];
+    const [rows, imported] = await Promise.all([
+        query<{ symbol: string; value_usd: string; updated_at: Date }>(
+            'SELECT * FROM holdings WHERE session_id=$1 ORDER BY symbol', [session]),
+        session.startsWith('user:') && config.configured ? query<{ symbol: string; value_usd: string; updated_at: Date }>(
+            `SELECT h.* FROM brokerage_holdings h JOIN snaptrade_users u ON h.session_id='user:' || u.user_id::text AND h.mode=u.mode
+             WHERE h.session_id=$1 AND h.mode=$2 AND u.client_hash=$3 ORDER BY h.symbol`, [session, mode(), config.clientHash]) : Promise.resolve([])
+    ]);
+    const manualHoldings = rows.map(r => ({ symbol: r.symbol, valueUsd: Number(r.value_usd) }));
     const brokerageHoldings = imported.map(r => ({ symbol: r.symbol, valueUsd: Number(r.value_usd) }));
     const cents = new Map<string, number>();
     for (const h of [...manualHoldings, ...brokerageHoldings]) cents.set(h.symbol, (cents.get(h.symbol) ?? 0) + Math.round(h.valueUsd * 100));
@@ -56,5 +55,7 @@ export async function saveHoldings(session: string, holdings: Holding[]) {
 }
 
 export function portfolioRevision(portfolio: Awaited<ReturnType<typeof getHoldings>>) {
-    return createHash('sha256').update(JSON.stringify(portfolio)).digest('hex');
+    const sorted = (rows: Holding[]) => [...rows].sort((a, b) => a.symbol.localeCompare(b.symbol));
+    return contentHash({ holdings: sorted(portfolio.holdings), manualHoldings: sorted(portfolio.manualHoldings),
+        brokerageHoldings: sorted(portfolio.brokerageHoldings), sandbox: portfolio.sandbox });
 }

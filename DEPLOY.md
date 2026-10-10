@@ -105,3 +105,153 @@ docker compose exec -T database pg_dump -U hedgehog -Fc hedgehog > hedgehog.dump
 Restore into a compatible TimescaleDB installation using Timescale's documented pre/post restore procedures. Copying the repository alone does not copy price history, holdings or audio. Protect database dumps as user data. `docker compose down` keeps the volume; `down -v` deletes it.
 
 For public hosting, configure your chosen host, HTTPS reverse proxy and secret store. Set COOKIE_SECURE=true behind HTTPS. No domain registration, cloud resources, public publication or external account creation has occurred. Cloud provider details remain in questions.txt.
+
+## AI caching and reload
+
+The server applies `005_ai_cache.sql` on startup (or run `npm run migrate`). Restart
+with `docker compose up -d --build` after pulling this change. No new keys or
+packages are required. Existing AI snapshots enter the new cache on their next
+successful generation.
+
+Snowflake completions, Cortex Search results, and ElevenLabs audio are cached in
+Postgres. Keys use input content plus the relevant model/service configuration;
+secrets are excluded. Concurrent identical generations share a result, including
+across server workers through a PostgreSQL advisory transaction lock. Errors and
+invalid completions are not cached. Cache storage survives server restarts and is
+included in database backups.
+
+- Briefings belong to one session/account and a particular holdings snapshot.
+  Holdings amounts, symbols, manual versus brokerage sources, and sandbox status
+  affect the key. Unchanged saves/syncs, timestamps, the date, and Kalshi updates
+  do not. Returning to a previously used portfolio can reuse its prior briefing.
+- Event summaries are shared reporting context, without private portfolio data.
+  Their keys include event identity/title and retrieved passages, excluding live
+  market quotes. Saved numeric inputs remain attached to the prose, and every
+  read still checks numbers and citations. The page labels the original snapshot
+  time separately from current quotes.
+- Tagging requests are cached by their supplied series/filing content and allowed
+  tags. The risk-factor job reads the supplied file to detect changed filings.
+  Existing human-reviewed tags are preserved.
+- Search retrieval has no timed expiry. Event **Reload reporting** explicitly checks the
+  configured reporting index. Unchanged retrieved passages reuse the completion;
+  changed passages generate new context. Missing sources hide the summary.
+
+**Reload** is available on Overview, Calendar, Event, Earnings, Moves, and Track
+record. It preserves page selections and reports loading/errors. Overview reads the saved briefing independently of exposure, with a separate
+**Reload briefing** button to prepare a missing snapshot. Event pages similarly
+separate **Reload reporting** from their regular market-data reload. An AI failure
+does not block page refresh. Reload never
+forces regeneration of unchanged completion/audio inputs. It reads market data
+from Postgres; only the existing poller/backfill contact Kalshi. Brokerage sync
+remains the separate control on Brokerages.
+
+To check it:
+
+1. Open Overview and select Reload briefing. With data and ElevenLabs configured, read/play
+   the saved briefing and note its timestamp.
+2. Reload again, save the same holdings, or let Kalshi polling run. The briefing
+   timestamp/audio stay the same, while live page figures can update.
+3. Change a holding's amount (manual, CSV, or imported positions), then select Reload briefing
+   on Overview. A briefing is generated for the new portfolio.
+4. Open an event and use Reload for current odds or Reload reporting to check
+   sources. Current odds refresh independently of the saved
+   AI summary. Updated reporting can replace that summary; unchanged reporting
+   cannot. Summaries require a configured Cortex Search index and valid sources.
+5. Switch accounts: a private briefing/audio must never appear for another user.
+
+A saved briefing can be older than today. Its references to the daily move/week
+refer to its original snapshot date. This follows content-based invalidation;
+there is no automatic daily regeneration or force-clear button.
+
+
+### Requests that remain pending
+
+Page reads and AI generations now use separate database connection pools. Database
+connections time out after 5 seconds, SQL statements after 20 seconds, and query
+reads after 25 seconds. Browser reads stop after 30 seconds and display a retryable
+error; AI reloads have a 90-second browser limit. Exposure reads only markets linked
+to reviewed portfolio tags; moves batches price, sensitivity, and odds history reads.
+
+If an existing deployment still has requests pending, rebuild/restart both services
+to release old connections and load these changes:
+
+```sh
+docker compose up -d --build backend frontend
+docker compose logs --tail=80 backend frontend
+```
+
+Backend failures now log the HTTP method, route template, and sanitized error code.
+A missing table/column produces a migration message; a database statement timeout
+produces a timeout message. Do not share `.env`, credentials, or unredacted third-party
+logs when reporting a failure. Cached AI content still needs a reachable Postgres
+instance; it is not an offline browser copy of the portfolio.
+
+### Moves session and price history
+
+Moves opens with `GET /moves`, selecting the latest stored completed SPY session
+(or latest holding session if SPY history is absent). The UI shows the actual date
+and each holding's source close dates. Choosing a date calls `GET /moves?date=YYYY-MM-DD`
+and never substitutes another date. Use **Latest trading session** to return to the
+automatic view; Reload reads the newest stored results.
+
+Price loading and measurement now run on startup and hourly, independently of AI
+jobs. SPY loads first, established histories refresh the recent week, and new
+symbols load their measurement history. Today's Yahoo candle is excluded until
+17:00 America/New_York so an intraday quote is not treated as a daily close.
+Migration `006_measurement_price_date.sql` records the last aligned source-price
+date in `measured_links`; a calculation performed after midnight can therefore be
+used for the preceding session. Future-source measurements remain excluded from
+historical requests. Insufficient/unreliable betas still have no numeric split.
+
+Rebuild to apply migrations and start the price loader:
+
+```sh
+docker compose up -d --build backend frontend
+```
+
+If price history failed to load, check the backend logs for `Price load failed for
+symbol`. You can retry just the data jobs after addressing provider connectivity:
+
+```sh
+docker compose exec backend npm run job -- prices
+docker compose exec backend npm run job -- measure
+```
+
+The top portfolio/sandbox banner has been removed. Sandbox/source information is
+still available on Holdings and Brokerages; removing the banner does not change
+SnapTrade mode or convert simulated positions into live accounts.
+
+### Timing a slow Moves request in your browser
+
+Moves now has a dedicated query path: it reads the holdings, two relevant closes
+per symbol, stored sensitivities, reviewed tags, and only markets with a supported
+3+ point odds move. It no longer builds the exposure map, calculates trust scores,
+reads all settled markets, or scans the entire prices table for freshness. On the
+profiled signed-in account, SQL calls fell from 13 to 7. Independent holding reads
+and price/measurement/tag reads run concurrently; the default session and its
+closing prices are resolved in one query.
+
+Rebuild both services to load the backend changes and forward the new headers:
+
+```sh
+docker compose up -d --build backend frontend
+```
+
+In your browser, open Developer Tools → Network, open Moves or select Reload,
+and select the `/api/moves` request. Under Response Headers, inspect `Server-Timing`:
+
+- `backend`: elapsed backend time through response preparation, including authentication.
+- `session`: account lookup time, including database/pool waits (for signed-in users).
+- `holdings`: manual and brokerage holdings reads, performed concurrently.
+- `prices`: default-date selection and recent closing-price reads.
+- `measurements` / `tags`: sensitivity and stock-tag reads, concurrent with prices.
+- `odds`: finding linked markets with supported 24-hour odds changes.
+- `sql_count`: number of database queries; `sql_total` is cumulative query time,
+  including waits. Parallel queries overlap, so do not add the durations together
+  or compare `sql_total` to wall-clock request time as if they were equivalent.
+
+A large stage duration identifies which database operation to inspect next. If
+browser time is much larger than `backend`, inspect request queueing, the frontend
+proxy, and network time as well. Timings and counts contain no SQL, holdings,
+credentials, or user IDs. These headers measure your actual deployment; earlier
+embedded-database benchmarks did not include your network or pool contention.

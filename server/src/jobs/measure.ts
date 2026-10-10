@@ -1,11 +1,13 @@
 import { query } from '../db.ts';
 import { estimateSensitivity, checkSensitivity } from '../math/index.ts';
 import { alignedChanges } from '../math/series.ts';
+import { completedPriceDate } from '../services/price-date.ts';
 import type { PricePoint } from '../math/series.ts';
 export async function loadSeries(symbol: string, years = 10): Promise<PricePoint[]> { return (await query<{
     ts: Date;
     close: number;
-}>(`SELECT ts,close FROM prices WHERE symbol=$1 AND ts>=now()-($2::text||' years')::interval ORDER BY ts`, [symbol, years])).map(r => ({ date: r.ts.toISOString().slice(0, 10), close: r.close })); }
+}>(`SELECT ts,close FROM prices WHERE symbol=$1 AND ts>=now()-($2::text||' years')::interval
+    AND ts < (($3::date+1)::timestamp AT TIME ZONE 'UTC') ORDER BY ts`, [symbol, years, completedPriceDate()])).map(r => ({ date: r.ts.toISOString().slice(0, 10), close: r.close })); }
 export async function measure() {
     const symbols = await query<{
         symbol: string;
@@ -19,7 +21,7 @@ export async function measure() {
                 const data = alignedChanges(driver === 'SPY' ? [stock, source] : [stock, source, spy], driver === 'DGS2' ? [1] : []);
                 const { b, se } = estimateSensitivity(data.columns[0], data.columns[1], data.columns[2]);
                 const checked = checkSensitivity(b, se, data.dates.length);
-                await query(`INSERT INTO measured_links VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()) ON CONFLICT(symbol,driver) DO UPDATE SET b=excluded.b,se=excluded.se,low=excluded.low,high=excluded.high,days=excluded.days,reliable=excluded.reliable,computed_at=excluded.computed_at`, [symbol, driver, b, se, checked.low, checked.high, checked.days, checked.reliable]);
+                await query(`INSERT INTO measured_links(symbol,driver,b,se,low,high,days,reliable,computed_at,price_through) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now(),$9) ON CONFLICT(symbol,driver) DO UPDATE SET b=excluded.b,se=excluded.se,low=excluded.low,high=excluded.high,days=excluded.days,reliable=excluded.reliable,computed_at=excluded.computed_at,price_through=excluded.price_through`, [symbol, driver, b, se, checked.low, checked.high, checked.days, checked.reliable, data.dates.at(-1)]);
             }
             catch {
                 await query('DELETE FROM measured_links WHERE symbol=$1 AND driver=$2', [symbol, driver]);

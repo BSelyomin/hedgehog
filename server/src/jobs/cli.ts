@@ -1,4 +1,4 @@
-import { pool, query } from '../db.ts';
+import { closePools, query } from '../db.ts';
 import { poll } from './poll.ts';
 import { prices } from './prices.ts';
 import { measure } from './measure.ts';
@@ -22,5 +22,5 @@ catch (error) {
     process.exitCode = 1;
 }
 finally {
-    await pool.end();
+    await closePools();
 }

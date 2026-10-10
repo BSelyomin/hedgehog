@@ -169,6 +169,8 @@ export interface OddsPoint {
     probability: number;
 }
 export interface Summary {
+    /** Original AI snapshot time, independent of current Kalshi quotes. */
+    generatedAt?: string;
     text: string;
     sources: {
         title: string;
@@ -202,11 +204,13 @@ export interface TrackRecordResponse extends Freshness {
     categories: CategoryRecord[];
 }
 export interface HoldingMove extends Holding {
+    unavailableReasons: string[];
     actual: number | null;
     beta: number | null;
     fromMarket: number | null;
     beyondMarket: number | null;
     sourceDate: string | null;
+    previousDate: string | null;
 }
 export interface OddsMove {
     ticker: string;
@@ -215,7 +219,10 @@ export interface OddsMove {
     links: HoldingLink[];
 }
 export interface MovesResponse extends Freshness {
+    /** Effective price session; an explicit request never falls back to another date. */
     date: string;
+    requestedDate: string | null;
+    notes: string[];
     spyReturn: number | null;
     holdings: HoldingMove[];
     total: number | null;
@@ -239,6 +246,7 @@ export interface EarningsResponse extends Freshness {
     historyNote: string;
 }
 export interface BriefingResponse extends Freshness {
+    generatedAt: string | null;
     date: string;
     text: string | null;
     audioUrl: string | null;

@@ -20,11 +20,26 @@ export async function readApiResponse<T>(response: Response, path: string): Prom
     }
     return data as T;
 }
-export async function api<T>(path: string, options?: RequestInit): Promise<T> {
+export async function api<T>(path: string, options?: RequestInit, timeoutMs = options?.method && options.method !== 'GET' ? 90000 : 30000): Promise<T> {
     const headers = new Headers(options?.headers);
     headers.set('Content-Type', 'application/json');
     headers.set('X-Hedgehog-Request', '1');
     if (sessionKey) headers.set('X-Hedgehog-Session', sessionKey);
-    const response = await fetch(`/api${path}`, { ...options, headers, credentials: 'same-origin', cache: 'no-store' });
-    return readApiResponse<T>(response, path);
+    const controller = new AbortController();
+    let timedOut = false;
+    const cancel = () => controller.abort();
+    if (options?.signal?.aborted) cancel();
+    else options?.signal?.addEventListener('abort', cancel, { once: true });
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+    try {
+        const response = await fetch(`/api${path}`, { ...options, signal: controller.signal, headers,
+            credentials: 'same-origin', cache: 'no-store' });
+        return await readApiResponse<T>(response, path);
+    } catch (error) {
+        if (timedOut) throw new Error('The request timed out. Select Reload to retry. Check the backend and database connection if it continues.');
+        throw error;
+    } finally {
+        clearTimeout(timer);
+        options?.signal?.removeEventListener('abort', cancel);
+    }
 }

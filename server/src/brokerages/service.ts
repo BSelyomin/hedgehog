@@ -137,7 +137,6 @@ export async function sync(userId: string): Promise<BrokeragesResponse> {
                     [userId, mode(), a.id, a.connectionId, a.name, a.institution, a.numberMask, a.available, JSON.stringify(a.snapshot?.positions ?? []), a.snapshot?.asOf ?? null, a.error, !!a.snapshot?.asOf]);
             }
             await client.query('UPDATE snaptrade_users SET checked_at=now() WHERE user_id=$1 AND mode=$2', [userId, mode()]);
-            await client.query('DELETE FROM briefings WHERE session_id=$1', [`user:${userId}`]);
             await client.query('COMMIT');
         } catch (error) { await client.query('ROLLBACK'); throw error; }
     });
@@ -149,7 +148,6 @@ export async function selectAccount(userId: string, accountId: string, included:
             WHERE a.user_id=$1 AND a.mode=$2 AND a.id=$3 AND c.user_id=a.user_id AND c.mode=a.mode AND c.id=a.connection_id AND NOT c.disconnected`,
             [userId, mode(), uuid(accountId), included]);
         if (!result.rowCount) throw new BrokerageError('Brokerage account not found', 404);
-        await client.query('DELETE FROM briefings WHERE session_id=$1', [`user:${userId}`]);
     });
     return brokerageStatus(userId);
 }
@@ -178,7 +176,6 @@ export async function disconnect(userId: string, connectionId: string) {
         try {
             await client.query('UPDATE brokerage_connections SET disconnected=true WHERE user_id=$1 AND mode=$2 AND id=$3', [userId, mode(), id]);
             await client.query('DELETE FROM brokerage_accounts WHERE user_id=$1 AND mode=$2 AND connection_id=$3', [userId, mode(), id]);
-            await client.query('DELETE FROM briefings WHERE session_id=$1', [`user:${userId}`]);
             await snaptrade('DELETE', `/connection/${id}`, auth);
             await client.query('COMMIT');
         } catch (error) { await client.query('ROLLBACK'); throw error; }

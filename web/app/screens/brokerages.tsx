@@ -43,7 +43,7 @@ export function Brokerages() {
         {!session?.user ? <Card><h2>Sign in to link accounts</h2><p>Brokerage connections belong to your Hedgehog account.</p><a href="#signin">Sign in</a> · <a href="#signup">Create account</a></Card> : <>
             <Card><h2>{data?.mode === 'live' ? 'Live brokerages' : 'Sandbox brokerages'}</h2>
                 <p>{data?.message ?? 'Loading brokerage configuration…'}</p>
-                {data?.mode === 'sandbox' && <p className="account-notice">Sandbox accounts are simulated. Their positions will be labeled on every portfolio screen.</p>}
+                {data?.mode === 'sandbox' && <p className="account-notice">Sandbox accounts are simulated. Their source is labeled here and in your holdings.</p>}
                 <div className="actions"><button className="primary" disabled={busy || !data?.configured} onClick={() => void link()}>{data?.mode === 'live' ? 'Connect brokerage' : 'Connect sandbox account'}</button>
                     <button disabled={busy || !data?.configured} onClick={() => void update('/brokerages/sync')}>Sync accounts</button></div>
                 <p className="note">Sync reads SnapTrade’s cached data. The source timestamp below can be older than the last check. Automatic checks run hourly. Brokerage passwords stay in SnapTrade’s hosted connection flow.</p>

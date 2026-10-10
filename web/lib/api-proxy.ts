@@ -42,13 +42,13 @@ export async function proxyApi(request: Request): Promise<Response> {
     try {
         upstream = await fetch(backend, { method: request.method, headers,
             body: body as BodyInit | undefined,
-            cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(120_000) });
+            cache: 'no-store', redirect: 'manual', signal: AbortSignal.any([request.signal, AbortSignal.timeout(request.method === 'GET' ? 25000 : 85000)]) });
     } catch {
         return failure(502, 'Cannot reach the Hedgehog backend. Check that the backend is running and its database is reachable.');
     }
     const forwarded = new Headers({ 'Cache-Control': 'no-store' });
     for (const cookie of upstream.headers.getSetCookie()) forwarded.append('Set-Cookie', cookie);
-    for (const name of ['Content-Type', 'Retry-After', 'X-Data-As-Of']) {
+    for (const name of ['Content-Type', 'Retry-After', 'X-Data-As-Of', 'Server-Timing']) {
         const value = upstream.headers.get(name);
         if (value !== null) forwarded.set(name, value);
     }

@@ -6,16 +6,13 @@ import type { MeasuredRow } from './matching.ts';
 import { trustScore } from '../config/trust.ts';
 import { numbersSupported, safeSources } from './ai-guard.ts';
 import { trackRecord } from './track-record.ts';
-interface EventRow {
-    ticker: string;
-    series_ticker: string;
-    title: string;
-    category: string;
-    mutually_exclusive: boolean;
-}
 interface MarketRow {
     ticker: string;
     event_ticker: string;
+    event_title: string;
+    series_ticker: string;
+    category: string;
+    mutually_exclusive: boolean;
     title: string;
     subtitle: string;
     close_time: Date;
@@ -30,13 +27,23 @@ interface MarketRow {
 export async function exposure(session: string): Promise<ExposureResponse> {
     const { holdings } = await getHoldings(session);
     const totalValue = holdings.reduce((s, h) => s + h.valueUsd, 0);
-    const [events, markets, seriesTags, stockTags, measurements, record] = await Promise.all([
-        query<EventRow>(`SELECT e.* FROM events e WHERE EXISTS(SELECT 1 FROM markets m WHERE m.event_ticker=e.ticker AND m.status='active' AND m.close_time>now())`),
-        query<MarketRow>(`SELECT m.*,s.ts,s.yes_bid,s.yes_ask,s.mid,s.volume_24h,s.open_interest FROM markets m LEFT JOIN LATERAL(SELECT * FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON true WHERE m.status='active' AND m.close_time>now()`),
+    if (!holdings.length) return { holdings, totalValue, byHolding: [], events: [], asOf: null };
+    const symbols = holdings.map(h => h.symbol);
+    const [markets, seriesTags, stockTags, measurements, record] = await Promise.all([
+        // Derive events from these same market rows: separate queries can disagree
+        // when markets close or the poller updates them between reads.
+        query<MarketRow>(`SELECT m.*,e.title AS event_title,e.category,e.mutually_exclusive,
+            s.ts,s.yes_bid,s.yes_ask,s.mid,s.volume_24h,s.open_interest
+            FROM markets m JOIN events e ON e.ticker=m.event_ticker
+            LEFT JOIN LATERAL(SELECT * FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON true
+            WHERE m.status='active' AND m.close_time>now() AND EXISTS(
+                SELECT 1 FROM series_tags t WHERE t.series_ticker=m.series_ticker AND t.reviewed=true
+                AND (t.tag=ANY($1::text[]) OR t.tag IN(SELECT tag FROM stock_tags WHERE symbol=ANY($1::text[]))))`, [symbols]),
         query<{
             series_ticker: string;
             tag: string;
-        }>('SELECT series_ticker,tag FROM series_tags WHERE reviewed=true'),
+        }>(`SELECT series_ticker,tag FROM series_tags WHERE reviewed=true AND
+            (tag=ANY($1::text[]) OR tag IN(SELECT tag FROM stock_tags WHERE symbol=ANY($1::text[])))`, [symbols]),
         query<{
             symbol: string;
             tag: string;
@@ -44,22 +51,30 @@ export async function exposure(session: string): Promise<ExposureResponse> {
         query<MeasuredRow>('SELECT * FROM measured_links WHERE symbol=ANY($1)', [holdings.map(h => h.symbol)]), trackRecord()
     ]);
     const result: ExposureEvent[] = [];
-    for (const e of events) {
+    const grouped = new Map<string, MarketRow[]>();
+    for (const market of markets) {
+        if (!Number.isFinite(new Date(market.close_time).getTime())) continue;
+        const rows = grouped.get(market.event_ticker) ?? [];
+        rows.push(market);
+        grouped.set(market.event_ticker, rows);
+    }
+    for (const [ticker, rows] of grouped) {
+        const first = rows[0];
+        const e = { ticker, series_ticker: first.series_ticker, title: first.event_title,
+            category: first.category, mutually_exclusive: first.mutually_exclusive };
         const tags = seriesTags.filter(t => t.series_ticker === e.series_ticker).map(t => t.tag);
         const links = holdings.flatMap(h => { const l = matchHolding(h, tags, stockTags.filter(t => t.symbol === h.symbol).map(t => t.tag), measurements); return l ? [l] : []; }).sort((a, b) => linkRank[a.type] - linkRank[b.type] || b.valueUsd - a.valueUsd);
         if (!links.length)
             continue;
         const category = record.categories.find(c => c.category === e.category);
-        const rows = markets.filter(m => m.event_ticker === e.ticker);
         const outcomes: Market[] = rows.map(m => ({ ticker: m.ticker, title: m.title, subtitle: m.subtitle, probability: m.mid, spread: m.yes_ask === null || m.yes_bid === null ? null : m.yes_ask - m.yes_bid, asOf: iso(m.ts), kind: m.strike_type === 'between' ? 'bracket' : /mention/i.test(m.title) ? 'mention' : 'kpi', trust: trustScore(m.yes_ask === null || m.yes_bid === null ? null : (m.yes_ask - m.yes_bid) * 100, m.volume_24h, m.open_interest, category?.avgMiss ?? null, category?.count ?? 0) }));
         const linkedValue = links.reduce((s, l) => s + l.valueUsd, 0);
-        result.push({ ticker: e.ticker, title: e.title, category: e.category, mutuallyExclusive: e.mutually_exclusive, closeTime: new Date(Math.min(...rows.map(m => m.close_time.getTime()))).toISOString(), linkedValue, share: totalValue ? linkedValue / totalValue : 0, links, markets: outcomes });
+        result.push({ ticker: e.ticker, title: e.title, category: e.category, mutuallyExclusive: e.mutually_exclusive, closeTime: new Date(Math.min(...rows.map(m => new Date(m.close_time).getTime()))).toISOString(), linkedValue, share: totalValue ? linkedValue / totalValue : 0, links, markets: outcomes });
     }
-    const latest = await query<{
-        ts: Date | null;
-    }>('SELECT max(ts) AS ts FROM odds_snapshots');
+    const timestamps = markets.flatMap(m => m.ts ? [new Date(m.ts).getTime()] : []).filter(Number.isFinite);
+    const asOf = timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null;
     const byHolding = holdings.map(h => ({ symbol: h.symbol, events: result.flatMap(e => { const l = e.links.find(l => l.symbol === h.symbol); return l ? [{ ticker: e.ticker, title: e.title, type: l.type }] : []; }).sort((a, b) => linkRank[a.type] - linkRank[b.type]) }));
-    return { holdings, totalValue, byHolding, events: result.sort((a, b) => b.share - a.share), asOf: iso(latest[0]?.ts) };
+    return { holdings, totalValue, byHolding, events: result.sort((a, b) => b.share - a.share), asOf };
 }
 export async function calendar(session: string, days: number): Promise<CalendarResponse> { const data = await exposure(session); const end = Date.now() + days * 86400000; return { days, asOf: data.asOf, events: data.events.filter(e => Date.parse(e.closeTime) <= end).sort((a, b) => Date.parse(a.closeTime) - Date.parse(b.closeTime)) }; }
 export async function eventDetail(session: string, ticker: string): Promise<EventResponse | null> {
@@ -80,8 +95,8 @@ export async function eventDetail(session: string, ticker: string): Promise<Even
         }[];
         input_data: unknown;
         updated_at: Date;
-    }>('SELECT * FROM summaries WHERE event_ticker=$1 AND updated_at>now()-interval \'24 hours\'', [event.ticker]);
+    }>('SELECT * FROM summaries WHERE event_ticker=$1', [event.ticker]);
     const s = saved[0];
     const sources = s ? safeSources(s.sources) : [];
-    return { event, asOf: data.asOf, history: rows.map(r => ({ ts: r.ts.toISOString(), ticker: r.ticker, probability: r.mid })), summary: s && sources.length && numbersSupported(s.text, s.input_data) ? { text: s.text, sources } : null };
+    return { event, asOf: data.asOf, history: rows.map(r => ({ ts: r.ts.toISOString(), ticker: r.ticker, probability: r.mid })), summary: s && sources.length && numbersSupported(s.text, s.input_data) ? { text: s.text, sources, generatedAt: iso(s.updated_at)! } : null };
 }
