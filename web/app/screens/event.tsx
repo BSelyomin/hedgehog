@@ -109,6 +109,6 @@ function TrustBreakdown({ market }: { market: Market }) {
             {value !== null && <Progress value={value / max}/>}
         </div>)}
         <p className="note">Spread: {number(market.trust.spreadCents)} cents. {market.trust.trackRecord === null ? 'No track record yet; available quote components are rescaled.' : `${market.trust.categoryCount} settled markets in this category.`}</p>
-        <a href="#track-record">How trust is scored →</a>
+        <a href="#track-record">How trust is scored →</a><p><a href="#track-record/holdings">Compare with past events linked to your holdings →</a></p>
     </>;
 }

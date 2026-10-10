@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { midpoint, estimateSensitivity, checkSensitivity, beta, brier, calibration } from './index.ts';
+import { wilson } from './statistics.ts';
 import { alignedChanges } from './series.ts';
 import { trustScore } from '../config/trust.ts';
 import { numbersSupported, validTags } from '../services/ai-guard.ts';
@@ -17,4 +18,5 @@ describe('accuracy', () => {
     it('scores trust edges and rescales without track record', () => { expect(trustScore(1, 100000, 1000000, null, 0).total).toBe(100); expect(trustScore(10, 0, 0, null, 0).total).toBe(0); expect(trustScore(1, 0, 0, 2, 29).trackRecord).toBeNull(); expect(trustScore(1, 0, 0, 2, 30).trackRecord).toBe(25); expect(trustScore(1, null, 0, null, 0).total).toBeNull(); });
     it('rejects unsupported AI numbers and unknown tags', () => { expect(numbersSupported('Odds are 38%', { odds: '38%' })).toBe(true); expect(numbersSupported('Up 16 points', { odds: '38%' })).toBe(false); expect(validTags(['oil', 'made-up'], ['oil'])).toEqual(['oil']); });
     it('downgrades unreliable measurements without exposing numbers', () => { const link = matchHolding({ symbol: 'DAL', valueUsd: 100 }, ['oil'], ['oil'], [{ symbol: 'DAL', driver: 'CL=F', b: 0, se: 1, low: -1.96, high: 1.96, days: 250, reliable: false, computed_at: new Date() }]); expect(link?.type).toBe('Related'); expect(link?.sensitivity).toBeNull(); });
+    it('gives a wide Wilson range for small samples', () => { const small = wilson(1, 1), large = wilson(700, 1000); expect(small.high).toBe(1); expect(small.low).toBeLessThan(.25); expect(large.high - large.low).toBeLessThan(.06); expect(() => wilson(0, 0)).toThrow(); });
 });

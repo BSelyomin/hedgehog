@@ -1,3 +1,5 @@
+import { trackCompanies } from './track-companies.ts';
+import { trackHistory, trackEntities } from './track-history.ts';
 import cron from 'node-cron';
 import { pool, query } from '../db.ts';
 import { poll } from './poll.ts';
@@ -6,7 +8,7 @@ import { stockTags, tagSeries } from './tagging.ts';
 import { measure } from './measure.ts';
 import { summaries } from './summaries.ts';
 import { briefings } from './briefing.ts';
-import { backfill } from './backfill.ts';
+import { backfill, backfillHorizons } from './backfill.ts';
 import { syncBrokerages } from '../brokerages/service.ts';
 import { earningsDates } from './earnings-dates.ts';
 import { oddsCandles } from './odds-candles.ts';
@@ -53,7 +55,8 @@ export async function runJob(name: string, job: () => Promise<void>) {
     }
 }
 export function scheduler() {
-    const tasks = [cron.schedule('*/5 * * * *', () => runJob('poll', poll)), cron.schedule('30 22 * * *', () => runJob('nightly', async () => { await stockTags(); await tagSeries(); await backfill(); await summaries(); await briefings(); }), { timezone: 'America/New_York' }), cron.schedule('0 8 * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), cron.schedule('0 * * * *', () => runJob('enrich', async () => { await stockTags(); await tagSeries(); await summaries(); await briefings(); }))];
+    const tasks = [cron.schedule('*/5 * * * *', () => runJob('poll', poll)), cron.schedule('30 22 * * *', () => runJob('nightly', async () => { await stockTags(); await tagSeries(); await backfill(); await backfillHorizons(); await summaries(); await briefings(); }), { timezone: 'America/New_York' }), cron.schedule('0 8 * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), cron.schedule('0 * * * *', () => runJob('enrich', async () => { await stockTags(); await tagSeries(); await summaries(); await briefings(); }))];
+    if(process.env.TRACK_HISTORY_ENABLED==='true')tasks.push(cron.schedule('40 * * * *',()=>runJob('track-history',async()=>{await trackEntities();await trackCompanies();await trackHistory({perSeries:5});})));
     tasks.push(cron.schedule('15 * * * *', () => runJob('session-cleanup', async () => {
         await query('DELETE FROM auth_sessions WHERE expires_at<=now()');
         await query('DELETE FROM auth_rate_limits WHERE resets_at<=now()');

@@ -307,6 +307,10 @@ export interface SettledExample {
     outcome: number;
     closeTime: string;
     oddsTime: string;
+    eventTicker?: string | null;
+    release?: { at: string; sourceUrl: string } | null;
+    bid?: number | null;
+    ask?: number | null;
 }
 export interface CategoryRecord {
     category: string;
@@ -319,9 +323,20 @@ export interface CategoryRecord {
     eligibleForTrust: boolean;
     relevantHoldings: string[];
     examples: SettledExample[];
+    // Settled markets in this sample that could not be scored, by reason.
+    coverage: {scored: number; noQuote: number; outcomeKnown: number};
+    // Distinct Kalshi events behind `count`; contracts in one event are not independent.
+    eventCount: number;
+    knownReleaseCount?: number;
+    marketsWithRelease?: number;
+    // Brier score of always predicting this sample's own Yes rate; the score to beat.
+    baseRateBrier: number;
     headline70: {
         count: number;
-        observedRate: number;
+        // null when too few markets to report a rate.
+        observedRate: number | null;
+        low: number | null;
+        high: number | null;
     } | null;
 }
 export interface HistorySubject {
@@ -332,14 +347,58 @@ export interface HistorySubject {
     eventCount: number;
     unknownEventMarkets: number;
     kalshiCategories: string[];
+    linkedHoldings?: { symbol: string; type: LinkType; evidence: string }[];
+    coverage?: CategoryRecord['coverage'];
 }
 export interface TrackRecordResponse extends Freshness {
+    horizonHours?: number;
     subjects: HistorySubject[];
     categories: CategoryRecord[];
     totalMarkets: number;
     reviewedSeries: number;
     relevantCategories: {category: string; holdings: string[]}[];
     minSettled: number;
+    // Trust-score weights and bands, read from server config so this page cannot drift from the formula.
+    trustScoring: {spread: number; activity: number; depth: number; trackRecord: number; high: number; medium: number};
+}
+export const FORECAST_HORIZONS = [
+    { hours: 720, label: '30 days' },
+    { hours: 168, label: '7 days' },
+    { hours: 24, label: '24 hours' },
+    { hours: 1, label: '1 hour' },
+] as const;
+export interface HistoricalRating {
+    accuracy: number | null;
+    grade: 'A' | 'B' | 'C' | 'D' | null;
+    label: string;
+    matched: number;
+    evaluated: number;
+    eventCount: number;
+    missing: number;
+    tied: number;
+    excluded: number;
+}
+export interface TrackRatingItem {
+ relatedThemes?: string[];
+    scope?: string;
+    kind?: 'company' | 'fund' | 'benchmark';
+    id: string;
+    name: string;
+    symbol?: string;
+    rating: HistoricalRating;
+    linkedHoldings: {symbol:string;type:LinkType;evidence:string;name?:string|null;valueUsd?:number|null;share?:number|null}[];
+}
+export interface TrackRatingsResponse extends Freshness {
+    horizonHours: number;
+    themes: TrackRatingItem[];
+    companies: TrackRatingItem[];
+    funds: TrackRatingItem[];
+    fundPage: number;
+    totalFunds: number;
+    page: number;
+    pageSize: number;
+    totalCompanies: number;
+    fundSymbols: string[];
 }
 /** How far back a Moves window opens from its last close. */
 export type MoveRange = 'day' | 'week' | 'month' | 'quarter';
@@ -533,4 +592,40 @@ export interface HealthResponse extends Freshness {
     status: 'ok';
     /** The database is accepting reads only: stored data is shown, odds are not updating and nothing can be saved. */
     readOnly: boolean;
+}
+
+export interface HistoricalPriceMove {
+    beforeDate: string;
+    afterDate: string;
+    beforeClose: number;
+    afterClose: number;
+    change: number;
+}
+export interface HoldingEventHistory {
+    eventTicker: string;
+    seriesTicker: string;
+    title: string;
+    subjects: string[];
+    release: {at: string;sourceUrl: string} | null;
+    windowNote: string | null;
+    spyMove: HistoricalPriceMove | null;
+    predictions: {ticker: string;title: string;probability: number;outcome: number;quoteAt: string;closeAt: string;predatesRelease: boolean | null}[];
+    outcome: {
+        contracts: number;
+        yes: number;
+        // The contract whose earlier midpoint was furthest from what happened; null when only quotes taken at or after the release exist.
+        biggestMiss: {title: string;probability: number;outcome: number} | null;
+    };
+    holdings: {symbol: string;type: LinkType;evidence: string;measuredAt: string | null;moveNote: string | null;move: HistoricalPriceMove | null;
+        // Holding change minus SPY change over the same dates, as a plain difference in return.
+        vsSpy: number | null}[];
+}
+export interface HoldingsHistoryResponse extends Freshness {
+    holdings: string[];
+    totalLinkedEvents: number;
+    displayedEvents: number;
+    // Displayed events with a verified release time and at least one holding price comparison.
+    comparableEvents: number;
+    currentHoldings: true;
+    events: HoldingEventHistory[];
 }
