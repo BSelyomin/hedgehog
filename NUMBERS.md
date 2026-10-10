@@ -27,6 +27,13 @@
 | Moves | Portfolio totals | Holding sums in integer cents; beyond-market total = actual total − market total |
 | Moves | Odds changes in points | Supported midpoint samples about 24 hours apart; only absolute changes ≥ 3 points |
 | Earnings | Normalized bracket probability | Midpoints of a complete exclusive range ladder (buckets and open-ended end caps) divided by their raw sum |
+| Earnings | Call date and countdown | Kalshi occurrence_datetime of the company's earnings-call market; before the open, during trading or after the close by the New York clock |
+| Earnings | Position and share of portfolio | Entered holding value; value ÷ total entered value |
+| Earnings | Chance of each level | odds_snapshots.mid of each "above X" market, ordered by Kalshi's floor_strike; not scaled |
+| Earnings | Where even odds fall | The two neighbouring levels with midpoints either side of 50%; no interpolation; omitted when a quote is missing or the odds rise with the level |
+| Earnings | Group trust | Median trust score of the markets in the group |
+| Earnings | Call topics | odds_snapshots.mid of each word market for the next earnings call |
+| Earnings | Typical move | Mean absolute move over the last 8 reports with a move (at least 4); × entered holding value for dollars |
 | Earnings | Past report move | earnings_reports.filing_date from SEC EDGAR (8-K with Item 2.02); first prices.close after the filing date ÷ last close before it − 1; unavailable across a gap in price history |
 | Earnings | Raw sum | Sum of unnormalized midpoint quotes |
 | Track record | Count, Brier, average miss | settled_markets outcomes and bid–ask midpoint from candle at 24 hours before close |

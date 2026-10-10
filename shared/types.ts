@@ -114,6 +114,8 @@ export interface Market {
     trust: Trust;
     asOf: string | null;
     kind: 'bracket' | 'kpi' | 'mention';
+    /** Kalshi's level for an "above X" market, so a ladder of them can be read in order. */
+    floorStrike?: number | null;
 }
 export interface ExposureEvent {
     seriesTicker?: string;
@@ -255,6 +257,53 @@ export interface EarningsReportMove {
     closeAfter: number | null;
     move: number | null;
 }
+/** One trust figure for a group of markets: the median of their scores. */
+export interface TrustSummary {
+    total: number;
+    band: 'High' | 'Medium' | 'Low';
+    markets: number;
+}
+export interface EarningsThreshold {
+    ticker: string;
+    label: string;
+    strike: number;
+    probability: number | null;
+}
+/** A reported metric for a period, such as headcount in 2026, read from its "above X" markets. */
+export interface EarningsMetric {
+    eventTicker: string;
+    title: string;
+    eventTime: string;
+    eventTimeSource: ExposureEvent['eventTimeSource'];
+    /** In order of level. Empty when the metric is not a ladder of "above X" markets. */
+    thresholds: EarningsThreshold[];
+    /** The neighbouring levels either side of 50% odds. Null when a quote is missing or the odds do not fall as the level rises. */
+    evenOdds: { above: EarningsThreshold | null; below: EarningsThreshold | null } | null;
+    trust: TrustSummary | null;
+}
+/** The next earnings call Kalshi lists, with the chance each word is said on it. */
+export interface EarningsCall {
+    eventTicker: string;
+    time: string;
+    session: 'before-open' | 'market-hours' | 'after-close';
+    topics: { ticker: string; word: string; probability: number | null }[];
+    trust: TrustSummary | null;
+}
+export interface EarningsCompany {
+    symbol: string;
+    name: string | null;
+    valueUsd: number;
+    callTime: string;
+    session: EarningsCall['session'];
+    /** Markets about this company's results: call topics plus metric levels. */
+    markets: number;
+}
+export interface EarningsListResponse extends Freshness {
+    /** Held companies with an earnings call Kalshi has dated, soonest first. */
+    companies: EarningsCompany[];
+    /** Listed securities held, including those without a dated call. */
+    holdings: number;
+}
 export interface EarningsResponse extends Freshness {
     symbol: string;
     events: ExposureEvent[];
@@ -269,6 +318,14 @@ export interface EarningsResponse extends Freshness {
     }[];
     history: EarningsReportMove[] | null;
     historyNote: string;
+    name: string | null;
+    position: { valueUsd: number; share: number } | null;
+    call: EarningsCall | null;
+    /** The metric to lead with: the best-supported one whose odds give a clear reading. */
+    featured: EarningsMetric | null;
+    metrics: EarningsMetric[];
+    /** Average size of the move across past reports, and the same in dollars on the holding. */
+    typicalMove: { percent: number; usd: number; reports: number } | null;
 }
 export interface BriefingResponse extends Freshness {
     date: string;

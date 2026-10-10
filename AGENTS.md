@@ -99,7 +99,7 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | Table | Columns | Filled by |
 | --- | --- | --- |
 | `events` | ticker PK, series_ticker, title, description, category, mutually_exclusive, strike_date | poller |
-| `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result, strike_type, occurrence_time, expected_expiration_time | poller |
+| `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result, strike_type, occurrence_time, expected_expiration_time, floor_strike, cap_strike | poller |
 | `odds_snapshots` | ts, ticker, yes_bid, yes_ask, mid, volume_24h, open_interest | poller, every 5 min, only for markets in `snapshot_series`; compressed after 1 day, dropped after 8 |
 | `snapshot_series` | series_ticker | poller: series a holding could link to (approved ticker, driver or asset-type tag) |
 | `prices` | ts (date), symbol, close | price loader, daily |
@@ -110,6 +110,7 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | `holdings` | session_id, symbol, value_usd, asset_type ('security', 'cash', 'treasury', 'bond', 'property'), details | add-holdings screen |
 | `sector_tags` | sector, tag | seeded from `server/seed/sector_tags.json` (written by a human) |
 | `earnings_reports` | symbol, accession, filing_date, report_date, source_url | earnings-dates job (SEC EDGAR) |
+| `companies` | symbol, name | earnings-dates job (names from the SEC ticker file) |
 
 Tags come from a **fixed list** in `server/seed/tags.json`, for example: `fed-rates`,
 `inflation`, `oil`, `consumer-spending`, `recession`, `tariffs`, `sp500`, `jobs`, plus one tag
@@ -195,10 +196,26 @@ link is Measured; otherwise say it moved the same day, nothing more.
 
 ## Earnings preview
 
-For holdings with company markets: bracket ladders scaled so they sum to 100% (show the raw sum
-in a note), other KPI markets with their trust score, mention markets, and the stock's move across
-each of the last 8 reports. Report dates are the SEC EDGAR filing dates of 8-K filings carrying
-Item 2.02; the move runs from the last close before the filing date to the first close after it.
+Laid out as in `/design`: upcoming reports on the left, then the chosen company's preview.
+
+- **Who appears:** only holdings whose next earnings call Kalshi has dated (the occurrence time of
+  its earnings-call market), soonest first. A holding without one is not shown on this screen.
+- **Which markets:** only those about reported results: the earnings call, and numeric metrics
+  for a reporting period ("headcount in 2026", "bookings in Q3"). Products, lawsuits, executives,
+  prices, rankings and monthly third-party data stay on the other screens.
+- **Lead card:** one reported metric read from its ladder of "above X" markets, ordered by
+  Kalshi's strike. Say where even odds fall using the two markets either side of 50%. Never
+  interpolate between them, and give no reading when a quote is missing or the odds do not fall
+  as the level rises. These are separate markets, so they are not scaled to add up. Kalshi lists
+  no company revenue brackets, which the design assumed.
+- **Bracket ladders** (mutually exclusive ranges) are still scaled so they sum to 100%, with the
+  raw sum in a note.
+- **Group trust** is the median trust score of the group's markets.
+- **Call topics:** the chance each word is said on the call.
+- **Past reports:** the stock's move across each of the last 8. Report dates are the SEC EDGAR
+  filing dates of 8-K filings carrying Item 2.02; the move runs from the last close before the
+  filing date to the first close after it. The typical move is the average size of those moves
+  (at least four), also shown in dollars on the holding.
 
 ## Snowflake Cortex
 
@@ -227,7 +244,7 @@ Every response type lives in `/shared/types.ts`. Write the types first; then the
 against mock data while the server is built.
 
 `POST /holdings` · `GET /exposure` · `GET /calendar?days=14` · `GET /event/:ticker` ·
-`GET /moves?date=` · `GET /earnings/:symbol` · `GET /track-record` · `GET /briefing`
+`GET /moves?date=` · `GET /earnings` · `GET /earnings/:symbol` · `GET /track-record` · `GET /briefing`
 
 Every response includes `asOf` (when the data was last updated).
 

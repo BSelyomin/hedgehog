@@ -1,5 +1,5 @@
 import { query } from '../db.ts';
-import { cikFor, filingUrl, resultsFilings, sec, secConfigured } from '../services/sec.ts';
+import { cikFor, companyFor, filingUrl, resultsFilings, sec, secConfigured } from '../services/sec.ts';
 import type { FilingPage, ResultsFiling, SecCompany, Submissions } from '../services/sec.ts';
 
 const WANTED = 8, KEPT = 12, YEARS = 3;
@@ -40,6 +40,10 @@ export async function earningsDates() {
             continue;
         }
         try {
+            // The same file names the registrant; the earnings screen shows it beside the ticker.
+            const name = companyFor(companies, symbol)?.title;
+            if (typeof name === 'string' && name.trim())
+                await query('INSERT INTO companies(symbol,name) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET name=excluded.name,loaded_at=now()', [symbol, name.trim()]);
             await pause();
             const filings = await loadResultsFilings(cik, cutoff.toISOString().slice(0, 10));
             for (const filing of filings)

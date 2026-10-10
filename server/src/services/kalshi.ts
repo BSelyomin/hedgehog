@@ -15,6 +15,8 @@ export interface KalshiMarket {
     volume_24h_fp?: string;
     open_interest_fp?: string;
     strike_type?: string;
+    floor_strike?: number;
+    cap_strike?: number;
 }
 export interface KalshiEvent {
     event_ticker: string;

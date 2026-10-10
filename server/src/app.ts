@@ -5,7 +5,7 @@ import { query, iso } from './db.ts';
 import { getHoldings, saveHoldings, validateHoldings } from './services/holdings.ts';
 import { exposure, calendar, eventDetail } from './services/exposure.ts';
 import { latestSession, moves } from './services/moves.ts';
-import { earnings } from './services/earnings.ts';
+import { earnings, earningsList } from './services/earnings.ts';
 import { trackRecord } from './services/track-record.ts';
 import { briefing } from './jobs/briefing.ts';
 import { briefingDay } from './services/briefing-content.ts';
@@ -56,6 +56,7 @@ app.get('/moves', async (req, res) => { const date = String(req.query.date ?? re
     res.status(400).json({ error: 'Use a valid YYYY-MM-DD date', asOf: null });
     return;
 } res.json(await moves(res.locals.session, date)); });
+app.get('/earnings', async (_req, res) => { res.json(await earningsList(res.locals.session)); });
 app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase())); });
 app.get('/track-record', async (_req, res) => { res.json(await trackRecord(res.locals.session)); });
 async function readBriefing(session: string): Promise<BriefingResponse> {

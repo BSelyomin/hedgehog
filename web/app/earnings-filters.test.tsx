@@ -15,7 +15,7 @@ const calls: ExposureEvent = { ...range, ticker: 'CALL', title: 'Apple call topi
     markets: [market('AI', 'mention', null, 'High', 90), market('GROWTH', 'kpi', 0, null, null)] };
 const data: EarningsResponse = { symbol: 'AAPL', events: [range, calls], asOf: null,
     ladders: [{ eventTicker: range.ticker, rawSum: .6, outcomes: [{ ticker: 'LOWER', title: 'LOWER', probability: 1 / 3 }, { ticker: 'UPPER', title: 'UPPER', probability: 2 / 3 }] }],
-    history: null, historyNote: 'Historical report dates unavailable.' };
+    history: null, historyNote: 'Historical report dates unavailable.', name: null, position: null, call: null, featured: null, metrics: [], typicalMove: null };
 const now = Date.parse('2026-11-01T00:00:00Z');
 const filter = (overrides: Partial<EarningsFilters> = {}) => filterEarningsRows(earningsRows(data), { ...defaultEarningsFilters, ...overrides }, now);
 const tickers = (overrides: Partial<EarningsFilters>) => filter(overrides).map(row => row.market.ticker);

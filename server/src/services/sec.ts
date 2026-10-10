@@ -42,9 +42,12 @@ export async function sec<T>(url: string): Promise<T> {
 const isDate = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value));
 
 // EDGAR writes share classes with a dash (BRK-B); brokers often use a dot.
-export function cikFor(companies: SecCompany[], symbol: string): string | null {
+export function companyFor(companies: SecCompany[], symbol: string): SecCompany | null {
     const ticker = symbol.replace('.', '-').toUpperCase();
-    const match = companies.find(company => company?.ticker === ticker);
+    return companies.find(company => company?.ticker === ticker) ?? null;
+}
+export function cikFor(companies: SecCompany[], symbol: string): string | null {
+    const match = companyFor(companies, symbol);
     return match && Number.isInteger(match.cik_str) && match.cik_str > 0 ? String(match.cik_str).padStart(10, '0') : null;
 }
 
