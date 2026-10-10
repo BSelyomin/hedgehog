@@ -9,7 +9,7 @@ it('reports absent history and portfolio relevance separately',async()=>{
  expect(query.mock.calls[2][1]).toEqual(['session']);
 });
 it('keeps seven-day and thirty-day datasets and exclusions separate from legacy 24-hour history',async()=>{
- for(const horizon of [168,720]) {
+ for(const horizon of [1,168,720]) {
   query.mockReset().mockResolvedValue([]);
   query.mockImplementation(async(sql:string,values:unknown[])=>{
    if(sql.includes('FROM forecast_observations')) {expect(values).toEqual([horizon]);return [{...row('long-horizon',.2,0),series_ticker:'OIL',event_ticker:'event'}];}

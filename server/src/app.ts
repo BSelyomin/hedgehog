@@ -68,7 +68,7 @@ app.get('/holdings-history', async (req,res) => {
 });
 app.get('/track-record', async (req, res) => {
     const horizon = req.query.horizon === undefined ? 24 : Number(req.query.horizon);
-    if (!FORECAST_HORIZONS.some(h => h.hours === horizon)) { res.status(400).json({error:'Choose a horizon of 24, 168 or 720 hours',asOf:null}); return; }
+    if (!FORECAST_HORIZONS.some(h => h.hours === horizon)) { res.status(400).json({error:'Choose a horizon of 1, 24, 168 or 720 hours',asOf:null}); return; }
     res.json(await trackRecord(res.locals.session,horizon));
 });
 async function readBriefing(session: string): Promise<BriefingResponse> {

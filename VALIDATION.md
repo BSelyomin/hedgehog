@@ -1,5 +1,9 @@
 # Validation and phase status
 
+## One-hour forecast timing (2026-10-10)
+
+Added the one-hour option alongside default 24 hours, seven days and 30 days before trading close. Migration 013 expands the observation/exclusion constraints without changing stored quotes. All 256 tests, lint and production build pass in Node 24. The live one-hour endpoint returns 200 with an empty record; no backfill was run and no grade thresholds were introduced. The existing trust score is unchanged.
+
 ## Track Record views and historical horizons (2026-10-10)
 
 All 256 tests, strict TypeScript checks and the Next.js production build pass in the Node 24 Docker validation container. The existing merge conflicts were resolved with both branches preserved; the earnings screen and asset support remain intact.

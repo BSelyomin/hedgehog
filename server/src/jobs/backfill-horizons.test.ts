@@ -21,7 +21,7 @@ it('stores a real seven-day candle even when 24-hour and 30-day quotes are absen
  expect(stored).toHaveLength(1);expect(stored[0][1].slice(0,2)).toEqual(['M',168]);expect(stored[0][1].slice(6,8)).toEqual([.4,.6]);
  expect(mocks.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO settled_markets'))).toBe(false);
  const skipped=mocks.query.mock.calls.filter(([sql])=>sql.includes('INSERT INTO backfill_skips'));
- expect(skipped.map(([,values])=>values[5]).sort((a,b)=>a-b)).toEqual([24,720]);
+ expect(skipped.map(([,values])=>values[5]).sort((a,b)=>a-b)).toEqual([1,24,720]);
  expect(skipped.every(([,values])=>values[3]==='no_quote')).toBe(true);
 });
 it('does not advance a failed page or record an API outage as a missing quote',async()=>{

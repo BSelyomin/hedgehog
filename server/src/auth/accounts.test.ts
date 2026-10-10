@@ -209,7 +209,7 @@ it('scopes past-event history to the account resolved by authentication',async()
  assert.equal(response.status,200);assert.deepEqual(calls.find(c=>c.sql.includes('FROM holdings'))?.values,[`user:${id}`]);
 });
 it('accepts only supported forecast horizons and keeps the default category record at 24 hours',async()=>{
-    for(const horizon of [24,168,720]) {
+    for(const horizon of [1,24,168,720]) {
         calls.length=0;
         const response=await request(createApp(),`/track-record?horizon=${horizon}`,{headers:headers()});
         assert.equal(response.status,200);

@@ -9,9 +9,10 @@ it('falls back to archived dollar quotes when a live request returns no candles'
     expect(kalshi).toHaveBeenLastCalledWith('/historical/markets/M/candlesticks', {});
     expect(data[0].yes_bid.close_dollars).toBe('.2');
 });
-it('selects independent quotes at all three horizons and rejects future or stale candles', () => {
+it('selects independent quotes at all supported horizons and rejects future or stale candles', () => {
     const close = '2026-10-10T12:30:00Z', end = Date.parse(close)/1000;
-    const candles = [{hours:24,bid:'.7',ask:'.9'},{hours:168,bid:'.4',ask:'.6'},{hours:720,bid:'.1',ask:'.3'}].map(h=>({end_period_ts:end-h.hours*3600,yes_bid:{close_dollars:h.bid},yes_ask:{close_dollars:h.ask}}));
+    const candles = [{hours:24,bid:'.7',ask:'.9'},{hours:168,bid:'.4',ask:'.6'},{hours:720,bid:'.1',ask:'.3'},{hours:1,bid:'.8',ask:'.9'}].map(h=>({end_period_ts:end-h.hours*3600,yes_bid:{close_dollars:h.bid},yes_ask:{close_dollars:h.ask}}));
+    expect(oddsBeforeClose(candles,close,1)?.probability).toBeCloseTo(.85);
     expect(oddsBeforeClose(candles,close,24)?.probability).toBeCloseTo(.8);
     expect(oddsBeforeClose(candles,close,168)?.probability).toBeCloseTo(.5);
     expect(oddsBeforeClose(candles,close,720)?.probability).toBeCloseTo(.2);

@@ -241,6 +241,7 @@ export const FORECAST_HORIZONS = [
     { hours: 720, label: '30 days' },
     { hours: 168, label: '7 days' },
     { hours: 24, label: '24 hours' },
+    { hours: 1, label: '1 hour' },
 ] as const;
 export interface HoldingMove extends Holding {
     actual: number | null;

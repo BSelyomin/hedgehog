@@ -4,10 +4,10 @@ it('renders low-sample warnings, bucket counts and market-level evidence',()=>{
  const c:CategoryRecord={category:'Economics',count:2,avgMiss:20,brier:.29,firstClose:'2026-10-01T00:00:00Z',lastClose:'2026-10-02T00:00:00Z',eligibleForTrust:false,relevantHoldings:['TLT'],eventCount:1,baseRateBrier:.25,coverage:{scored:2,noQuote:3,outcomeKnown:1},headline70:{count:2,observedRate:null,low:null,high:null},buckets:[{low:.6,high:.7,count:2,meanProb:.65,observedRate:.5}],examples:[{ticker:'verified-market',title:'An actual question',probability:.65,outcome:1,closeTime:'2026-10-02T00:00:00Z',oddsTime:'2026-10-01T00:00:00Z'}]};
  const html=renderToStaticMarkup(<CategoryEvidence category={c} minSettled={30}/>);expect(html).toContain('early sample');expect(html).toContain('30-market threshold');expect(html).toContain('An actual question');expect(html).toContain('65.0%');expect(html).toContain('Only 2 markets');expect(html).not.toContain('Actually happened</span>');expect(html).toContain('1 distinct events');expect(html).toContain('0.250');expect(html).toContain('2 of 6 settled markets scored');expect(html).toContain('3 had no bid–ask quote');expect(html).toContain('already happened');expect(html).toContain('What happened');expect(html).toContain('Explore the details');expect(html).not.toContain('<details open');expect(html).toContain('independent events');
 });
-it('preserves the purpose and offers three explicit close-based horizons',()=>{
+it('preserves the purpose and offers four explicit close-based horizons',()=>{
  const html=renderToStaticMarkup(<TrackRecord/>);
  expect(html).toContain("See how earlier Kalshi predictions compared with real outcomes, before you put weight on today&#x27;s odds.");
- expect(html).toContain('30 days before trading close');expect(html).toContain('7 days before trading close');expect(html).toContain('24 hours before trading close');
+ expect(html).toContain('30 days before trading close');expect(html).toContain('7 days before trading close');expect(html).toContain('24 hours before trading close');expect(html).toContain('1 hour before trading close');
  expect(html).toContain('Portfolio relevance');expect(html).toContain('By Market');expect(html).toContain('By Holding');
 });
 it('filters whole theme records by reviewed holdings links without pooling their statistics',()=>{
