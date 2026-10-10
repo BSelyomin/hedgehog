@@ -69,3 +69,5 @@
 .rating-list{display:flex;flex-direction:column;gap:12px;margin:24px 0}.rating-list .rating-row{display:grid;grid-template-columns:minmax(0,1.1fr) 180px minmax(0,1.4fr);gap:24px;align-items:start;margin:0;padding:24px;min-width:0;overflow-wrap:anywhere}.rating-row h2{font-size:21px;margin:0 0 8px}.rating-row .big{font-size:32px;margin:0 0 8px}.rating-result p,.rating-context p{margin-top:0}.rating-row details summary{cursor:pointer;min-height:44px}@media(max-width:800px){.rating-list .rating-row{grid-template-columns:minmax(0,1fr) 150px}.rating-context{grid-column:1/-1}}@media(max-width:480px){.rating-list .rating-row{gap:16px;padding:18px;grid-template-columns:minmax(0,1fr) 110px}.rating-row h2{font-size:18px}.rating-row .big{font-size:26px}}
 
 .rating-holdings-scroll{max-height:220px;overflow-y:auto;overscroll-behavior:contain;padding:8px 12px 0 0;scrollbar-gutter:stable}.rating-holdings-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+.rating-result.has-score .big,.rating-result.has-score strong{color:var(--accent)}.rating-result.has-score .big{font-weight:600}.rating-result.has-score strong{font-size:17px}

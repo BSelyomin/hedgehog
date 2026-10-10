@@ -8,7 +8,7 @@ export function RatingCard({item}:{item:TrackRatingItem}) {
     return <Card className="rating-row"><div className="rating-identity"><h2>{item.symbol?`${item.symbol} · ${item.name}`:item.name}</h2>
         {item.relatedThemes?.length ? <p className="note">Linked themes: {item.relatedThemes.join(' · ')}</p> : null}
         {item.symbol&&<p className="note">Company-specific questions, including earnings-call mentions</p>}
-        </div><div className="rating-result"><p className="big mono">{r.accuracy===null?'—':percent(r.accuracy)}</p>
+        </div><div className={`rating-result${r.accuracy!==null?' has-score':''}`}><p className="big mono">{r.accuracy===null?'—':percent(r.accuracy)}</p>
         <p><strong>{r.grade?`${r.grade} · `:''}{r.label}</strong></p></div><div className="rating-context">
         <p className="note">{r.evaluated?`${r.matched} of ${r.evaluated} questions matched the favored outcome · ${r.eventCount} event IDs`:r.missing?`${r.missing} settled questions checked; historical quotes are missing at this timeframe.`:r.tied?'Available quotes had no favored outcome (50/50).':item.symbol?'No company-specific history collected at this timeframe.':'No usable earlier quotes and final outcomes collected at this timeframe.'}</p>
         {r.accuracy!==null&&!r.grade&&<p className="note">An observed percentage, with too little history to assign a grade.</p>}
