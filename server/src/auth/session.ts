@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import type { PoolClient } from 'pg';
 import type { AccountUser, SessionResponse } from '../../../shared/types.ts';
 import { query } from '../db.ts';
+import { timed } from '../services/request-timing.ts';
 
 export const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -53,9 +54,9 @@ export async function loadSession(req: Request, res: Response, next: NextFunctio
     if (rawToken !== undefined) {
         auth.invalid = true;
         if (/^[a-f0-9]{64}$/.test(rawToken)) {
-            const rows = await query<{ id: string; email: string; name: string; created_at: Date; expires_at: Date }>(
+            const rows = await timed('session', () => query<{ id: string; email: string; name: string; created_at: Date; expires_at: Date }>(
                 `SELECT u.id,u.email,u.name,u.created_at,s.expires_at FROM auth_sessions s
-                 JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()`, [digest(rawToken)]);
+                 JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()`, [digest(rawToken)]));
             if (rows[0]) {
                 const row = rows[0];
                 auth.user = { id: row.id, email: row.email, name: row.name, createdAt: row.created_at.toISOString() };

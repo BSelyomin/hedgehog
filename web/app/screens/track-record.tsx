@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import type { TrackRatingItem, TrackRatingsResponse } from '../../../shared/types';
 import { FORECAST_HORIZONS } from '../../../shared/types';
-import { useData, Card, Fresh, Status, Empty, percent, money, LinkChip } from '../common';
+import { useData, Card, Fresh, Status, Empty, percent, money, LinkChip, ReloadButton } from '../common';
 export function filterLinkedHoldings(holdings:TrackRatingItem['linkedHoldings'],search:string) {
     const term=search.trim().toLowerCase();
     return holdings.filter(h=>!term||h.symbol.toLowerCase().includes(term)||h.name?.toLowerCase().includes(term));
@@ -39,8 +39,8 @@ export function TrackRecord({initialView='assets'}:{initialView?:string}={}) {
     const [view,setView]=useState(['companies','funds'].includes(initialView)?initialView:'assets');
     const [fundPage,setFundPage]=useState(1);
     const [horizon,setHorizon]=useState(24),[page,setPage]=useState(1),[search,setSearch]=useState(''),[draft,setDraft]=useState('');
-    const {data,error}=useData<TrackRatingsResponse>(`/track-record/ratings?horizon=${horizon}&page=${page}&fundPage=${fundPage}&search=${encodeURIComponent(search)}`);
-    return <><h1>How often did Kalshi get it right?</h1>
+    const {data,error,reload}=useData<TrackRatingsResponse>(`/track-record/ratings?horizon=${horizon}&page=${page}&fundPage=${fundPage}&search=${encodeURIComponent(search)}`);
+    return <><div className="row"><h1>How often did Kalshi get it right?</h1><ReloadButton onReload={reload}/></div>
         <p>See how earlier Kalshi predictions compared with real outcomes, before you put weight on today's odds.</p>
         <div className="toolbar"><label>Prediction timeframe<select value={horizon} onChange={e=>{setHorizon(Number(e.target.value));setPage(1);setFundPage(1);}}>{FORECAST_HORIZONS.map(h=><option key={h.hours} value={h.hours}>{h.label} before trading close</option>)}</select></label></div>
         <p className="note">We compare the outcome favored by the earlier odds with Kalshi’s final Yes or No result. Trading close and settlement are separate times.</p>

@@ -1,7 +1,8 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, FormEvent } from 'react';
 import type { AssetType, ExposureEvent, LinkType, Market } from '../../shared/types';
+import { Explain } from './explain';
 export const money = (n: number | null) => n === null ? 'Unavailable' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
 
 export const percent = (n: number | null) => n === null ? 'Unavailable' : `${(n * 100).toFixed(1)}%`;
@@ -30,30 +31,91 @@ export function EventDate({ event, showYear = false }: {
     showYear?: boolean;
 }) { return <><time dateTime={event.eventTime}>{event.eventTimeSource === 'stated' ? dayOnly(event.eventTime, showYear) : dateText(event.eventTime, showYear)}</time> · {eventTimeLabel(event.eventTimeSource)}{event.eventTimeSource !== 'close' && <> · market closes <time dateTime={event.closeTime}>{dateText(event.closeTime, showYear)}</time></>}</>; }
 
-export function LinkChip({ type, children }: {
+// What each link type means, opened beside its chip: what it is, what it rests on, and what it
+// does not tell you.
+export const linkMeaning: Record<LinkType, { means: string; basis: string; limit: string }> = {
+    Direct: {
+        means: 'A Kalshi market about this holding itself: a company’s earnings call or a number it reports, or a fund’s own price.',
+        basis: 'The market’s series carries this ticker as a reviewed tag.',
+        limit: 'It says the event concerns the holding. It gives no estimate of how far the price would move.',
+    },
+    Calculated: {
+        means: 'Exact arithmetic on the terms you entered for a holding without a ticker: cash, a Treasury or CD, a bond, or a property with an adjustable mortgage.',
+        basis: 'Yearly interest per point of rate on a cash or mortgage balance, or a bond’s price change from its duration. Nothing is estimated from price history.',
+        limit: 'It answers what one point of rate change would do, not whether the event will happen.',
+    },
+    Measured: {
+        means: 'The holding’s price has moved reliably with the driver behind this event: oil, Treasury yields, mortgage rates or the stock market.',
+        basis: 'Measured from the holding’s past daily price changes (weekly for mortgage rates). It counts only with at least 60 observations and a 95% range that excludes zero, and only when a typical move in the driver moves the holding at least a tenth as much as its biggest driver does.',
+        limit: 'It describes the past, not what this event’s outcome will do. Each link says which driver matters most to the holding.',
+    },
+    Related: {
+        means: 'The holding shares a reviewed topic with the event, but no link is drawn from its price history.',
+        basis: 'Either no reliable relationship showed up, or the measured one is under a tenth of what the holding’s biggest driver does to it, so no number is shown.',
+        limit: 'Worth knowing about, not a measured effect. The Overview leaves these out.',
+    },
+};
+
+// A chip that names a link type explains it when pointed at; `focusable` lets the keyboard reach
+// it too. A chip that carries a holding's symbol keeps its short label.
+export function LinkChip({ type, children, focusable = false }: {
     type: LinkType;
     children?: ReactNode;
-}) { return <span className={`chip ${type}`} title={children ? linkLabel(type) : undefined}>{children ?? linkLabel(type)}</span>; }
-
-let sessionKey: string | null = null;
-export function setSessionKey(value: string) { sessionKey = value; }
-export async function api<T>(path: string, options?: RequestInit): Promise<T> {
-    const headers = new Headers(options?.headers);
-    headers.set('Content-Type', 'application/json');
-    headers.set('X-Hedgehog-Request', '1');
-    if (sessionKey) headers.set('X-Hedgehog-Session', sessionKey);
-    const r = await fetch(`/api${path}`, { ...options, headers, credentials: 'same-origin', cache: 'no-store' });
-    const data = await r.json();
-    if (!r.ok) {
-        if ((r.status === 401 && !['/auth/signin', '/auth/signup', '/auth/session'].includes(path)) || r.status === 409 && data.error?.includes('session changed'))
-            window.dispatchEvent(new Event('hedgehog-session-changed'));
-        throw new Error(data.error ?? 'Data unavailable');
-    }
-    return data as T;
+    focusable?: boolean;
+}) {
+    if (children)
+        return <span className={`chip ${type}`} title={linkLabel(type)}>{children}</span>;
+    const meaning = linkMeaning[type];
+    return <Explain title={`${linkLabel(type)} link`} focusable={focusable} body={<><span>{meaning.means}</span><span><em>Based on</em> {meaning.basis}</span><span><em>Keep in mind</em> {meaning.limit}</span></>}>
+        <span className={`chip ${type}`}>{linkLabel(type)}</span>
+    </Explain>;
 }
 
-export function useData<T>(path: string) { const [data, setData] = useState<T | null>(null), [error, setError] = useState(''); useEffect(() => { const controller = new AbortController(); setData(null); setError(''); api<T>(path, { signal: controller.signal }).then(setData).catch(e => { if (e.name !== 'AbortError')
-    setError(e.message); }); return () => controller.abort(); }, [path]); return { data, error }; }
+
+import { api } from '../lib/api-client';
+export { api, setSessionKey } from '../lib/api-client';
+
+export function useData<T>(path: string) {
+    const [data, setData] = useState<T | null>(null), [error, setError] = useState('');
+    const controller = useRef<AbortController | null>(null);
+    const reload = useCallback(async (reloadPath?: string) => {
+        controller.current?.abort();
+        const request = new AbortController();
+        controller.current = request;
+        setError('');
+        try {
+            const result = await api<T>(reloadPath ?? path, { signal: request.signal, method: reloadPath ? 'POST' : 'GET', body: reloadPath ? '{}' : undefined });
+            if (!request.signal.aborted) setData(result);
+        } catch (e) {
+            if (!request.signal.aborted) {
+                const message = e instanceof Error ? e.message : 'Unable to reload data';
+                setError(message);
+                throw e;
+            }
+        }
+    }, [path]);
+    useEffect(() => {
+        setData(null);
+        void reload().catch(() => {});
+        return () => controller.current?.abort();
+    }, [reload]);
+    return { data, error, reload };
+}
+
+export function ReloadButton({ onReload, label = 'Reload' }: { onReload: () => Promise<unknown>; label?: string }) {
+    const [busy, setBusy] = useState(false), [error, setError] = useState('');
+    const mounted = useRef(true);
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+    async function reload() {
+        if (busy) return;
+        setBusy(true); setError('');
+        try { await onReload(); }
+        catch (e) { if (mounted.current) setError(e instanceof Error ? e.message : 'Unable to reload data'); }
+        finally { if (mounted.current) setBusy(false); }
+    }
+    return <div><button type="button" disabled={busy} aria-busy={busy} onClick={() => void reload()}>{busy ? 'Reloading…' : label}</button>
+        {error && <p className="error" role="alert">{error}</p>}</div>;
+}
 
 export function Card({ children, className = '' }: {
     children: ReactNode;

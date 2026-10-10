@@ -19,8 +19,8 @@ export async function trackRecord(session?: string, horizonHours = 24): Promise<
     // Category relevance means a reviewed series shares a tag with a saved holding.
     // It is not a claim that every historical market in that category concerns that holding.
     const links = session ? await query<{category: string; symbol: string}>(`SELECT DISTINCT e.category,h.symbol
-        FROM holdings h JOIN series_tags t ON t.reviewed=true AND
-        (t.tag=h.symbol OR EXISTS(SELECT 1 FROM stock_tags st WHERE st.symbol=h.symbol AND st.tag=t.tag))
+        FROM portfolio_holdings h JOIN series_tags t ON t.reviewed=true AND
+        (h.asset_type='security' AND (t.tag=h.symbol OR EXISTS(SELECT 1 FROM stock_tags st WHERE st.symbol=h.symbol AND st.tag=t.tag)))
         JOIN events e ON e.series_ticker=t.series_ticker WHERE h.session_id=$1 ORDER BY e.category,h.symbol`, [session]) : [];
     const relevantCategories = [...new Set(links.map(l => l.category))].map(category => ({category, holdings: links.filter(l => l.category===category).map(l => l.symbol)}));
     const categories: CategoryRecord[] = [];

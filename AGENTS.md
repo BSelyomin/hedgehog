@@ -1,7 +1,7 @@
 # Hedgehog — instructions for coding agents
 
 Hedgehog links a user's stock holdings to Kalshi prediction markets. It shows which real-world
-events a portfolio depends on, what's coming up, what moved today, and how far to trust each number.
+events a portfolio depends on, what's coming up, what moved and which events moved with it, and how far to trust each number.
 
 **Hedgehog never trades.** Do not add order placement, Kalshi authentication, wallets, or any
 endpoint that sends money anywhere.
@@ -22,7 +22,15 @@ data can't support a number, show no number.
   compare on one scale. A link on a minor driver says what matters more.
 - A link that fails `checkSensitivity` stays unmeasured (API type `Related`, labelled **Topic**
   on screen) with no number.
-- Probabilities are the bid–ask midpoint, never the last trade.
+- A reliable measurement is not enough for a link. With ten years of prices almost every
+  holding is reliably tied to almost every driver, however faintly. A measurement draws a link
+  only when a typical move in its driver moves the holding at least `MATERIAL_SHARE` (a tenth)
+  as much as a typical move in the holding's biggest driver. Below that it is a Topic link whose
+  evidence says how it compares, with no estimate.
+- Probabilities are the bid–ask midpoint, never the last trade. A book with no bid and no offer
+  (0 and 1) has no midpoint: it shows no probability, spread or trust score, counts as no move,
+  and gives the track record no reading. The poller still stores it, so readers know the book
+  is empty now. The test is `emptyBook` in `server/src/services/kalshi.ts`.
 - AI-written text (Snowflake Cortex) never introduces a number that isn't in the data passed to it.
   Code checks this (see "Snowflake Cortex").
 - An AI summary without source links is hidden, not shown.
@@ -84,10 +92,14 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
   - `GET /events?status=open&with_nested_markets=true` (paginate with `cursor`)
   - `GET /series/{series_ticker}/markets/{ticker}/candlesticks` and batch `GET /markets/candlesticks`
   - settled markets via `GET /markets` with a status filter, for the track record
-- Only the poller and backfill jobs call Kalshi. Pages read from our database. Never call Kalshi
-  from the browser.
+- Only the poller, backfill and candlestick jobs call Kalshi. Pages read from our database. Never
+  call Kalshi from the browser.
 - Poll every 5 minutes. Back off on 429 and 5xx responses. Log and skip a bad market rather than
   failing the whole run.
+- Every scheduled job runs under a database lock (`runJob` in `server/src/jobs/scheduler.ts`), so
+  that only one of the backends sharing the database runs it. The lock's session ends itself
+  after two minutes without a statement and the job sends a heartbeat while it runs, so a
+  backend that dies cannot hold a job for long. Keep both when changing how jobs are locked.
 - Store every market's details, but odds history only for series a holding could link to. Storing
   it for all markets filled the database in 17 hours. A database trigger enforces this for any
   backend that shares the database.
@@ -99,14 +111,17 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | Table | Columns | Filled by |
 | --- | --- | --- |
 | `events` | ticker PK, series_ticker, title, description, category, mutually_exclusive, strike_date | poller |
-| `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result, strike_type, occurrence_time, expected_expiration_time, floor_strike, cap_strike | poller |
+| `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result, strike_type, occurrence_time, expected_expiration_time, floor_strike, cap_strike, open_time | poller |
 | `odds_snapshots` | ts, ticker, yes_bid, yes_ask, mid, volume_24h, open_interest | poller, every 5 min, only for markets in `snapshot_series`; compressed after 1 day, dropped after 8 |
 | `snapshot_series` | series_ticker | poller: series a holding could link to (approved ticker, driver or asset-type tag) |
+| `odds_candles` | ticker, minutes (60 or 1440), ts (end of the period), mid, spread | candlestick job: Kalshi's hourly closes for 12 days and daily closes since listing, with the closing bid–ask spread, for open markets in `snapshot_series` |
+| `candle_progress` | ticker, minutes, through | candlestick job: how far each market has been fetched |
+| `security_profiles` | symbol PK, quote_type, name, sector, industry, fund_category, updated_at | profiles job: Yahoo's description of each held ticker |
 | `prices` | ts (date), symbol, close | price loader, daily |
 | `series_tags` | series_ticker, tag, source ('snowflake', legacy 'gemini', or 'manual'), reviewed boolean | tagging job |
 | `stock_tags` | symbol, tag, link_type ('direct', 'measured', 'related') | sector table + 10-K job |
 | `measured_links` | symbol, driver, b, se, low, high, days, reliable, computed_at, effect | nightly job |
-| `settled_markets` | ticker, category, prob_24h_before, outcome (0/1), close_time | backfill |
+| `settled_markets` | ticker, category, prob_24h_before, outcome (0/1), close_time, odds_time, series_ticker, event_ticker, title | backfill |
 | `holdings` | session_id, symbol, value_usd, asset_type ('security', 'cash', 'treasury', 'bond', 'property'), details | add-holdings screen |
 | `sector_tags` | sector, tag | seeded from `server/seed/sector_tags.json` (written by a human) |
 | `earnings_reports` | symbol, accession, filing_date, report_date, source_url | earnings-dates job (SEC EDGAR) |
@@ -121,7 +136,10 @@ per company ticker for company markets. Never create tags outside this list.
 1. **Direct:** the market's series is tagged with the holding's ticker (company earnings and
    KPI markets, earnings-call mention markets).
 2. **Measured:** the holding shares a tag with the market *and* `measured_links` has a reliable
-   link between the holding and that tag's driver.
+   link between the holding and that tag's driver that is big enough to count (`materialRows` in
+   `server/src/services/matching.ts`): at least a tenth of the holding's biggest daily driver. A
+   weekly driver cannot be put on that scale, so it counts when a daily driver of its family
+   does.
 3. **Related:** a shared tag only. Show it, labeled, with no sensitivity number.
 
 4. **Calculated:** the holding has no ticker (cash, a Treasury or CD, a bond, a property) and its
@@ -179,20 +197,113 @@ Medium 60–79, Low < 60. Return every part, not just the total; the event page 
 
 ## Track record
 
+The backfill (`server/src/jobs/backfill.ts`) scores settled markets of every series that can
+link to a holding (`snapshot_series`), from Kalshi's live listing and its archive, and records
+per series how far it got so a later run looks only at newer settlements.
+
+- **The reading** is the close of the last hourly candlestick ending at or before 24 hours
+  before close. Kalshi publishes a candlestick only when the quote changes, so that is the quote
+  standing at the mark; asking for the exact minute found one for about one market in six.
+  `odds_time` records when that quote was published. One more than seven days old is not used.
+- **No reading, no row.** An empty book at the mark gives no reading (an older quote is not
+  substituted), and a market listed for under a day has no odds a day before its close, so
+  daily markets such as "gas prices tomorrow" are not scored.
+
 For each category, take settled markets, read the odds **24 hours before close** from candlesticks
 (not at close), and pair them with the outcome. Report count, `avgMiss`, Brier score, and the
 calibration buckets. Headline example: "When Kalshi said 70%, it happened X% of the time" uses the
 65–75 bucket.
 
+## Categories
+
+The portfolio is grouped two ways (`server/src/services/categories.ts`), sent as `categories`
+with the exposure and calendar responses:
+
+- **Asset class** says what a holding is; each holding has exactly one, so the groups add up to
+  the portfolio. A holding the user described is classed by that description (cash, Treasury or
+  CD, bond, property). A ticker is classed from Yahoo's profile of it in `security_profiles`: a
+  company is a stock (with its sector); a fund is classed by its category through
+  `server/seed/fund_classes.json`, written by a human from category names Yahoo returned.
+  Nothing is inferred from a name: a ticker with no profile, or a fund category that is not
+  mapped, is **Unclassified** and shown as such.
+- **Event theme** says what kind of Kalshi event is linked to a holding. A holding is in every
+  theme it has an open event in through a Direct, Calculated or Measured link, so themes overlap
+  and do not add up to 100%. A theme is a tag from the fixed list, or `direct` for markets about
+  the holding itself. An unmeasured topic link carries no theme, as on the Overview.
+
+A group's value is the value of its holdings and its share is that over the whole portfolio,
+each holding counted once. That is reach, not an amount at risk. A measurement under the
+link floor gives no theme. Among those that remain, a theme names the holdings it matters
+most to: those linked by a Calculated link, and securities whose most important measured driver
+stands behind it. A group's next event is the soonest one reached by such a strong link.
+
+One category choice is shared by the Overview, Calendar and Moves
+(`web/app/screens/category-filter.ts`). The Moves response carries no categories; that screen
+reads them from the exposure data in the background so the moves are not kept waiting.
+
+## Odds chart
+
+The event page charts one market's bid–ask midpoint with titled axes and a choice of range.
+Every point is a reading from a source: one of our five-minute snapshots, or the close of a
+Kalshi candlestick (`GET /markets/candlesticks`, midpoint of `yes_bid.close_dollars` and
+`yes_ask.close_dollars` at `end_period_ts`). Ranges live in `server/src/services/odds-history.ts`:
+
+| Range | Kalshi closes | Our snapshots |
+| --- | --- | --- |
+| 1 day | hourly | every one |
+| 1 week | hourly | the last of each hour |
+| 1 month | daily | the latest only |
+| All time | daily, since the market's `open_time` | the latest only |
+
+Kalshi publishes no candlestick for most periods in which the quote did not change, so the line
+is stepped: it holds each reading until the next and never slopes between two readings. A
+candlestick or snapshot with no bid and no offer (0 and 1) is not a quote and is not drawn.
+The probability axis zooms to the readings on round levels, never to a span under ten points.
+The candlestick job (`server/src/jobs/odds-candles.ts`) runs hourly for hourly closes, after
+midnight New York for daily closes, and after the first poll at startup.
+
 ## Move explainer
 
-For a day: each holding's dollar move; `fromMarket = beta × SPY return × value`;
-`beyondMarket = actual − fromMarket`. The totals must add up exactly and cover listed securities;
-state the value of holdings with no daily price. Also compare each measured driver's estimated part
-of the day (sensitivity × the driver's change × value) and highlight the largest. Those estimates
-overlap, so they are compared and never summed; name any driver whose change is not published yet. List linked markets whose
-midpoint moved 3+ points in the last 24 hours. Connect a market to a holding's move only when the
-link is Measured; otherwise say it moved the same day, nothing more.
+Compares the portfolio at two closes and sets the Kalshi events of the same window beside it.
+The window ends on a session (the latest by default) and opens a day, a week, a month or three
+months earlier, on the last session at or before that date (`MOVE_RANGES` in
+`server/src/services/move-data.ts`). The view is the whole portfolio, the shared category
+choice, or one holding picked on the screen; the server sends the whole portfolio and the
+screen narrows it (`web/app/screens/move-scope.ts`).
+
+- **Today's holdings at both closes.** No history of what was held is stored, so the amount held
+  now is assumed held throughout: the value entered is read as the worth at the latest stored
+  close and scaled by the price to each end (`valueAt`). The screen says so. Change =
+  value at the last close − value at the first.
+- **Split.** `fromMarket = beta × SPY's return over the window × value at the first close`;
+  `beyondMarket = change − fromMarket`. The totals must add up exactly and cover listed
+  securities; state the value of holdings with no daily price.
+- **Drivers.** Compare each measured driver's estimated part of the window (sensitivity × the
+  driver's change × value at the first close) and highlight the largest. A sensitivity under
+  the link floor gives no estimate. Those estimates overlap, so they are compared and never
+  summed; name any driver with no published reading at both ends.
+- **Kalshi over the same window**, close to close (4:00 pm New York):
+  - *Settled*: markets that closed inside it, from `settled_markets`, with the odds a day
+    before each closed; an event leads with the result furthest from those odds.
+  - *Odds that moved*: markets open at the last close whose midpoint moved 3+ points between
+    the quote standing at each close. That quote is the newest candlestick close or snapshot at
+    or before the instant, no more than seven days old, and each reading is shown with its
+    time. Only quotes at most `MAX_MOVE_SPREAD` (10 cents) wide at both ends are compared: a
+    wider quote's midpoint jumps when one side of the book steps back.
+- **What an event has to do with a move.** Only a Measured link is set beside a holding's move,
+  and then through its driver: the driver's own change and the holding's estimate from it. A
+  Direct link states the holding's move and that nothing measured ties them; a Calculated or
+  Topic link states no figure. Never say an event caused a move.
+- Events linked only by an unmeasured topic are hidden until asked for, as on the Overview.
+- **From a driver to its events.** A driver is a price or a yield, not an event, and many events
+  sit behind each one. Wherever a driver is named with an estimate, it leads to them: the
+  holdings table names the linked event whose odds moved most and opens the rest inside the
+  row (`driverEvents`, `DriverEventList`), and each bar under "What mattered most" does the
+  same. Opening them never moves the reader away from the row.
+- **What is missing.** The table has no column for it, since most rows lack nothing. A reason
+  every listed holding shares is said once above the table (`sharedReasons`); a row carries a
+  note only for what it alone lacks, or when its figures come from other closes than the
+  window's.
 
 ## Earnings preview
 
@@ -250,7 +361,8 @@ Every response type lives in `/shared/types.ts`. Write the types first; then the
 against mock data while the server is built.
 
 `POST /holdings` · `GET /exposure` · `GET /calendar?days=14` · `GET /event/:ticker` ·
-`GET /moves?date=` · `GET /earnings` · `GET /earnings/:symbol` · `GET /track-record` · `GET /briefing`
+`GET /odds/:ticker?range=day|week|month|all` ·
+`GET /moves?date=&range=day|week|month|quarter` · `GET /earnings` · `GET /earnings/:symbol` · `GET /track-record` · `GET /briefing`
 
 Every response includes `asOf` (when the data was last updated).
 
@@ -259,16 +371,24 @@ Every response includes `asOf` (when the data was last updated).
 Seven screens, matching the designs in `/design` (screenshots or exports from the canvas):
 
 1. Add holdings
-2. Exposure map (heatmap of holdings × events, plus a "By holding" view)
+2. Exposure map (category cards in one row that scrolls sideways, then events × holdings with
+   every linked holding shown in its event's row, plus a
+   "By holding" view)
 3. Event calendar (next two weeks by Kalshi event date, filter All / Company / Other)
-4. Event page (odds distribution, 1-week chart, trust score breakdown, linked holdings + evidence)
+4. Event page (odds distribution, odds chart over 1 day / 1 week / 1 month / all time, trust
+   score breakdown, linked holdings + evidence)
 5. Earnings preview
-6. Move explainer
+6. Move explainer (a window of 1 day / 1 week / 1 month / 3 months; the whole portfolio, a
+   category or one holding; events that settled and odds that moved in the window)
 7. Track record (calibration chart, table by category, how trust is scored)
 
 Design tokens: background `#0E1116`, card `#151A21`, border `#2A313C`, text `#E8ECF1`,
 secondary text `#A3ADBA`, accent `#5AA2FF`, up `#7DB6FF`, down `#FF9F45`. Fonts: Space Grotesk
-(headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). Link chips use one vocabulary
+(headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). A column name can
+carry a small "i" button that opens what the column means when pointed at, focused or tapped
+(`Info` in `web/app/explain.tsx`); the Moves holdings table has one on every column. A chip that
+names a link type opens an explanation beside it when pointed at (what it means, what it rests on, what it does
+not tell you); the wording lives in `linkMeaning` in `web/app/common.tsx`. Link chips use one vocabulary
 on every screen, set by the Overview: Direct = `#f87171` (red); Measured links are labelled
 "Related" = `#5aa2ff` (blue); Calculated = `#34d399` (green); unmeasured links are labelled "Topic" = dashed border. Touch targets ≥ 44 px; real `<button>` and
 `<a>` elements; works at phone width. Footer on every screen: "Not financial advice. Odds from

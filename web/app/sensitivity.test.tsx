@@ -57,14 +57,21 @@ describe('highlighting what matters most', () => {
         expect(describeLeadMove([], money)).toBeNull();
     });
     it('shows the ranked drivers on the Moves screen and says which could not be compared', () => {
-        const data = { date: '2026-10-09', asOf: null, spyReturn: .01, holdings: [], total: null, fromMarket: null, beyondMarket: null, oddsMoves: [],
-            drivers: [{ driver: 'CL=F', contribution: -310 }, { driver: 'SPY', contribution: 120 }], missingDrivers: ['DGS2', 'DGS10'], unpricedValue: 0 };
-        const html = renderToStaticMarkup(<LeadDrivers data={data}/>);
+        const drivers = [{ driver: 'CL=F', contribution: -310 }, { driver: 'SPY', contribution: 120 }];
+        const changes = [{ driver: 'SPY', kind: 'return' as const, change: .0116 }, { driver: 'CL=F', kind: 'return' as const, change: -.0437 }];
+        const html = renderToStaticMarkup(<LeadDrivers drivers={drivers} changes={changes} missing={['DGS2', 'DGS10']}/>);
         expect(html).toContain('Crude oil mattered most');
         expect(html.indexOf('Crude oil</span>')).toBeLessThan(html.indexOf('Stock market (S&amp;P 500)</span>'));
         expect(html).toContain('class="driver-bar lead"');
+        // Each driver is shown with how far it moved itself over the window.
+        expect(html).toContain('<span>Crude oil</span><span class="note driver-change">fell 4.4%</span><strong class="mono orange">-$310.00</strong>');
+        expect(html).toContain('<span class="note driver-change">rose 1.2%</span><strong class="mono blue">$120.00</strong>');
         expect(html).toContain('not published yet: 2-year Treasury yield, 10-year Treasury yield.');
-        expect(renderToStaticMarkup(<LeadDrivers data={{ ...data, drivers: [], missingDrivers: [] }}/>)).toContain('No measured driver could be compared');
+        expect(renderToStaticMarkup(<LeadDrivers drivers={[]} changes={[]} missing={[]}/>)).toContain('No measured driver could be compared');
+        // For one holding it says whose move it is.
+        const one = renderToStaticMarkup(<LeadDrivers drivers={drivers} changes={changes} missing={[]} subject="XOM"/>);
+        expect(one).toContain('<h2>What mattered most for XOM</h2>');
+        expect(one).toContain('Crude oil mattered most: about -$310.00 of XOM’s move');
     });
 });
 
@@ -79,7 +86,9 @@ describe('figures calculated from a holding’s own terms', () => {
     });
     it('labels Calculated links and counts them as affected, ahead of measured ones', () => {
         expect(linkLabel('Calculated')).toBe('Calculated');
-        expect(renderToStaticMarkup(<LinkChip type="Calculated"/>)).toBe('<span class="chip Calculated">Calculated</span>');
+        // The chip is unchanged; it now sits beside an explanation that opens when pointed at.
+        expect(renderToStaticMarkup(<LinkChip type="Calculated"/>)).toContain('><span class="chip Calculated">Calculated</span><span role="tooltip"');
+        expect(renderToStaticMarkup(<LinkChip type="Calculated"/>).match(/class="chip /g)).toHaveLength(1);
         const event = { ticker: 'FED', title: 'Fed decision', category: 'Economics', closeTime: '2026-11-03T00:00:00Z', eventTime: '2026-11-03T00:00:00Z', eventTimeSource: 'close', linkedValue: 150, share: .5, mutuallyExclusive: false, markets: [],
             links: [{ symbol: 'TLT', valueUsd: 100, type: 'Measured', evidence: '', sensitivity: null }, { symbol: 'SAVINGS', valueUsd: 50, type: 'Calculated', evidence: '', sensitivity: null }] } as ExposureEvent;
         expect(filterCalendarEvents([event], { ...defaultCalendarFilters, link: 'Affected', holding: 'SAVINGS' })).toHaveLength(1);
@@ -93,7 +102,10 @@ describe('figures calculated from a holding’s own terms', () => {
 describe('link labels', () => {
     it('uses the Overview vocabulary on every screen', () => {
         expect([linkLabel('Direct'), linkLabel('Measured'), linkLabel('Related')]).toEqual(['Direct', 'Related', 'Topic']);
-        expect(renderToStaticMarkup(<LinkChip type="Measured"/>)).toBe('<span class="chip Measured">Related</span>');
+        expect(renderToStaticMarkup(<LinkChip type="Measured"/>)).toContain('><span class="chip Measured">Related</span><span role="tooltip"');
+        // The explanation names the link by the same word as the chip, never by the API's.
+        expect(renderToStaticMarkup(<LinkChip type="Measured"/>)).toContain('<strong>Related link</strong>');
+        expect(renderToStaticMarkup(<LinkChip type="Measured"/>)).not.toContain('Measured link');
         expect(renderToStaticMarkup(<LinkChip type="Direct">AAPL</LinkChip>)).toBe('<span class="chip Direct" title="Direct">AAPL</span>');
     });
     it('colours each linked holding by its connection in event lists', () => {

@@ -1,35 +1,70 @@
 'use client';
-import { useState } from 'react';
-import type { EventResponse, HoldingLink, Market, OddsPoint } from '../../../shared/types';
-import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip, EventDate } from '../common';
+import { useId, useState } from 'react';
+import type { EventResponse, HoldingLink, Market } from '../../../shared/types';
+import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip, EventDate, ReloadButton } from '../common';
+import { OddsChart } from './odds-chart';
 import { describeCalculation, describeImportance, describeSensitivity } from './sensitivity';
 
 export function EventPage({ ticker }: {
     ticker: string;
 }) {
-    const { data, error } = useData<EventResponse>(`/event/${encodeURIComponent(ticker)}`);
-    const [selection, setSelection] = useState('');
-    const market = data?.event.markets.find(m => m.ticker === selection) ?? data?.event.markets[0];
+    const { data, error, reload } = useData<EventResponse>(`/event/${encodeURIComponent(ticker)}`);
     return <>
         {!data && <h1>Event details</h1>}
-        <a href="#calendar">Calendar</a>
+        <div className="row"><a href="#calendar">Calendar</a><ReloadButton onReload={() => reload()}/></div>
         <Status error={error} loading={!data && !error}/>
-        {data && <>
+        {data && <EventDetail key={ticker} data={data} requestedTicker={ticker} onReloadReporting={() => reload(`/event/${encodeURIComponent(ticker)}/reload`)}/>}
+    </>;
+}
+
+const OUTCOMES_PER_PAGE = 5;
+
+export function EventDetail({ data, requestedTicker, onReloadReporting }: { data: EventResponse; requestedTicker: string; onReloadReporting: () => Promise<unknown> }) {
+    const historyId = useId();
+    const markets = data.event.markets;
+    const initialIndex = Math.max(0, markets.findIndex(m => m.ticker === requestedTicker));
+    const [selection, setSelection] = useState(markets[initialIndex]?.ticker ?? '');
+    const [page, setPage] = useState(Math.floor(initialIndex / OUTCOMES_PER_PAGE) + 1);
+    const [expanded, setExpanded] = useState(() => new Set(markets.some(m => m.ticker === requestedTicker) ? [requestedTicker] : []));
+    const pages = Math.max(1, Math.ceil(markets.length / OUTCOMES_PER_PAGE));
+    const currentPage = Math.min(page, pages), start = (currentPage - 1) * OUTCOMES_PER_PAGE;
+    const shown = markets.slice(start, start + OUTCOMES_PER_PAGE);
+    const market = markets.find(m => m.ticker === selection) ?? markets[0];
+    function toggleOutcome(ticker: string) {
+        if (!expanded.has(ticker)) setSelection(ticker);
+        setExpanded(previous => {
+            const next = new Set(previous);
+            if (next.has(ticker)) next.delete(ticker);
+            else next.add(ticker);
+            return next;
+        });
+    }
+    return <>
             <h1>{data.event.title}</h1>
             <p><EventDate event={data.event} showYear/></p>
             <Fresh asOf={data.asOf}/>
-            <div className="split">
+            <div className="split event-layout">
                 <div>
                     <Card>
                         <h2>What the market expects</h2>
-                        {data.event.markets.map(m => <div className="event-row" key={m.ticker}>
-                            <div className="row"><button onClick={() => setSelection(m.ticker)} aria-pressed={market?.ticker === m.ticker}>{m.subtitle || m.title}</button><span className="mono">{percent(m.probability)}</span></div>
+                        {markets.length ? <p className="note" role="status">Outcomes {start + 1}–{start + shown.length} of {markets.length}</p> : <Empty>No outcomes are available for this event.</Empty>}
+                        {markets.length > 0 && <p className="note">Open outcomes to compare their history. You can keep several open at once.</p>}
+                        {shown.map(m => <div className="event-row event-outcome" key={m.ticker}>
+                            <button className="outcome-toggle" onClick={() => toggleOutcome(m.ticker)} aria-expanded={expanded.has(m.ticker)} aria-controls={`${historyId}-${m.ticker}`}>
+                                <span>{m.subtitle || m.title}</span><span className="mono">{percent(m.probability)}</span><span aria-hidden="true">{expanded.has(m.ticker) ? '−' : '+'}</span>
+                            </button>
                             {m.probability !== null && <Progress value={m.probability}/>}
                             <span className="note">Kalshi bid–ask midpoint</span> <TrustBadge market={m}/>
+                            {expanded.has(m.ticker) && <div id={`${historyId}-${m.ticker}`} role="region" aria-label={`History for ${m.subtitle || m.title}`}>
+                                <OddsChart ticker={m.ticker} name={m.subtitle || m.title}/>
+                            </div>}
                         </div>)}
+                        {pages > 1 && <nav className="event-pagination" aria-label="Outcome pages">
+                            <button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</button>
+                            <span className="note">Page {currentPage} of {pages}</span>
+                            <button disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>Next</button>
+                        </nav>}
                         <p className="note">Each outcome shows its own midpoint. These quotes are not normalized.</p>
-                        <h3>Past week · {market?.subtitle || market?.title}</h3>
-                        <OddsChart points={data.history.filter(p => p.ticker === market?.ticker)}/>
                     </Card>
                     <Card>
                         <div className="row"><h2>Your holdings linked to this event</h2><span className="mono">{money(data.event.linkedValue)} · {percent(data.event.share)}</span></div>
@@ -38,16 +73,16 @@ export function EventPage({ ticker }: {
                     </Card>
                 </div>
                 <div>
-                    <Card><h2>Why this trust score</h2>{market && <TrustBreakdown market={market}/>}</Card>
+                    <Card><div className="row"><h2>Reporting context</h2><ReloadButton label="Reload reporting" onReload={onReloadReporting}/></div><p className="note">Saved reporting is separate from current odds. Unchanged sources reuse the cached summary.</p></Card>
+                    <Card><h2>Why this trust score</h2>{market && <><p className="note">{market.subtitle || market.title}</p><TrustBreakdown market={market}/></>}</Card>
                     {data.summary && <Card>
                         <h2>Why the odds moved</h2><span className="chip plain">AI summary</span>
-                        <p>{data.summary.text}</p>
+                        <p>{data.summary.text}</p>{data.summary.generatedAt && <p className="note">AI snapshot saved <time dateTime={data.summary.generatedAt}>{dateText(data.summary.generatedAt, true)}</time>. Current odds may differ.</p>}
                         {data.summary.sources.map(s => <p key={s.url}><a href={s.url} target="_blank" rel="noreferrer">{s.title}</a></p>)}
                         <p className="note">Generated from linked reporting. Check the sources.</p>
                     </Card>}
                 </div>
             </div>
-        </>}
     </>;
 }
 
@@ -77,8 +112,3 @@ function TrustBreakdown({ market }: { market: Market }) {
         <a href="#track-record">How trust is scored →</a><p><a href="#track-record/holdings">Compare with past events linked to your holdings →</a></p>
     </>;
 }
-
-export function OddsChart({ points }: {
-    points: OddsPoint[];
-}) { if (points.length < 2)
-    return <Empty>Not enough odds history for a chart.</Empty>; const start = Date.parse(points[0].ts), end = Date.parse(points.at(-1)!.ts); const coords = points.map(p => `${45 + (Date.parse(p.ts) - start) / Math.max(1, end - start) * 650},${255 - p.probability * 220}`).join(' '); return <><svg className="chart" viewBox="0 0 720 290" role="img" aria-label="One-week bid–ask midpoint history">{[0, .5, 1].map(p => <g key={p}><line x1="45" y1={255 - p * 220} x2="695" y2={255 - p * 220} stroke="#2A313C"/><text x="0" y={260 - p * 220} fill="#A3ADBA" fontSize="12">{percent(p)}</text></g>)}<polyline points={coords} fill="none" stroke="#5AA2FF" strokeWidth="3"/></svg><div className="row note"><span>{dateText(points[0].ts)}</span><span>{dateText(points.at(-1)!.ts)}</span></div></>; }

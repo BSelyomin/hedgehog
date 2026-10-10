@@ -26,3 +26,11 @@ export const driverFor = (key: string) => DRIVERS.find(driver => driver.key === 
 // A typical effect under one basis point per period is numerical noise, not a relationship:
 // the range can exclude zero only because the fit is almost exact (an index fund against SPY).
 export const MIN_TYPICAL_EFFECT = 0.0001;
+// A measurement counts as a link only when a typical move in its driver moves the holding at
+// least this fraction of what a typical move in the holding's biggest driver does. With ten years
+// of prices almost every holding is reliably tied to almost every driver, however faintly, so
+// reliability alone linked a bank to diesel prices. A tenth keeps an airline's link to oil (11%
+// and 13% of what the stock market does to the two held on 2026-10-10) and drops the fainter
+// ones. Three of the 30 lesser links measured that day sat within a point of the line, so a
+// link that close can come and go as measurements are refreshed.
+export const MATERIAL_SHARE = 0.1;

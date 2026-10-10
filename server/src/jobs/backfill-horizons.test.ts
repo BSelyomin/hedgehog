@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const mocks=vi.hoisted(()=>({query:vi.fn(),kalshi:vi.fn()}));
 vi.mock('../db.ts',()=>({query:mocks.query}));
 vi.mock('../services/kalshi.ts',async original=>({...await original<typeof import('../services/kalshi.ts')>(),kalshi:mocks.kalshi}));
-import { backfill } from './backfill.ts';
+import { backfillHorizons as backfill } from './backfill.ts';
 const market={ticker:'M',event_ticker:'E',title:'Synthetic test question',status:'finalized',result:'yes',close_time:'2026-10-10T12:30:00Z'};
 beforeEach(()=>{
  mocks.query.mockReset().mockImplementation(async(sql:string)=>sql.includes('SELECT DISTINCT e.series_ticker')?[{series_ticker:'S',category:'Test'}]:[]);

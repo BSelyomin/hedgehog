@@ -19,9 +19,11 @@ export function buildBriefing(portfolio: ExposureResponse, move: MovesResponse |
     const spokenQuoteTime = (date: string) => new Intl.DateTimeFormat('en-US', { timeZone: BRIEFING_TIMEZONE, hour: 'numeric', minute: '2-digit' }).format(new Date(date));
     const direction = (value: string) => Number(value) < 0 ? 'down' : 'up';
     const amount = (value: number | null | undefined) => value == null ? null : Math.abs(value).toFixed(2);
+    // Events come biggest mover first, and so do each event's markets.
+    const biggest = move?.movedEvents[0]?.markets[0];
     const facts = {
         asOf: portfolio.asOf,
-        biggest: move?.oddsMoves[0] ? {title: move.oddsMoves[0].title, change: Math.abs(move.oddsMoves[0].changePoints).toFixed(1), direction: move.oddsMoves[0].changePoints < 0 ? 'down' : 'up'} : null,
+        biggest: biggest ? {title: biggest.title, change: Math.abs(biggest.changePoints).toFixed(1), direction: biggest.changePoints < 0 ? 'down' : 'up'} : null,
         session: move?.date ? spokenDate(move.date) : null,
         total: move?.total == null ? null : move.total.toFixed(2),
         fromMarket: move?.fromMarket == null ? null : move.fromMarket.toFixed(2),

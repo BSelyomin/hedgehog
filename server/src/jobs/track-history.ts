@@ -1,7 +1,7 @@
 import { query } from '../db.ts';
 import { kalshi } from '../services/kalshi.ts';
 import type { KalshiMarket } from '../services/kalshi.ts';
-import { loadCandles, oddsBeforeClose, outcomeAlreadyKnown } from './backfill.ts';
+import { loadCandles, oddsAtHorizon, outcomeAlreadyKnown } from './backfill.ts';
 import { FORECAST_HORIZONS } from '../../../shared/types.ts';
 import { yahoo } from './prices.ts';
 
@@ -68,7 +68,7 @@ export async function trackHistory(options:{maxMarkets?:number;maxSeries?:number
                 if(previous?.status==='quoted'&&previous.quote_time&&previous.quote_time.getTime()/1000<=target&&previous.quote_time.getTime()/1000>=target-60&&!quoteOutcomeKnown(m,previous.quote_time.getTime()/1000,release))continue;
                 const beforeOpen=m.open_time&&Number.isFinite(Date.parse(m.open_time))&&Date.parse(m.open_time)>target*1000;
                 const candles=beforeOpen?[]:await loadCandles(s.series_ticker,m.ticker,{start_ts:String(target-60),end_ts:String(target),period_interval:'1'},source==='historical');
-                const odds=oddsBeforeClose(candles,m.close_time,hours);
+                const odds=oddsAtHorizon(candles,m.close_time,hours);
                 const status=!odds?'missing':quoteOutcomeKnown(m,odds.ts,release)?'outcome_known':'quoted';
                 const candle=odds?candles.find(c=>c.end_period_ts===odds.ts):undefined;
                 await query(`INSERT INTO track_quotes(market_id,horizon_hours,quote_time,yes_bid,yes_ask,status) VALUES($1,$2,$3,$4,$5,$6)

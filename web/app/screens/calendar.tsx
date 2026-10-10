@@ -1,8 +1,10 @@
 'use client';
 import { useId, useRef, useState } from 'react';
 import type { CalendarResponse, ExposureResponse } from '../../../shared/types';
-import { percent, href, useData, Card, Fresh, Status, Empty, Progress, EventList } from '../common';
+import { percent, href, useData, Card, Fresh, Status, Empty, Progress, EventList, ReloadButton } from '../common';
 import { defaultCalendarFilters, filterCalendarEvents, type CalendarFilters } from './calendar-filters';
+import { CategoryFilter } from './category-controls';
+import { selectEvents, useCategorySelection } from './category-filter';
 
 export function Calendar() {
     const [days, setDays] = useState(14);
@@ -12,8 +14,10 @@ export function Calendar() {
     const [pageSize, setPageSize] = useState(10);
     const listHeading = useRef<HTMLHeadingElement>(null);
     const filtersId = useId();
-    const { data, error } = useData<CalendarResponse | ExposureResponse>(days ? `/calendar?days=${days}` : '/exposure');
-    const events = filterCalendarEvents(data?.events ?? [], filters);
+    const { data, error, reload } = useData<CalendarResponse | ExposureResponse>(days ? `/calendar?days=${days}` : '/exposure');
+    // The category chosen on any screen narrows the calendar before its own filters.
+    const selection = useCategorySelection();
+    const events = filterCalendarEvents(data ? selectEvents(data.events, data.categories, selection) : [], filters);
     const pageCount = Math.max(1, Math.ceil(events.length / pageSize));
     const currentPage = Math.min(page, pageCount);
     const firstIndex = (currentPage - 1) * pageSize;
@@ -32,7 +36,7 @@ export function Calendar() {
         listHeading.current?.scrollIntoView({ block: 'start' });
     }
     return <>
-        <h1>Event calendar</h1><p>Explore the events linked to your holdings by event date and portfolio reach.</p>
+        <div className="row"><h1>Event calendar</h1><ReloadButton onReload={() => reload()}/></div><p>Explore the events linked to your holdings by event date and portfolio reach.</p>
         <Card className="calendar-filters">
             <div className="calendar-toolbar">
                 <label>Search events or holdings<input type="search" placeholder="Event, outcome, category or ticker…" value={filters.search} onChange={event => update('search', event.target.value)}/></label>
@@ -43,6 +47,7 @@ export function Calendar() {
                     <option value="date">Soonest event</option><option value="date-desc">Latest event</option><option value="reach">Most portfolio reach</option><option value="holdings">Most linked holdings</option><option value="name">Event name: A–Z</option>
                 </select></label>
             </div>
+            {data && <CategoryFilter categories={data.categories}/>}
             <div className="calendar-filter-actions">
                 <div className="toggle" role="group" aria-label="Event type">{(['All', 'Company', 'Other'] as const).map(type => <button key={type} onClick={() => update('type', type)} aria-pressed={filters.type === type} className={filters.type === type ? 'active' : ''}>{type === 'Other' ? 'Other events' : type}</button>)}</div>
                 <button className="filter-toggle" aria-expanded={filtersOpen} aria-controls={filtersId} onClick={() => setFiltersOpen(value => !value)}>More filters{activeFilters > 0 && <span className="filter-count">{activeFilters}</span>}<span className="disclosure-chevron" aria-hidden="true">›</span></button>

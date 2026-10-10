@@ -20,8 +20,16 @@ describe('morning briefing', () => {
         expect(morningReady(new Date('2026-11-02T13:00:00Z'))).toBe(true);
     });
     it('reports the supplied completed session and reconciled move components', () => {
-        const text = buildBriefing(portfolio([]), {date:'2026-10-09',total:-12.5,fromMarket:-10,beyondMarket:-2.5,oddsMoves:[],spyReturn:0,holdings:[],drivers:[],missingDrivers:[],unpricedValue:0,asOf:now.toISOString()} as MovesResponse, now);
+        const text = buildBriefing(portfolio([]), {date:'2026-10-09',requestedDate:null,range: 'day', startDate: '2026-10-08', startValue: null, endValue: null, oddsWindow: null, settledEvents: [], driverChanges: [], notes:[],total:-12.5,fromMarket:-10,beyondMarket:-2.5,movedEvents:[],spyReturn:0,holdings:[],drivers:[],missingDrivers:[],unpricedValue:0,asOf:now.toISOString()} as MovesResponse, now);
         expect(text).toContain('October 9, 2026'); expect(text).toContain('down 12.50 dollars'); expect(text).toContain('down 2.50 dollars');
+    });
+    it('mentions the market that moved most, the first market of the first event', () => {
+        const market = (title: string, changePoints: number) => ({ ticker: title, title, from: .5, to: .5 + changePoints / 100, fromTime: now.toISOString(), toTime: now.toISOString(), changePoints });
+        const move = { date: '2026-10-09', total: 5, fromMarket: 3, beyondMarket: 2, unpricedValue: 0, asOf: now.toISOString(),
+            movedEvents: [{ ticker: 'FED', title: 'Fed decision', links: [], moved: 2, markets: [market('Will the Fed cut in December?', -12.5), market('Will the Fed hold?', 9)] }, { ticker: 'OIL', title: 'Oil', links: [], moved: 1, markets: [market('Oil above 90?', 4)] }] } as unknown as MovesResponse;
+        const text = buildBriefing(portfolio([]), move, now);
+        expect(text).toContain('Will the Fed cut in December. The midpoint moved down 12.5 percentage points.');
+        expect(text).not.toContain('Oil above 90');
     });
     it('includes events beyond seven days, earliest first, and omits closed events', () => {
         const text = buildBriefing(portfolio([event('Later','2026-12-01T00:00:00Z'),event('Sooner','2026-11-01T00:00:00Z'),event('Closed','2026-10-01T00:00:00Z')]),null,now);

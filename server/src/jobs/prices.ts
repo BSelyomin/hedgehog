@@ -2,19 +2,28 @@ import YahooFinance from 'yahoo-finance2';
 import { query } from '../db.ts';
 import { seedFile } from '../seed.ts';
 import { storePrices } from './price-storage.ts';
-import { DRIVERS } from '../config/drivers.ts';
+import { completedPriceDate } from '../services/price-date.ts';
+import { CONTROL, DRIVERS } from '../config/drivers.ts';
 export const yahoo = new YahooFinance();
 export async function prices() {
     // Only listed securities have a price history; cash, bonds held directly and property do not.
-    const symbols = new Set([...(await seedFile<string[]>('demo_symbols')), ...(await query<{
+    const symbols = new Set([CONTROL, ...(await seedFile<string[]>('demo_symbols')), ...(await query<{
             symbol: string;
-        }>("SELECT DISTINCT symbol FROM holdings WHERE asset_type='security'")).map(r => r.symbol), ...DRIVERS.filter(d => d.source === 'yahoo').map(d => d.key)]);
+        }>("SELECT DISTINCT symbol FROM portfolio_holdings WHERE asset_type='security'")).map(r => r.symbol), ...DRIVERS.filter(d => d.source === 'yahoo').map(d => d.key)]);
     const start = new Date();
     start.setUTCFullYear(start.getUTCFullYear() - 10);
+    const cutoff = completedPriceDate();
+    const coverage = await query<{ symbol: string; first: Date; last: Date }>(
+        'SELECT symbol,min(ts) AS first,max(ts) AS last FROM prices WHERE symbol=ANY($1::text[]) GROUP BY symbol', [[...symbols]]);
     for (const symbol of symbols) {
         try {
-            const history = await yahoo.chart(symbol, { period1: start, interval: '1d' });
-            const rows = history.quotes.flatMap(row => typeof row.close === 'number' && Number.isFinite(row.close)
+            const saved = coverage.find(row => row.symbol === symbol);
+            // Bootstrap the full measurement window once. Subsequent runs refresh
+            // the recent week, including provider corrections and the latest close.
+            const period1 = saved && saved.first.getTime() <= start.getTime() + 45 * 86400000
+                ? new Date(Math.max(start.getTime(), saved.last.getTime() - 7 * 86400000)) : start;
+            const history = await yahoo.chart(symbol, { period1, interval: '1d' });
+            const rows = history.quotes.flatMap(row => row.date.toISOString().slice(0, 10) <= cutoff && typeof row.close === 'number' && Number.isFinite(row.close)
                 ? [{ date: row.date.toISOString().slice(0, 10), close: row.close }] : []);
             await storePrices(symbol, rows);
             console.log('Price history loaded', symbol, rows.length);
@@ -40,7 +49,7 @@ export async function prices() {
                     value: string;
                 }[];
             };
-            const rows = data.observations.flatMap(row => row.value !== '.' && Number.isFinite(Number(row.value))
+            const rows = data.observations.flatMap(row => row.date <= cutoff && row.value !== '.' && Number.isFinite(Number(row.value))
                 ? [{ date: row.date, close: Number(row.value) }] : []);
             await storePrices(driver.key, rows);
             console.log('Yield history loaded', driver.key, rows.length);

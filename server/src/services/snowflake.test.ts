@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cortexJson, searchSources, snowflakeConfigured } from './snowflake.ts';
 
+vi.mock('./ai-cache.ts', () => ({ cachedAI: async (_namespace: string, _input: unknown, produce: () => Promise<unknown>) =>
+    ({ value: await produce(), createdAt: '2026-10-09T12:00:00.000Z' }) }));
+
 const request = vi.fn<typeof fetch>();
 const schema = { type: 'object', properties: { tags: { type: 'array', items: { type: 'string' } } }, required: ['tags'] };
 const completion = (content = '{"tags":["oil"]}', finish_reason = 'stop') =>

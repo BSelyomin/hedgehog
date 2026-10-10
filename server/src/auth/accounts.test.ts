@@ -1,6 +1,7 @@
 import { it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { contentHash } from '../services/ai-cache.ts';
 import { pool } from '../db.ts';
 import { createApp } from '../app.ts';
 import { hashPassword, validatePassword, verifyPassword } from './passwords.ts';
@@ -197,11 +198,17 @@ it('scopes briefing reads and refresh generation to the authenticated portfolio'
     respond = sql => sql.includes('JOIN users') ? result([account]) : sql.includes('pg_try_advisory_lock') ? result([{locked:false}]) : result();
     const read = await request(createApp(), '/briefing', {headers:headers(true)});
     assert.equal(read.status,200);
-    assert.equal(calls.find(c => c.sql.includes('FROM briefings'))?.values[0],`user:${id}`);
-    assert.match(String(calls.find(c => c.sql.includes('FROM briefings'))?.values[1]), /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(calls.find(c => c.sql.includes('FROM holdings'))?.values[0], `user:${id}`);
+    const portfolioHash = contentHash({ holdings: [], manualHoldings: [], brokerageHoldings: [], sandbox: false });
+    const cacheHash = contentHash({ session: `user:${id}`, portfolio: portfolioHash,
+        voice: process.env.ELEVENLABS_VOICE_ID ?? '', enabled: Boolean(process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID), model: 'eleven_multilingual_v2' });
+    assert.deepEqual(calls.find(c => c.sql.includes('FROM ai_cache'))?.values, ['briefing-v1', cacheHash]);
     const refresh = await request(createApp(), '/briefing/refresh', {method:'POST',headers:headers(true),body:{}});
-    assert.equal(refresh.status,503);
-    assert.ok(String(calls.find(c => c.sql.includes('pg_try_advisory_lock'))?.values[0]).includes(`user:${id}`));
+    assert.equal(refresh.status, 200);
+    assert.equal(refresh.body.text, null, 'An empty portfolio must not generate private audio');
+    assert.ok(calls.filter(c => c.sql.includes('FROM holdings')).every(c => c.values[0] === `user:${id}`));
+    assert.ok(!calls.some(c => c.sql.includes('INSERT INTO ai_cache')));
+
 });
 it('scopes past-event history to the account resolved by authentication',async()=>{
  respond=sql=>sql.includes('JOIN users')?result([account]):result();

@@ -92,6 +92,41 @@ link to (about 7,000 markets), in daily chunks that are compressed after a day a
 eight. A trigger on `odds_snapshots` applies the same rule to any backend writing to the
 database, including one running older code.
 
+The event chart's longer ranges and the Moves screen read `odds_candles`: Kalshi's hourly closes
+for the past twelve days and its daily closes since each market was listed, one midpoint and
+its bid–ask spread per period, for the same linkable markets while they are open. A backend
+running code from before 2026-10-10 stores candlesticks without the spread and drops hourly
+ones after eight days; the current job fetches a market again when it finds readings without a
+spread, but the pruned days come back only as time passes. The candlestick job fills it after the first poll at
+startup, then hourly and after midnight New York. To run it by hand:
+
+```powershell
+docker compose exec backend npm run job -- odds-candles
+```
+
+Asset classes come from `security_profiles`, one small row per held ticker from Yahoo. The
+profiles job runs with the hourly price job and looks a ticker up when it is first held and
+again after thirty days. To classify newly added tickers at once:
+
+```powershell
+docker compose exec backend npm run job -- profiles
+```
+
+### If odds stop updating
+
+Each scheduled job runs under a database lock so that only one backend sharing the database
+runs it. A backend running code from before 2026-10-10 that dies mid-job can leave its session
+open, and the lock with it, for about an hour; current code ends such a session within two
+minutes. To see who holds a job and when it last did anything:
+
+```sql
+SELECT a.pid, a.state, a.backend_start, a.state_change, left(a.query, 60)
+FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid WHERE l.locktype = 'advisory';
+```
+
+A holder whose `state_change` is minutes old while nothing is being stored is dead;
+`SELECT pg_terminate_backend(<pid>);` frees the job.
+
 When the database is read-only the backend still starts. It serves stored data, skips migrations
 and scheduled jobs, reports `readOnly: true` from `/health` (the app shows a notice), and answers
 any attempt to save with a plain message. It checks every minute and applies migrations and starts
@@ -105,8 +140,8 @@ SET default_transaction_read_only = off;
 TRUNCATE odds_snapshots;
 ```
 
-That removes the stored odds history (the one-week charts and day-over-day odds moves start
-again); current odds return with the next poll. Holdings, accounts, tags, prices, measurements
+That removes the stored five-minute odds history (the detail in the one-day chart and
+day-over-day odds moves start again; Kalshi's hourly and daily closes in `odds_candles` remain); current odds return with the next poll. Holdings, accounts, tags, prices, measurements
 and the track record are not touched.
 
 ## Asset types and drivers
@@ -121,7 +156,7 @@ docker compose exec backend npm run job -- measure
 ```
 
 `prices` loads `DGS2`, `DGS10` and `MORTGAGE30US` from FRED and needs `FRED_API_KEY`. Both jobs
-also run nightly and at startup. Only listed securities are priced and measured; cash,
+also run hourly and at startup, independently of optional AI jobs. Only listed securities are priced and measured; cash,
 Treasuries, bonds and property are entered with their terms on the Add holdings screen and need
 no job. The CSV import takes symbol,valueUsd for securities and optional columns for the other types; `examples/feature-tour.csv` uses them and `examples/README.md` says what each row shows. FRED publishes yields a day late,
 so Moves names the yield drivers it could not yet compare for the latest session.
@@ -139,8 +174,7 @@ docker compose exec backend npm run job -- earnings-dates
 ```
 
 The job looks up each held symbol in EDGAR's ticker file, reads its filing list and stores the
-filing dates of 8-K filings carrying Item 2.02. It also runs after the nightly price load and at
-startup. Funds such as SPY and TLT file no such reports and show none. A move needs a close on
+filing dates of 8-K filings carrying Item 2.02. It also runs nightly and at startup, independently of the price loader. Funds such as SPY and TLT file no such reports and show none. A move needs a close on
 both sides of the filing date, so run `prices` first for newly added holdings.
 
 ## Validation on a networked machine
@@ -166,17 +200,171 @@ Restore into a compatible TimescaleDB installation using Timescale's documented 
 
 For public hosting, configure your chosen host, HTTPS reverse proxy and secret store. Set COOKIE_SECURE=true behind HTTPS. No domain registration, cloud resources, public publication or external account creation has occurred. Cloud provider details remain in questions.txt.
 
+## AI caching and reload
+
+The server applies `005_ai_cache.sql` on startup (or run `npm run migrate`). Restart
+with `docker compose up -d --build` after pulling this change. No new keys or
+packages are required. Existing AI snapshots enter the new cache on their next
+successful generation.
+
+Snowflake completions, Cortex Search results, and ElevenLabs audio are cached in
+Postgres. Keys use input content plus the relevant model/service configuration;
+secrets are excluded. Concurrent identical generations share a result, including
+across server workers through a PostgreSQL advisory transaction lock. Errors and
+invalid completions are not cached. Cache storage survives server restarts and is
+included in database backups.
+
+- Briefings belong to one session/account and a particular holdings snapshot.
+  Holdings amounts, symbols, manual versus brokerage sources, and sandbox status
+  affect the key. Unchanged saves/syncs, timestamps, the date, and Kalshi updates
+  do not. Returning to a previously used portfolio can reuse its prior briefing.
+- Event summaries are shared reporting context, without private portfolio data.
+  Their keys include event identity/title and retrieved passages, excluding live
+  market quotes. Saved numeric inputs remain attached to the prose, and every
+  read still checks numbers and citations. The page labels the original snapshot
+  time separately from current quotes.
+- Tagging requests are cached by their supplied series/filing content and allowed
+  tags. The risk-factor job reads the supplied file to detect changed filings.
+  Existing human-reviewed tags are preserved.
+- Search retrieval has no timed expiry. Event **Reload reporting** explicitly checks the
+  configured reporting index. Unchanged retrieved passages reuse the completion;
+  changed passages generate new context. Missing sources hide the summary.
+
+**Reload** is available on Overview, Calendar, Event, Earnings, Moves, and Track
+record. It preserves page selections and reports loading/errors. Overview reads the saved briefing independently of exposure, with a separate
+**Reload briefing** button to prepare a missing snapshot. Event pages similarly
+separate **Reload reporting** from their regular market-data reload. An AI failure
+does not block page refresh. Reload never
+forces regeneration of unchanged completion/audio inputs. It reads market data
+from Postgres; only the existing poller/backfill contact Kalshi. Brokerage sync
+remains the separate control on Brokerages.
+
+To check it:
+
+1. Open Overview and select Reload briefing. With data and ElevenLabs configured, read/play
+   the saved briefing and note its timestamp.
+2. Reload again, save the same holdings, or let Kalshi polling run. The briefing
+   timestamp/audio stay the same, while live page figures can update.
+3. Change a holding's amount (manual, CSV, or imported positions), then select Reload briefing
+   on Overview. A briefing is generated for the new portfolio.
+4. Open an event and use Reload for current odds or Reload reporting to check
+   sources. Current odds refresh independently of the saved
+   AI summary. Updated reporting can replace that summary; unchanged reporting
+   cannot. Summaries require a configured Cortex Search index and valid sources.
+5. Switch accounts: a private briefing/audio must never appear for another user.
+
+A saved briefing can be older than today. Its references to the daily move/week
+refer to its original snapshot date. This follows content-based invalidation;
+there is no automatic daily regeneration or force-clear button.
+
+
+### Requests that remain pending
+
+Page reads and AI generations now use separate database connection pools. Database
+connections time out after 5 seconds, SQL statements after 20 seconds, and query
+reads after 25 seconds. Browser reads stop after 30 seconds and display a retryable
+error; AI reloads have a 90-second browser limit. Exposure reads only markets linked
+to reviewed portfolio tags; moves batches price, sensitivity, and odds history reads.
+
+If an existing deployment still has requests pending, rebuild/restart both services
+to release old connections and load these changes:
+
+```sh
+docker compose up -d --build backend frontend
+docker compose logs --tail=80 backend frontend
+```
+
+Backend failures now log the HTTP method, route template, and sanitized error code.
+A missing table/column produces a migration message; a database statement timeout
+produces a timeout message. Do not share `.env`, credentials, or unredacted third-party
+logs when reporting a failure. Cached AI content still needs a reachable Postgres
+instance; it is not an offline browser copy of the portfolio.
+
+### Moves session and price history
+
+Moves opens with `GET /moves`, selecting the latest stored completed SPY session
+(or latest holding session if SPY history is absent). The UI shows the actual date
+and each holding's source close dates. Choosing a date calls `GET /moves?date=YYYY-MM-DD`
+and never substitutes another date. `range=day|week|month|quarter` sets how far back the
+window opens: on the last session at or before that date. A close more than 30 days older
+than the date wanted is not used. Use **Latest trading session** to return to the
+automatic view; Reload reads the newest stored results.
+
+Price loading and measurement now run on startup and hourly, independently of AI
+jobs. SPY loads first, established histories refresh the recent week, and new
+symbols load their measurement history. Today's Yahoo candle is excluded until
+17:00 America/New_York so an intraday quote is not treated as a daily close.
+Migration `006_measurement_price_date.sql` records the last aligned source-price
+date in `measured_links`; a calculation performed after midnight can therefore be
+used for the preceding session. Future-source measurements remain excluded from
+historical requests. Insufficient/unreliable betas still have no numeric split.
+
+Rebuild to apply migrations and start the price loader:
+
+```sh
+docker compose up -d --build backend frontend
+```
+
+If price history failed to load, check the backend logs for `Price load failed for
+symbol`. You can retry just the data jobs after addressing provider connectivity:
+
+```sh
+docker compose exec backend npm run job -- prices
+docker compose exec backend npm run job -- measure
+```
+
+The top portfolio/sandbox banner has been removed. Sandbox/source information is
+still available on Holdings and Brokerages; removing the banner does not change
+SnapTrade mode or convert simulated positions into live accounts.
+
+### Timing a slow Moves request in your browser
+
+Moves now has a dedicated query path: it reads the holdings, the closes at the two
+ends of the window per symbol, stored sensitivities, reviewed tags, markets with a
+supported 3+ point odds move, and the markets that settled inside the window. It does
+not build the exposure map, calculate trust scores, read settled markets outside the
+window, or scan the entire prices table for freshness. On the
+profiled signed-in account, SQL calls fell from 13 to 7. Independent holding reads
+and price/measurement/tag reads run concurrently; the default session and its
+closing prices are resolved in one query.
+
+Rebuild both services to load the backend changes and forward the new headers:
+
+```sh
+docker compose up -d --build backend frontend
+```
+
+In your browser, open Developer Tools → Network, open Moves or select Reload,
+and select the `/api/moves` request. Under Response Headers, inspect `Server-Timing`:
+
+- `backend`: elapsed backend time through response preparation, including authentication.
+- `session`: account lookup time, including database/pool waits (for signed-in users).
+- `holdings`: manual and brokerage holdings reads, performed concurrently.
+- `prices`: default-date selection and recent closing-price reads.
+- `measurements` / `tags`: sensitivity and stock-tag reads, concurrent with prices.
+- `odds`: finding linked markets whose odds moved between the window's two closes.
+- `settled`: reading the linked markets that settled inside the window.
+- `sql_count`: number of database queries; `sql_total` is cumulative query time,
+  including waits. Parallel queries overlap, so do not add the durations together
+  or compare `sql_total` to wall-clock request time as if they were equivalent.
+
+A large stage duration identifies which database operation to inspect next. If
+browser time is much larger than `backend`, inspect request queueing, the frontend
+proxy, and network time as well. Timings and counts contain no SQL, holdings,
+credentials, or user IDs. These headers measure your actual deployment; earlier
+embedded-database benchmarks did not include your network or pool contention.
+
 ## Morning briefing
 
-The briefing runs at 8 a.m. America/New_York, with independent hourly retries at :15 after that time and catch-up after startup price loading. Generation never runs before 8 a.m. A per-session/day database advisory lock prevents concurrent voice requests, and an existing daily MP3 is reused. Failures remain eligible for retry. The API and audio lookup use the same New York date, including across UTC midnight and daylight saving changes.
+Scheduled briefings run from 8 a.m. America/New_York, with independent hourly retries at :15 and a catch-up after price loading. Explicit Reload briefing can prepare a missing snapshot before 8 a.m. Content-based cache locks coalesce concurrent voice requests per session and holdings snapshot using the separate AI connection pool. Successful audio is reused across dates and market changes; failures remain eligible for retry. The snapshot records its original New York date and the audio endpoint checks its cache version.
 
-The move uses the latest stored SPY trading date before today; it never treats an intraday candle as a completed session. Its date is spoken explicitly, and missing holding prices or beta estimates remain unavailable. The main linked event closing this week is selected by portfolio reach. If none close this week, the nearest upcoming event is included instead. Single-outcome bid–ask midpoint probabilities are spoken only with quotes at most 15 minutes old. Multi-outcome events keep their distributions on the event page. Historical odds changes are explicitly dated and do not imply causation.
+The move uses the latest stored completed SPY session (or a holding session if SPY is missing); it never treats an intraday candle as a completed session. Its date is spoken explicitly, and missing holding prices or beta estimates remain unavailable. The main linked event closing this week is selected by portfolio reach. If none close this week, the nearest upcoming event is included instead. Single-outcome bid–ask midpoint probabilities are spoken only with quotes at most 15 minutes old. Multi-outcome events keep their distributions on the event page. Historical odds changes are explicitly dated and do not imply causation.
 
-To generate after 8 a.m.: `docker compose exec backend npm run job -- briefings`. Open the overview to play audio or read the transcript. An existing MP3 for that date is retained after a code update; the new wording starts with the next uncached day. Docker and the host must remain running. No email delivery or notification is implemented.
+To generate after 8 a.m.: `docker compose exec backend npm run job -- briefings`. Open the overview to play audio or read the transcript. An existing MP3 for unchanged holdings is retained after a code update; the new wording starts with the next uncached holdings snapshot. Docker and the host must remain running. No email delivery or notification is implemented.
 
 Briefing wording follows a conversational sequence: the last completed session, available market context, then a holding-specific event watchlist. Directions are spoken as up/down with absolute dollar amounts, dates use month names, and quote times use New York time. The deterministic template still passes the numeric guard before speech; it does not add AI explanations or unsupported causes.
 
-Use **Refresh briefing** on the overview to regenerate today’s text and MP3 immediately, including before the automatic morning run. POST `/briefing/refresh` uses the current guest or authenticated account session and replaces the saved briefing only after successful generation. Failed requests keep existing audio. Audio responses disable browser caching so playback reflects the refreshed version.
+Use **Reload briefing** on the overview to prepare text and MP3 for a changed holdings snapshot, including before the automatic morning run. POST `/briefing/reload` and its compatibility alias `/briefing/refresh` use the current guest or authenticated account session. Both reuse saved audio for unchanged holdings. Failed requests leave successful cached snapshots intact. Audio responses disable browser caching and check the snapshot version.
 # Coverage and portfolio review
 
 Overview includes linked events at all future dates. Calendar includes only those whose event
@@ -249,6 +437,10 @@ By Market and By Holding group reviewed series into Company markets, Oil, Fed ra
 
 The horizon selector accepts 1, 24, 168 or 720 hours before trading close (`GET /track-record?horizon=168`). Migration `013_one_hour_forecasts.sql` adds the one-hour horizon. Migration `012_forecast_horizons.sql` stores independent bid/ask observations for each horizon and makes missing-quote exclusions horizon-specific. It does not copy legacy probabilities into longer horizons. Quotes must end at or before the target and no more than 60 seconds before its whole-second timestamp. A known official release time takes precedence over Kalshi occurrence metadata when excluding already-known outcomes. Missing release timing remains explicit.
 
-After migrations, run `docker compose exec backend npm run job -- backfill KXCPI KXCPIYOY KXCPICORE` for a scoped inflation backfill, or omit the series arguments to process every reviewed series. The job also runs nightly. It requests history separately for each horizon, retains a failed page for retry, and does not classify API outages as missing quotes. Large catalogs can take a long time; no historical probability is interpolated or borrowed from another horizon.
+After migrations, run `docker compose exec backend npm run job -- backfill-horizons KXCPI KXCPIYOY KXCPICORE` for a scoped inflation backfill, or omit the series arguments to process every reviewed series. The job also runs nightly. It requests history separately for each horizon, retains a failed page for retry, and does not classify API outages as missing quotes. Large catalogs can take a long time; no historical probability is interpolated or borrowed from another horizon.
 
 The existing category-based trust score and optional holdings price comparisons continue to use the legacy 24-hour record. Theme/horizon selection changes the displayed evaluation only. Contract counts and Kalshi event IDs are shown separately from sourced release counts; event IDs and themes may overlap. Calibration, Brier and intervals are descriptive, not guarantees or causality claims.
+
+## Combined holdings after merging asset support
+
+Migration `012_portfolio_asset_types.sql` extends the existing combined manual/SnapTrade view with asset types and terms. Rebuild the backend to apply it before running the jobs. Price loading, measurement, sector tags, and SEC dates include imported securities; cash, directly held bonds, and property retain their own terms. Saving or clearing manual/CSV holdings does not duplicate or remove connected positions. Both `/briefing/reload` and the compatibility `/briefing/refresh` route reuse audio for unchanged holdings; neither bypasses the content cache.

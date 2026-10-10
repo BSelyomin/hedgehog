@@ -1,18 +1,21 @@
 import { trackRatings } from './services/track-ratings.ts';
+import { briefing, briefingResponse, savedBriefing } from './jobs/briefing.ts';
+import { summaries } from './jobs/summaries.ts';
 import express from 'express';
+import { movesTiming } from './services/request-timing.ts';
 import { authRouter } from './auth/routes.ts';
+import { brokerageRouter } from './brokerages/routes.ts';
 import { loadSession, protectWrites } from './auth/session.ts';
-import { query, iso } from './db.ts';
+import { query } from './db.ts';
 import { getHoldings, saveHoldings, validateHoldings } from './services/holdings.ts';
 import { exposure, calendar, eventDetail } from './services/exposure.ts';
-import { latestSession, moves } from './services/moves.ts';
+import { isOddsRange, oddsHistory } from './services/odds-history.ts';
+import { moves } from './services/moves.ts';
+import { isMoveRange } from './services/move-data.ts';
 import { earnings, earningsList } from './services/earnings.ts';
 import { holdingsHistory } from './services/holdings-history.ts';
 import { HISTORY_SUBJECTS } from './services/history-subjects.ts';
 import { trackRecord } from './services/track-record.ts';
-import { briefing } from './jobs/briefing.ts';
-import { briefingDay } from './services/briefing-content.ts';
-import type { BriefingResponse } from '../../shared/types.ts';
 import { FORECAST_HORIZONS } from '../../shared/types.ts';
 // What a failed request tells the browser. Postgres reports 25006 when a write reaches a
 // database that is accepting reads only, for example because its storage is full.
@@ -35,9 +38,11 @@ app.get('/health', async (_req, res) => { try {
 catch {
     res.status(503).json({ error: 'Database unavailable', asOf: null });
 } });
+app.use(movesTiming);
 app.use(loadSession);
 app.use(protectWrites);
 app.use('/auth', authRouter);
+app.use('/brokerages', brokerageRouter);
 app.get('/holdings', async (_req, res) => { res.json(await getHoldings(res.locals.session)); });
 app.post('/holdings', async (req, res) => { let holdings; try {
     holdings = validateHoldings(req.body?.holdings);
@@ -45,7 +50,7 @@ app.post('/holdings', async (req, res) => { let holdings; try {
 catch (error) {
     res.status(400).json({ error: (error as Error).message, asOf: null });
     return;
-} await query('DELETE FROM briefings WHERE session_id=$1', [res.locals.session]); res.json(await saveHoldings(res.locals.session, holdings)); });
+} res.json(await saveHoldings(res.locals.session, holdings)); });
 app.get('/exposure', async (_req, res) => { res.json(await exposure(res.locals.session)); });
 app.get('/calendar', async (req, res) => { const days = Number(req.query.days ?? 14); if (!Number.isInteger(days) || days < 1 || days > 90) {
     res.status(400).json({ error: 'days must be 1–90', asOf: null });
@@ -55,11 +60,21 @@ app.get('/event/:ticker', async (req, res) => { const result = await eventDetail
     res.status(404).json({ error: 'No linked event found', asOf: null });
     return;
 } res.json(result); });
-// With no date, show the latest completed session rather than a day whose close is not in yet.
-app.get('/moves', async (req, res) => { const date = String(req.query.date ?? req.query.day ?? await latestSession() ?? new Date().toISOString().slice(0, 10)); if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) {
+// One market's odds over a range, for the event chart. Odds are public data, so any stored market can be read.
+app.get('/odds/:ticker', async (req, res) => { const range = req.query.range ?? 'week'; if (!isOddsRange(range)) {
+    res.status(400).json({ error: 'range must be day, week, month or all', asOf: null });
+    return;
+} const result = await oddsHistory(req.params.ticker, range); if (!result) {
+    res.status(404).json({ error: 'Market not found', asOf: null });
+    return;
+} res.json(result); });
+app.get('/moves', async (req, res) => { const input = req.query.date ?? req.query.day; const date = input === undefined ? undefined : String(input); if (date !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date)) {
     res.status(400).json({ error: 'Use a valid YYYY-MM-DD date', asOf: null });
     return;
-} res.json(await moves(res.locals.session, date)); });
+} const range = req.query.range ?? 'day'; if (!isMoveRange(range)) {
+    res.status(400).json({ error: 'range must be day, week, month or quarter', asOf: null });
+    return;
+} res.json(await moves(res.locals.session, date, undefined, range)); });
 app.get('/earnings', async (_req, res) => { res.json(await earningsList(res.locals.session)); });
 app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase())); });
 app.get('/holdings-history', async (req,res) => {
@@ -79,28 +94,47 @@ app.get('/track-record', async (req, res) => {
     if (!FORECAST_HORIZONS.some(h => h.hours === horizon)) { res.status(400).json({error:'Choose a horizon of 1, 24, 168 or 720 hours',asOf:null}); return; }
     res.json(await trackRecord(res.locals.session,horizon));
 });
-async function readBriefing(session: string): Promise<BriefingResponse> {
-    const date = briefingDay();
-    const rows = await query<{text: string; audio: Buffer | null; as_of: Date | null}>(
-        'SELECT * FROM briefings WHERE session_id=$1 AND day=$2', [session, date]);
-    const row = rows[0];
-    return {date, text: row?.text ?? null, audioUrl: row?.audio ? '/api/briefing/audio' : null, asOf: iso(row?.as_of)};
-}
-app.get('/briefing', async (_req, res) => { res.json(await readBriefing(res.locals.session)); });
-app.post('/briefing/refresh', async (req, res) => {
-    if (!req.is('application/json')) { res.status(415).json({error: 'Use application/json', asOf: null}); return; }
-    try { await briefing(res.locals.session, true); }
-    catch { res.status(503).json({error: 'Could not refresh briefing. Your saved briefing is still available; try again shortly.', asOf: null}); return; }
-    res.json(await readBriefing(res.locals.session));
+app.get('/briefing', async (_req, res) => { res.json(await briefingResponse(res.locals.session)); });
+app.post(['/briefing/reload', '/briefing/refresh'], async (_req, res) => {
+    await briefing(res.locals.session, true);
+    res.json(await briefingResponse(res.locals.session));
 });
-app.get('/briefing/audio', async (_req, res) => { const rows = await query<{
-    audio: Buffer;
-    as_of: Date;
-}>('SELECT audio,as_of FROM briefings WHERE session_id=$1 AND day=$2 AND audio IS NOT NULL', [res.locals.session, briefingDay()]); if (!rows.length) {
-    res.status(404).json({ error: 'Briefing audio not ready', asOf: null });
-    return;
-} res.set('Cache-Control', 'private, no-store'); res.set('X-Data-As-Of', iso(rows[0].as_of)!); res.type('audio/mpeg').send(rows[0].audio); });
+app.get('/briefing/audio', async (req, res) => {
+    const saved = await savedBriefing(res.locals.session);
+    if (!saved?.value.audio) {
+        res.status(404).json({ error: 'Briefing audio not ready', asOf: null });
+        return;
+    }
+    if (req.query.v && req.query.v !== saved.createdAt) {
+        res.status(404).json({ error: 'Briefing snapshot changed; reload the page.', asOf: null });
+        return;
+    }
+    res.set('Cache-Control', 'private, no-store');
+    if (saved.value.asOf) res.set('X-Data-As-Of', saved.value.asOf);
+    res.type('audio/mpeg').send(Buffer.from(saved.value.audio, 'base64'));
+});
+app.post('/event/:ticker/reload', async (req, res) => {
+    const event = await eventDetail(res.locals.session, req.params.ticker);
+    if (!event) {
+        res.status(404).json({ error: 'No linked event found', asOf: null });
+        return;
+    }
+    await summaries(event.event.ticker, true);
+    res.json(await eventDetail(res.locals.session, event.event.ticker));
+});
 app.use((_req, res) => { res.status(404).json({ error: 'Endpoint not found', asOf: null }); });
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => { const response = errorResponse(error); res.status(response.status).json({ error: response.error, asOf: null }); });
+app.use((error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const bad = error instanceof SyntaxError;
+    const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : '';
+    // Log only the route template and error classification, never query values,
+    // URLs with secrets, provider bodies, or raw database connection errors.
+    console.warn('API request failed', { method: req.method, route: req.route?.path ?? 'middleware',
+        code: /^[A-Z0-9_]{5,24}$/.test(code) ? code : bad ? 'INVALID_JSON' : 'UNAVAILABLE' });
+    res.status(bad ? 400 : 503).json({ error: bad ? 'Invalid JSON' :
+        code === '25006' ? errorResponse(error).error :
+        code === '42P01' || code === '42703' ? 'Database schema is out of date. Restart the backend to apply migrations.' :
+        code === '57014' ? 'Database request timed out. Try Reload; check backend database performance if it continues.' :
+        'Data unavailable. Try Reload; check the backend connection and server logs if it continues.', asOf: null });
+});
 return app;
 }
