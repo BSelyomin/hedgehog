@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import type { TrackRecordResponse, CategoryRecord, ExposureResponse, HistorySubject } from '../../../shared/types';
-import { percent, number, dateText, useData, Card, Fresh, Status, Empty, href, Progress } from '../common';
+import { percent, number, dateText, useData, Card, Fresh, Status, Empty, href, Progress, LinkChip, linkLabel } from '../common';
 const historyDate = (s:string|null) => s ? new Date(s).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : 'unavailable';
 
 export function TrackRecord() {
@@ -20,7 +20,7 @@ export function TrackRecord() {
     {category && <CategoryEvidence category={category} minSettled={data.minSettled} subject={subject}/>}
     {subject?.id!=='all' && <Card><h2>What this evidence helps you judge</h2>{event ? <>
     <span className="eyebrow">What you're watching</span><h3>{event.title}</h3><p className="note">Market closes {dateText(event.closeTime)}.</p>
-    <h3>Why it's connected</h3>{event.links.slice(0,3).map(l=><p key={l.symbol}><span className={`chip ${l.type}`}>{l.type}</span> <strong>{l.symbol}</strong> · {l.evidence}</p>)}{event.links.length>3 && <details><summary>See the remaining holding connections</summary>{event.links.slice(3).map(l=><p key={l.symbol}><strong>{l.symbol}</strong> · {l.type}: {l.evidence}</p>)}</details>}
+    <h3>Why it's connected</h3>{event.links.slice(0,3).map(l=><p key={l.symbol}><LinkChip type={l.type}/> <strong>{l.symbol}</strong> · {l.evidence}</p>)}{event.links.length>3 && <details><summary>See the remaining holding connections</summary>{event.links.slice(3).map(l=><p key={l.symbol}><strong>{l.symbol}</strong> · {linkLabel(l.type)}: {l.evidence}</p>)}</details>}
     <h3>What the history adds</h3><p>{category?`The ${subject.title.toLowerCase()} sample above checks whether earlier probabilities matched outcomes in series with the same reviewed subject tags.`:'We do not yet have verified history for this subject. Its current odds have no historical comparison here.'} It helps you assess the support behind these odds, without estimating what this event would do to your stocks.</p><a href={href('event',event.ticker)}>Review this event →</a>
     </> : <p>No current reviewed {subject?.title.toLowerCase()} event is linked to your holdings. You can still inspect the forecasting history above.</p>}</Card>}
     <details><summary>Original Kalshi categories and data coverage</summary><Card><p>{data.totalMarkets} verified markets across {data.categories.length} Kalshi categories. History is collected from {data.reviewedSeries} reviewed market series.</p><p>Categories in this view: {subject?.kalshiCategories.join(', ')||'No verified history'}.</p><div className="scroll"><table><thead><tr><th>Kalshi category</th><th>Markets checked</th><th>Average gap</th><th>History used in trust</th></tr></thead><tbody>{data.categories.map(c=><tr key={c.category}><td>{c.category}</td><td>{c.count}</td><td>{number(c.avgMiss)} pts</td><td>{c.eligibleForTrust?'Yes':'Not enough history'}</td></tr>)}</tbody></table></div><p className="note">Trust scoring still uses these original category statistics. Subject comparisons do not change the trust formula.</p></Card></details>
