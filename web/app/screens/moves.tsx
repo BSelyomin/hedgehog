@@ -4,8 +4,10 @@ import type { MovesResponse } from '../../../shared/types';
 import { money, percent, number, href, useData, Card, Fresh, Status, Empty, ReloadButton } from '../common';
 
 export function Moves() {
+    const [search, setSearch] = useState('');
     const [date, setDate] = useState('');
     const { data, error, reload } = useData<MovesResponse>(date ? `/moves?date=${date}` : '/moves');
+    const visibleHoldings = data?.holdings.filter(h => h.symbol.toLowerCase().includes(search.trim().toLowerCase())) ?? [];
     return <>
         <div className="row">
             <div><h1>What moved your portfolio</h1><p>Whole market, your individual stocks, and events that moved the same day</p></div>
@@ -25,13 +27,15 @@ export function Moves() {
                 <Card><span className="muted">SPY daily return</span><strong className="number">{percent(data.spyReturn)}</strong></Card>
             </div>
             <Card><h2>By holding</h2>
+                <label className="move-search">Search holdings<input type="search" placeholder="Ticker, e.g. AAPL" value={search} onChange={e => setSearch(e.target.value)}/></label>
+                <p className="note">Search filters the rows below. Totals above cover your full portfolio.</p>
                 {!data.holdings.length ? <Empty>Add holdings to see their daily moves.</Empty> : <div className="scroll"><table>
                     <thead><tr>{['Holding', 'Measured beta', 'Dollar move', 'From market', 'Beyond market', 'Data availability'].map(t => <th key={t}>{t}</th>)}</tr></thead>
-                    <tbody>{data.holdings.map(h => <tr key={h.symbol}>
+                    <tbody>{visibleHoldings.map(h => <tr key={h.symbol}>
                         <td>{h.symbol}</td><td className="amount">{number(h.beta, 3)}</td><td className="amount">{money(h.actual)}</td>
                         <td className="amount">{money(h.fromMarket)}</td><td className="amount">{money(h.beyondMarket)}</td>
                         <td>{h.actual !== null && h.previousDate && <p className="note">Source closes: {h.previousDate} → {h.sourceDate}.</p>}{h.unavailableReasons.length ? h.unavailableReasons.join(' ') : 'Closing prices and measured beta available.'}</td>
-                    </tr>)}</tbody>
+                    </tr>)}{!visibleHoldings.length && <tr><td colSpan={6}><Empty>No holdings match your search.</Empty></td></tr>}</tbody>
                 </table></div>}
                 <p className="note">From market = measured beta × SPY return × entered holding value. Beyond market = actual move − market component. Price sources: Yahoo daily closes. Beta uses up to five years of aligned daily returns. Missing history leaves only the unsupported results unavailable.</p>
                 {data.holdings.length > 0 && data.total === null && <p className="note">The portfolio total needs supported price moves over the same dates for every holding. Available individual moves are shown above.</p>}

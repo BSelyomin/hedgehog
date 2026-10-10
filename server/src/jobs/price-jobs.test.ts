@@ -41,7 +41,7 @@ it('allows measurement to continue when the optional FRED provider fails', async
     globalThis.fetch = async () => new Response('Unavailable', { status: 503 });
     await assert.doesNotReject(prices());
 });
-it('persists the last aligned price date with a measured beta even when the job runs later', async () => {
+it('persists the source date and syncs driver tags with measured beta reliability', async () => {
     let stock = 200, spy = 100;
     const stockRows: { ts: Date; close: number }[] = [], spyRows: typeof stockRows = [];
     for (let i = 0; i <= 100; i++) {
@@ -51,6 +51,7 @@ it('persists the last aligned price date with a measured beta even when the job 
         stockRows.push({ ts, close: stock }); spyRows.push({ ts, close: spy });
     }
     const measurements: unknown[][] = [];
+    const addedTags: unknown[][] = [], removedTags: unknown[][] = [];
     pool.query = (async (sql: string, args: unknown[] = []) => {
         if (sql.includes('SELECT DISTINCT symbol')) return { rows: [{ symbol: 'AAPL' }] };
         if (sql.includes('SELECT ts,close')) {
@@ -58,6 +59,11 @@ it('persists the last aligned price date with a measured beta even when the job 
             return { rows: args[0] === 'SPY' ? spyRows : args[0] === 'AAPL' ? stockRows : [] };
         }
         if (sql.includes('INSERT INTO measured_links')) measurements.push(args);
+        if (sql.includes('INSERT INTO stock_tags')) addedTags.push(args);
+        if (sql.includes('DELETE FROM stock_tags')) {
+            assert.ok(sql.includes("link_type='measured'"), 'Independent mappings must survive measurement cleanup');
+            removedTags.push(args);
+        }
         return { rows: [] };
     }) as typeof pool.query;
     await measure();
@@ -67,4 +73,6 @@ it('persists the last aligned price date with a measured beta even when the job 
     assert.equal(beta[6], 100);
     assert.equal(beta[7], true);
     assert.equal(beta[8], '2026-10-09');
+    assert.deepEqual(addedTags, [['AAPL', ['sp500']]]);
+    assert.deepEqual(removedTags, [['AAPL', ['oil']], ['AAPL', ['fed-rates', 'inflation']], ['AAPL', ['sp500']]]);
 });

@@ -17,3 +17,19 @@
 Snowflake contracts were checked against official documentation during migration. On 2026-10-09, a live PAT-authenticated Cortex request using `claude-sonnet-4-5` returned HTTP 200 and JSON content with an empty `finish_reason` and populated `usage.completion_tokens`. The parser accepts that observed variant only below the requested token limit and still rejects explicit truncation, refusals and invalid JSON; callers continue validating the task data. Regression tests cover this response shape. This inference check does not verify Cortex Search or all AI jobs. Yahoo history loading has worked locally, while Kalshi connections have reset in this environment. Do not treat mocks or successful compilation as proof of live provider compatibility.
 
 On 2026-10-09, `HEDGEHOG.REPORTING.EVENT_SOURCES` was provisioned with 21 dated Federal Reserve and EIA feed excerpts. BLS was unreachable and skipped. A live REST search with the publication-date filter returned five source passages; a Cortex-generated context sentence passed the application's number and source-ID checks. This validates retrieval and guarded generation, not the availability of summaries for a portfolio: those still need holdings, relevant reporting and human-reviewed market tags. Refresh the feed collection explicitly using the commands in DEPLOY.md.
+# Additional coverage validation (October 9, 2026)
+
+- [Kalshi historical data](https://docs.kalshi.com/getting_started/historical_data): older
+  settled markets require the separate historical listing, not only a candlestick fallback.
+- [Historical market listing](https://docs.kalshi.com/api-reference/historical/get-historical-markets):
+  supports series filtering and independent cursor pagination.
+- [Historical candlesticks](https://docs.kalshi.com/api-reference/historical/get-historical-market-candlesticks):
+  archived `yes_bid.close` and `yes_ask.close` are dollar strings, normalized separately from
+  live `close_dollars` fields. Empty arrays and missing archives do not support a midpoint.
+- [Events listing](https://docs.kalshi.com/api-reference/events/get-events): open events are
+  paginated at up to 200 per page. Validated pages are now stored in database batches.
+- Live verification: the original four approved company events close in 2029–2035. Their
+  low activity/open interest explains low trust under the unchanged scoring formula.
+  After six user-approved macro mappings, the 25-holding portfolio returned 19 events,
+  including three within 14 days and fifteen with measured links. These are observations
+  at setup time, not fixed counts or guarantees.
