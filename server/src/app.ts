@@ -10,14 +10,23 @@ import { trackRecord } from './services/track-record.ts';
 import { briefing } from './jobs/briefing.ts';
 import { briefingDay } from './services/briefing-content.ts';
 import type { BriefingResponse } from '../../shared/types.ts';
+// What a failed request tells the browser. Postgres reports 25006 when a write reaches a
+// database that is accepting reads only, for example because its storage is full.
+export function errorResponse(error: unknown): { status: number; error: string } {
+    if (error instanceof SyntaxError)
+        return { status: 400, error: 'Invalid JSON' };
+    if ((error as { code?: unknown } | null)?.code === '25006')
+        return { status: 503, error: 'The database is read-only right now, so changes cannot be saved. Viewing still works' };
+    return { status: 503, error: 'Data unavailable; check backend configuration' };
+}
 export function createApp() {
 const app = express();
 app.disable('x-powered-by');
 app.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 app.use(express.json({ limit: '32kb' }));
 app.get('/health', async (_req, res) => { try {
-    await query('SELECT 1');
-    res.json({ status: 'ok', asOf: new Date().toISOString() });
+    const mode = await query<{ transaction_read_only: string }>('SHOW transaction_read_only');
+    res.json({ status: 'ok', readOnly: mode[0]?.transaction_read_only === 'on', asOf: new Date().toISOString() });
 }
 catch {
     res.status(503).json({ error: 'Database unavailable', asOf: null });
@@ -71,6 +80,6 @@ app.get('/briefing/audio', async (_req, res) => { const rows = await query<{
     return;
 } res.set('Cache-Control', 'private, no-store'); res.set('X-Data-As-Of', iso(rows[0].as_of)!); res.type('audio/mpeg').send(rows[0].audio); });
 app.use((_req, res) => { res.status(404).json({ error: 'Endpoint not found', asOf: null }); });
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => { const bad = error instanceof SyntaxError; res.status(bad ? 400 : 503).json({ error: bad ? 'Invalid JSON' : 'Data unavailable; check backend configuration', asOf: null }); });
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => { const response = errorResponse(error); res.status(response.status).json({ error: response.error, asOf: null }); });
 return app;
 }

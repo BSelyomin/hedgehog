@@ -83,6 +83,32 @@ Open Add holdings at http://localhost:3000 and import `examples/fake-portfolio.c
 
 `FRED_API_KEY`, `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` retain their existing roles. Without Snowflake configuration, AI jobs skip generation while the rest of the application can run. No credentials belong in Git or browser environment variables.
 
+## Database storage and read-only mode
+
+Kalshi lists about 145,000 open markets. Storing a five-minute odds row for each wrote roughly
+500 MB an hour and filled a Tiger Data service in 17 hours, after which the service turned
+read-only. Migration `010_odds_storage.sql` keeps odds history only for series a holding could
+link to (about 7,000 markets), in daily chunks that are compressed after a day and dropped after
+eight. A trigger on `odds_snapshots` applies the same rule to any backend writing to the
+database, including one running older code.
+
+When the database is read-only the backend still starts. It serves stored data, skips migrations
+and scheduled jobs, reports `readOnly: true` from `/health` (the app shows a notice), and answers
+any attempt to save with a plain message. It checks every minute and applies migrations and starts
+the jobs by itself once writes are accepted again.
+
+To get a full service writable again, either raise its storage in the Tiger Data console or free
+space. Odds history is the only large table and it is rebuilt by the poller:
+
+```sql
+SET default_transaction_read_only = off;
+TRUNCATE odds_snapshots;
+```
+
+That removes the stored odds history (the one-week charts and day-over-day odds moves start
+again); current odds return with the next poll. Holdings, accounts, tags, prices, measurements
+and the track record are not touched.
+
 ## Asset types and drivers
 
 Migration `008_asset_classes.sql` adds the holding type and its terms, and a typical effect to

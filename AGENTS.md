@@ -88,6 +88,9 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
   from the browser.
 - Poll every 5 minutes. Back off on 429 and 5xx responses. Log and skip a bad market rather than
   failing the whole run.
+- Store every market's details, but odds history only for series a holding could link to. Storing
+  it for all markets filled the database in 17 hours. A database trigger enforces this for any
+  backend that shares the database.
 
 ## Data model
 
@@ -97,7 +100,8 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | --- | --- | --- |
 | `events` | ticker PK, series_ticker, title, description, category, mutually_exclusive, strike_date | poller |
 | `markets` | ticker PK, event_ticker, series_ticker, title, subtitle, close_time, status, result, strike_type, occurrence_time, expected_expiration_time | poller |
-| `odds_snapshots` | ts, ticker, yes_bid, yes_ask, mid, volume_24h, open_interest | poller, every 5 min |
+| `odds_snapshots` | ts, ticker, yes_bid, yes_ask, mid, volume_24h, open_interest | poller, every 5 min, only for markets in `snapshot_series`; compressed after 1 day, dropped after 8 |
+| `snapshot_series` | series_ticker | poller: series a holding could link to (approved ticker, driver or asset-type tag) |
 | `prices` | ts (date), symbol, close | price loader, daily |
 | `series_tags` | series_ticker, tag, source ('snowflake', legacy 'gemini', or 'manual'), reviewed boolean | tagging job |
 | `stock_tags` | symbol, tag, link_type ('direct', 'measured', 'related') | sector table + 10-K job |

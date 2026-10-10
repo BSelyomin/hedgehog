@@ -280,4 +280,6 @@ export interface ErrorResponse extends Freshness {
 }
 export interface HealthResponse extends Freshness {
     status: 'ok';
+    /** The database is accepting reads only: stored data is shown, odds are not updating and nothing can be saved. */
+    readOnly: boolean;
 }
