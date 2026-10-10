@@ -59,7 +59,9 @@ describe('themes of a link', () => {
     it('gives a measured link each shared topic whose driver is reliably measured for the holding', () => {
         const rows = [measured('DAL', 'CL=F', .01), measured('DAL', 'DGS2', .002, false), measured('XOM', 'DGS2', .003)];
         expect(linkThemes(link('DAL', 'Measured'), ['oil', 'inflation'], ['oil', 'inflation'], rows)).toEqual(['oil']);
-        expect(linkThemes(link('DAL', 'Measured'), ['oil', 'inflation'], ['oil', 'inflation'], [...rows, measured('DAL', 'DGS2', .002)])).toEqual(['oil', 'inflation']);
+        expect(linkThemes(link('DAL', 'Measured'), ['oil', 'inflation'], ['oil', 'inflation'], [...rows, measured('DAL', 'DGS2', .004)])).toEqual(['oil', 'inflation']);
+        // A reliable measurement under a fifth of the holding's biggest gives no theme.
+        expect(linkThemes(link('DAL', 'Measured'), ['oil', 'inflation'], ['oil', 'inflation'], [...rows, measured('DAL', 'DGS2', .001)])).toEqual(['oil']);
         // A topic the holding does not carry, or one with no driver, adds nothing.
         expect(linkThemes(link('DAL', 'Measured'), ['oil', 'tariffs'], ['tariffs'], rows)).toEqual([]);
         expect(linkThemes(link('DAL', 'Measured'), ['oil', 'tariffs'], ['oil', 'tariffs'], rows)).toEqual(['oil']);

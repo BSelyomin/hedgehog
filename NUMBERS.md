@@ -5,6 +5,7 @@
 | Add holdings | Entered dollar values and terms | User form or CSV (symbol,valueUsd, plus optional type, maturity, coupon, state, mortgage, rental), persisted to holdings |
 | Overview | Portfolio value and holdings count | holdings; backend sums values |
 | Overview / Calendar / Event | Linked value and share | Sum of unique linked holdings / total entered holding value |
+| Overview / Calendar / Event | Which measurements become Related links | Reliable (at least 60 observations, 95% range excludes zero, typical effect at least one basis point) and typical effect at least 20% of the holding's largest daily typical effect (config/drivers.ts MATERIAL_SHARE). A weekly driver counts when a daily driver of its family passes. Below the floor the link is a Topic link; its evidence states the measured share |
 | Overview | Category value and share | Sum of the values of the holdings in the group, each counted once / total holding value. Asset classes add up to 100%; event themes overlap and do not |
 | Overview | Category basis (sector, fund category) | security_profiles from Yahoo quoteSummary: assetProfile.sector, fundProfile.categoryName; or the asset type the user entered |
 | Overview | Category linked events and next event | Open events with a Direct, Calculated or Measured link to a holding in the group (for a theme, through that theme). Next is the soonest reached by a Direct or Calculated link or through a holding's most important measured driver; with none, the soonest linked event |

@@ -1,7 +1,7 @@
 import type { AssetClass, Categories, CategoryGroup, ExposureEvent, Holding, HoldingLink } from '../../../shared/types.ts';
 import { seedFile } from '../seed.ts';
 import { ASSET_TAGS, assetType, isSecurity } from './asset-links.ts';
-import { drivers, rankDrivers, reliableRow } from './matching.ts';
+import { drivers, materialRows, rankDrivers } from './matching.ts';
 import type { MeasuredRow } from './matching.ts';
 import type { SecurityProfile } from '../jobs/profiles.ts';
 
@@ -61,8 +61,11 @@ export function linkThemes(link: HoldingLink, eventTags: string[], stockTags: st
     const type = assetType(link);
     if (link.type === 'Calculated')
         return type === 'security' ? [] : eventTags.filter(tag => ASSET_TAGS[type].includes(tag));
-    if (link.type === 'Measured')
-        return eventTags.filter(tag => stockTags.includes(tag) && measurements.some(m => m.symbol === link.symbol && m.driver === drivers[tag] && reliableRow(m)));
+    if (link.type === 'Measured') {
+        // Every shared topic whose driver is big enough for this holding to draw a link from.
+        const material = materialRows(link.symbol, measurements);
+        return eventTags.filter(tag => stockTags.includes(tag) && material.some(m => m.driver === drivers[tag]));
+    }
     return [];
 }
 

@@ -22,6 +22,11 @@ data can't support a number, show no number.
   compare on one scale. A link on a minor driver says what matters more.
 - A link that fails `checkSensitivity` stays unmeasured (API type `Related`, labelled **Topic**
   on screen) with no number.
+- A reliable measurement is not enough for a link. With ten years of prices almost every
+  holding is reliably tied to almost every driver, however faintly. A measurement draws a link
+  only when a typical move in its driver moves the holding at least `MATERIAL_SHARE` (a fifth)
+  as much as a typical move in the holding's biggest driver. Below that it is a Topic link whose
+  evidence says how it compares, with no estimate.
 - Probabilities are the bid–ask midpoint, never the last trade. A book with no bid and no offer
   (0 and 1) has no midpoint: it shows no probability, spread or trust score, counts as no move,
   and gives the track record no reading. The poller still stores it, so readers know the book
@@ -127,7 +132,10 @@ per company ticker for company markets. Never create tags outside this list.
 1. **Direct:** the market's series is tagged with the holding's ticker (company earnings and
    KPI markets, earnings-call mention markets).
 2. **Measured:** the holding shares a tag with the market *and* `measured_links` has a reliable
-   link between the holding and that tag's driver.
+   link between the holding and that tag's driver that is big enough to count (`materialRows` in
+   `server/src/services/matching.ts`): at least a fifth of the holding's biggest daily driver. A
+   weekly driver cannot be put on that scale, so it counts when a daily driver of its family
+   does.
 3. **Related:** a shared tag only. Show it, labeled, with no sensitivity number.
 
 4. **Calculated:** the holding has no ticker (cash, a Treasury or CD, a bond, a property) and its
@@ -208,8 +216,8 @@ with the exposure and calendar responses:
   the holding itself. An unmeasured topic link carries no theme, as on the Overview.
 
 A group's value is the value of its holdings and its share is that over the whole portfolio,
-each holding counted once. That is reach, not an amount at risk. Because almost every security
-has some reliable link to almost every driver, a theme always names the holdings it matters
+each holding counted once. That is reach, not an amount at risk. A measurement under the
+link floor gives no theme. Among those that remain, a theme names the holdings it matters
 most to: those linked by a Calculated link, and securities whose most important measured driver
 stands behind it. A group's next event is the soonest one reached by such a strong link.
 
