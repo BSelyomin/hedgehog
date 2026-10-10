@@ -63,3 +63,21 @@ Monitor actual table/index sizes before increasing collection budgets. New norma
 storage grows with unique settled questions and has no additional full-history timeseries.
 The existing five-minute odds table remains a separate storage concern; this change does
 not alter its policies or assume that a local Docker database represents Tiger cloud usage.
+
+## Company coverage extension
+
+Migration 015 adds track_company_series, with the official series URL, title and matching
+settlement-source evidence. `npm run job -- track-companies` discovers identities for
+verified company holdings from GET /series. It requires either an issuer settlement source
+and an explicit company title/exact earnings-series symbol, or an unambiguous normalized
+company name of at least six characters in the title and an identified settlement source.
+Unmatched, ambiguous and malformed metadata is skipped. Entertainment rankings and
+election categories are excluded; proposed AI tags alone are never approved or copied.
+This mapping is separate from existing series_tags and does not change trust scoring.
+
+`npm run job -- track-company-history` continues a bounded company-history collection.
+At most 25 final markets are processed, with at most five per series; the original horizon
+checks apply. The collector can request only a selected horizon for a small initial sample
+without manufacturing other horizons. Company percentages describe company-specific
+questions (including earnings-call words), not how accurately stock returns were predicted.
+The linked-holdings disclosure caps its content at 220px with keyboard-accessible vertical scrolling.

@@ -7,12 +7,12 @@ export function RatingCard({item}:{item:TrackRatingItem}) {
     const r=item.rating;
     return <Card className="rating-row"><div className="rating-identity"><h2>{item.symbol?`${item.symbol} · ${item.name}`:item.name}</h2>
         {item.relatedThemes?.length ? <p className="note">Linked themes: {item.relatedThemes.join(' · ')}</p> : null}
-        {item.symbol&&<p className="note">Company-specific prediction record</p>}
+        {item.symbol&&<p className="note">Company-specific questions, including earnings-call mentions</p>}
         </div><div className="rating-result"><p className="big mono">{r.accuracy===null?'—':percent(r.accuracy)}</p>
         <p><strong>{r.grade?`${r.grade} · `:''}{r.label}</strong></p></div><div className="rating-context">
-        <p className="note">{r.evaluated?`${r.matched} of ${r.evaluated} questions matched the favored outcome · ${r.eventCount} event IDs`:item.symbol?'No company-specific history collected at this timeframe.':'No usable earlier quotes and final outcomes collected at this timeframe.'}</p>
+        <p className="note">{r.evaluated?`${r.matched} of ${r.evaluated} questions matched the favored outcome · ${r.eventCount} event IDs`:r.missing?`${r.missing} settled questions checked; historical quotes are missing at this timeframe.`:r.tied?'Available quotes had no favored outcome (50/50).':item.symbol?'No company-specific history collected at this timeframe.':'No usable earlier quotes and final outcomes collected at this timeframe.'}</p>
         {r.accuracy!==null&&!r.grade&&<p className="note">An observed percentage, with too little history to assign a grade.</p>}
-        {item.linkedHoldings.length>0?<details><summary>Related to {item.linkedHoldings.length} of your holdings</summary>{item.linkedHoldings.map(h=><p key={h.symbol}><strong>{h.symbol}</strong> <LinkChip type={h.type}/> <span className="note">{h.evidence}</span></p>)}</details>:!item.relatedThemes?.length&&<p className="note">No reviewed connection to your current holdings.</p>}
+        {item.linkedHoldings.length>0?<details><summary>Related to {item.linkedHoldings.length} of your holdings</summary><div className="rating-holdings-scroll" role="region" aria-label={`${item.name} linked holdings`} tabIndex={0}>{item.linkedHoldings.map(h=><p key={h.symbol}><strong>{h.symbol}</strong> <LinkChip type={h.type}/> <span className="note">{h.evidence}</span></p>)}</div></details>:!item.relatedThemes?.length&&<p className="note">No reviewed connection to your current holdings.</p>}
         </div></Card>;
 }
 export function TrackRecord({initialView='assets'}:{initialView?:string}={}) {

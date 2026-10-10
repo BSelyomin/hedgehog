@@ -24,3 +24,8 @@ it('does not mark an API outage as missing or advance the page',async()=>{
 });
 
 it('excludes quotes after final settlement even when occurrence time is absent',()=>{expect(quoteOutcomeKnown(market as any,Date.parse(market.settlement_ts)/1000)).toBe(true);expect(quoteOutcomeKnown(market as any,Date.parse(market.close_time)/1000-86400)).toBe(false);});
+
+it('can collect only the requested horizon without inventing other horizons',async()=>{await trackHistory({maxMarkets:1,horizons:[24]});expect(candles).toHaveBeenCalledTimes(1);expect(query.mock.calls.find(([s])=>s.includes('INSERT INTO track_quotes'))?.[1][1]).toBe(24);await expect(trackHistory({horizons:[48]})).rejects.toThrow('Unsupported');});
+it('shares a bounded run across series instead of letting the first series consume it',async()=>{query.mockImplementation(async(sql:string)=>sql.includes('SELECT t.series')?[{series_ticker:'S'},{series_ticker:'S2'}]:sql.includes('RETURNING id')?[{id:'1'}]:[]);kalshi.mockResolvedValue({markets:[market,{...market,ticker:'M2'}],cursor:'next'});expect(await trackHistory({maxMarkets:2,perSeries:1,horizons:[24]})).toEqual({processed:2});expect(kalshi.mock.calls.map(c=>c[1].series_ticker)).toEqual(['S','S2']);});
+
+it('does not request or manufacture quotes from before a market opened',async()=>{kalshi.mockResolvedValue({markets:[{...market,open_time:'2025-12-31T13:00:00Z'}],cursor:''});await trackHistory({maxMarkets:1,horizons:[24]});expect(candles).not.toHaveBeenCalled();expect(query.mock.calls.find(([s])=>s.includes('INSERT INTO track_quotes'))?.[1].slice(2)).toEqual([null,null,null,'missing']);});

@@ -8,7 +8,7 @@ import { getHoldings } from './holdings.ts';
 export async function trackRatings(session:string,horizonHours=24,page=1,search=''):Promise<TrackRatingsResponse> {
     if(!FORECAST_HORIZONS.some(h=>h.hours===horizonHours))throw new Error('Unsupported forecast horizon');
     const [tags,entities,rows,portfolio]=await Promise.all([
-        query<{series_ticker:string;tag:string}>('SELECT series_ticker,tag FROM series_tags WHERE reviewed=true'),
+        query<{series_ticker:string;tag:string}>('SELECT series_ticker,tag FROM series_tags WHERE reviewed=true UNION SELECT series_ticker,symbol tag FROM track_company_series'),
         query<{symbol:string;name:string;kind:string}>('SELECT symbol,name,kind FROM track_entities ORDER BY symbol'),
         query<{series_ticker:string;event:string;bid:string|null;ask:string|null;outcome:number;status:string;fetched_at:Date}>(`SELECT m.series_ticker,m.event_ticker event,q.yes_bid bid,q.yes_ask ask,m.outcome,q.status,q.fetched_at FROM track_markets m JOIN track_quotes q ON q.market_id=m.id WHERE q.horizon_hours=$1`,[horizonHours]),
         getHoldings(session),

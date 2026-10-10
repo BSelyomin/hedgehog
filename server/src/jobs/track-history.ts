@@ -28,16 +28,22 @@ export async function trackEntities(limit=20) {
     }
 }
 // Bounded, resumable collection. Only these new track_* tables are written.
-export async function trackHistory(options:{maxMarkets?:number;maxSeries?:number;series?:string[]}={}) {
+export async function trackHistory(options:{maxMarkets?:number;maxSeries?:number;perSeries?:number;horizons?:number[];series?:string[]}={}) {
+    if(options.horizons?.some(h=>!FORECAST_HORIZONS.some(f=>f.hours===h)))throw new Error('Unsupported forecast horizon');
+    const horizons=FORECAST_HORIZONS.filter(h=>!options.horizons||options.horizons.includes(h.hours));
     const maxMarkets=Math.max(1,Math.min(50,options.maxMarkets??25));
     const maxSeries=Math.max(1,Math.min(6,options.maxSeries??3));
-    const available=await query<{series_ticker:string}>(`SELECT t.series_ticker FROM series_tags t LEFT JOIN track_sync s ON s.series_ticker=t.series_ticker
+    const available=await query<{series_ticker:string}>(`SELECT t.series_ticker FROM (SELECT series_ticker,reviewed FROM series_tags UNION SELECT series_ticker,true FROM track_company_series) t LEFT JOIN track_sync s ON s.series_ticker=t.series_ticker
         WHERE t.reviewed=true GROUP BY t.series_ticker ORDER BY COALESCE(min(s.updated_at),'epoch'::timestamptz),t.series_ticker`);
+    const perSeries=Math.max(1,Math.min(maxMarkets,options.perSeries??maxMarkets));
     const series=available.filter(s=>!options.series?.length||options.series.includes(s.series_ticker)).slice(0,maxSeries);
     const releases=await query<{event_ticker:string;released_at:Date}>('SELECT event_ticker,released_at FROM event_releases');
     let processed=0;
-    for(const s of series)for(const source of ['historical','live'] as const) {
+    for(const s of series) {
+      let seriesProcessed=0;
+      for(const source of ['historical','live'] as const) {
         if(processed>=maxMarkets)return {processed};
+        if(seriesProcessed>=perSeries)break;
         const state=(await query<{cursor:string;page_offset:number}>('SELECT cursor,page_offset FROM track_sync WHERE series_ticker=$1 AND source=$2',[s.series_ticker,source]))[0];
         const cursor=state?.cursor??'',start=state?.page_offset??0;
         const page=await kalshi<{markets:KalshiMarket[];cursor:string}>(source==='historical'?'/historical/markets':'/markets',
@@ -45,22 +51,23 @@ export async function trackHistory(options:{maxMarkets?:number;maxSeries?:number
         if(!Array.isArray(page.markets))throw new Error('Invalid historical market listing');
         let offset=start;
         for(;offset<page.markets.length;offset++) {
-            if(processed>=maxMarkets)break;
+            if(processed>=maxMarkets||seriesProcessed>=perSeries)break;
             const m=page.markets[offset];
             if(!finalBinary(m))continue;
-            processed++;
+            processed++;seriesProcessed++;
             const occurred=m.occurrence_datetime&&Number.isFinite(Date.parse(m.occurrence_datetime))?m.occurrence_datetime:null;
             const stored=await query<{id:string}>(`INSERT INTO track_markets(ticker,series_ticker,event_ticker,close_time,settlement_time,occurrence_time,outcome,source)
                 VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(ticker) DO UPDATE SET close_time=excluded.close_time,settlement_time=excluded.settlement_time,
                 occurrence_time=excluded.occurrence_time,outcome=excluded.outcome,source=excluded.source,fetched_at=now() RETURNING id`,
                 [m.ticker,s.series_ticker,m.event_ticker,m.close_time,m.settlement_ts,occurred,m.result==='yes'?1:0,source]);
             const release=releases.find(r=>r.event_ticker===m.event_ticker)?.released_at;
-            for(const {hours}of FORECAST_HORIZONS) {
+            for(const {hours}of horizons) {
                 const target=Math.floor(Date.parse(m.close_time)/1000)-hours*3600;
                 const previous=(await query<{quote_time:Date|null;status:string}>(`SELECT quote_time,status FROM track_quotes WHERE market_id=$1 AND horizon_hours=$2`,[stored[0].id,hours]))[0];
                 // Reuse exact quotes, but re-evaluate timing when source metadata changes.
                 if(previous?.status==='quoted'&&previous.quote_time&&previous.quote_time.getTime()/1000<=target&&previous.quote_time.getTime()/1000>=target-60&&!quoteOutcomeKnown(m,previous.quote_time.getTime()/1000,release))continue;
-                const candles=await loadCandles(s.series_ticker,m.ticker,{start_ts:String(target-60),end_ts:String(target),period_interval:'1'},source==='historical');
+                const beforeOpen=m.open_time&&Number.isFinite(Date.parse(m.open_time))&&Date.parse(m.open_time)>target*1000;
+                const candles=beforeOpen?[]:await loadCandles(s.series_ticker,m.ticker,{start_ts:String(target-60),end_ts:String(target),period_interval:'1'},source==='historical');
                 const odds=oddsBeforeClose(candles,m.close_time,hours);
                 const status=!odds?'missing':quoteOutcomeKnown(m,odds.ts,release)?'outcome_known':'quoted';
                 const candle=odds?candles.find(c=>c.end_period_ts===odds.ts):undefined;
@@ -73,6 +80,7 @@ export async function trackHistory(options:{maxMarkets?:number;maxSeries?:number
         if(done&&next&&next===cursor)throw new Error('Repeated history cursor');
         await query(`INSERT INTO track_sync(series_ticker,source,cursor,page_offset) VALUES($1,$2,$3,$4)
             ON CONFLICT(series_ticker,source) DO UPDATE SET cursor=excluded.cursor,page_offset=excluded.page_offset,updated_at=now()`,[s.series_ticker,source,next,done?0:offset]);
+    }
     }
     return {processed};
 }
