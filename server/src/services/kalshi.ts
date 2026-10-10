@@ -56,6 +56,18 @@ export async function kalshi<T>(path: string, params: Record<string, string> = {
     }
     throw new Error('Kalshi request failed');
 }
+// Strike types observed in stored Kalshi markets. A range ladder is an exclusive event of
+// 'between' buckets plus optional open-ended end caps ("86° or below", "95° or above").
+const rangeStrikes = ['between', 'less', 'less_or_equal', 'greater', 'greater_or_equal'];
+export function isRangeLadder(mutuallyExclusive: boolean, strikeTypes: (string | null)[]) {
+    return mutuallyExclusive && strikeTypes.includes('between') && strikeTypes.every(type => type !== null && rangeStrikes.includes(type));
+}
+// Kalshi files earnings-call word markets under its 'Mentions' category; their titles do not say "mention".
+export function marketKind(strikeType: string | null, category: string, title: string, inRangeLadder: boolean): 'bracket' | 'kpi' | 'mention' {
+    if (strikeType === 'between' || inRangeLadder)
+        return 'bracket';
+    return category === 'Mentions' || /mention/i.test(title) ? 'mention' : 'kpi';
+}
 export function quote(bid: unknown, ask: unknown) {
     const b = numberField(bid), a = numberField(ask);
     if (b === null || a === null || b < 0 || a > 1 || b > a)

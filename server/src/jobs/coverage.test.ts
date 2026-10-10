@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { preparePollPage } from './poll-storage.ts';
 import { oddsBeforeClose, normalizeHistoricalCandles } from './backfill.ts';
+import { isRangeLadder, marketKind } from '../services/kalshi.ts';
 import type { KalshiEvent } from '../services/kalshi.ts';
 import { trustScore } from '../config/trust.ts';
 import { matchHolding } from '../services/matching.ts';
@@ -25,6 +26,19 @@ it('reads archive dollar prices without confusing them with live cent fields', (
     expect(oddsBeforeClose([{ ...candles[0], end_period_ts: ts + 60 }], close)).toBeNull();
     expect(oddsBeforeClose([{ ...candles[0], end_period_ts: ts - 120 }], close)).toBeNull();
     expect(oddsBeforeClose(normalizeHistoricalCandles([{ end_period_ts: ts, yes_bid: { close: null }, yes_ask: { close: '.39' } }]), close)).toBeNull();
+});
+it('classifies call-mention markets by Kalshi category and range ladders including their end caps', () => {
+    expect(marketKind('custom', 'Mentions', 'What will Apple say during their next earnings call?', false)).toBe('mention');
+    expect(marketKind('greater', 'Financials', 'Will Apple report above 164000 employees?', false)).toBe('kpi');
+    const ladder = ['less', 'between', 'between', 'greater'];
+    expect(isRangeLadder(true, ladder)).toBe(true);
+    expect(ladder.map(type => marketKind(type, 'Financials', 'S&P close', true))).toEqual(['bracket', 'bracket', 'bracket', 'bracket']);
+    // Thresholds without buckets, non-exclusive events and unknown strike types are not ladders.
+    expect(isRangeLadder(true, ['greater', 'greater'])).toBe(false);
+    expect(isRangeLadder(false, ladder)).toBe(false);
+    expect(isRangeLadder(true, ['between', 'custom'])).toBe(false);
+    expect(isRangeLadder(true, ['between', null])).toBe(false);
+    expect(marketKind('greater', 'Financials', 'S&P above 7000', false)).toBe('kpi');
 });
 it('can award medium and high trust; no history is rescaled, not scored as zero', () => {
     expect(trustScore(1, 100000, 1000000, null, 0).band).toBe('High');

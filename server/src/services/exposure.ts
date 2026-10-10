@@ -4,6 +4,7 @@ import { getHoldings } from './holdings.ts';
 import { matchHolding, linkRank } from './matching.ts';
 import type { MeasuredRow } from './matching.ts';
 import { trustScore } from '../config/trust.ts';
+import { isRangeLadder, marketKind } from './kalshi.ts';
 import { numbersSupported, safeSources } from './ai-guard.ts';
 import { trackRecord } from './track-record.ts';
 interface EventRow {
@@ -55,7 +56,8 @@ export async function exposure(session: string): Promise<ExposureResponse> {
             continue;
         const category = record.categories.find(c => c.category === e.category);
         const rows = markets.filter(m => m.event_ticker === e.ticker);
-        const outcomes: Market[] = rows.map(m => ({ ticker: m.ticker, title: m.title, subtitle: m.subtitle, probability: m.mid, spread: m.yes_ask === null || m.yes_bid === null ? null : m.yes_ask - m.yes_bid, asOf: iso(m.ts), kind: m.strike_type === 'between' ? 'bracket' : /mention/i.test(m.title) ? 'mention' : 'kpi', trust: trustScore(m.yes_ask === null || m.yes_bid === null ? null : (m.yes_ask - m.yes_bid) * 100, m.volume_24h, m.open_interest, category?.avgMiss ?? null, category?.count ?? 0) }));
+        const ladder = isRangeLadder(e.mutually_exclusive, rows.map(m => m.strike_type));
+        const outcomes: Market[] = rows.map(m => ({ ticker: m.ticker, title: m.title, subtitle: m.subtitle, probability: m.mid, spread: m.yes_ask === null || m.yes_bid === null ? null : m.yes_ask - m.yes_bid, asOf: iso(m.ts), kind: marketKind(m.strike_type, e.category, m.title, ladder), trust: trustScore(m.yes_ask === null || m.yes_bid === null ? null : (m.yes_ask - m.yes_bid) * 100, m.volume_24h, m.open_interest, category?.avgMiss ?? null, category?.count ?? 0) }));
         const linkedValue = links.reduce((s, l) => s + l.valueUsd, 0);
         result.push({ ticker: e.ticker, title: e.title, category: e.category, mutuallyExclusive: e.mutually_exclusive, closeTime: new Date(Math.min(...rows.map(m => m.close_time.getTime()))).toISOString(), linkedValue, share: totalValue ? linkedValue / totalValue : 0, links, markets: outcomes });
     }
