@@ -48,7 +48,7 @@ export async function exposure(session: string): Promise<ExposureResponse> {
         query<{
             series_ticker: string;
             tag: string;
-        }>('SELECT series_ticker,tag FROM series_tags WHERE reviewed=true'),
+        }>(`SELECT series_ticker,tag FROM series_tags WHERE reviewed=true AND series_ticker IN(${linkedSeries})`, [symbols, assetTags]),
         query<{
             symbol: string;
             tag: string;

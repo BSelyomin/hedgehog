@@ -26,19 +26,26 @@ export async function latestSession(): Promise<string | null> {
 }
 export async function moves(session: string, date: string): Promise<MovesResponse> {
     const data = await exposure(session);
-    const recent = async (symbol: string) => (await query<{
-        ts: Date;
+    // The two latest closes on or before the date for every series the page needs, in one query.
+    const otherDrivers = DRIVERS.filter(d => d.key !== CONTROL && d.period === 'day');
+    const closes = await query<{
+        symbol: string;
+        date: string;
         close: number;
-    }>(`SELECT ts,close FROM prices WHERE symbol=$1 AND ts::date<=$2::date ORDER BY ts DESC LIMIT 2`, [symbol, date])).reverse().map(r => ({ date: r.ts.toISOString().slice(0, 10), close: r.close }));
-    const spy = await recent(CONTROL);
+    }>(`SELECT symbol,to_char(ts,'YYYY-MM-DD') AS date,close FROM (
+            SELECT symbol,ts,close,row_number() OVER (PARTITION BY symbol ORDER BY ts DESC) AS n FROM prices
+            WHERE symbol=ANY($1) AND ts::date<=$2::date AND ts>=$2::date-interval '14 days') q WHERE n<=2 ORDER BY symbol,ts`,
+    [[CONTROL, ...otherDrivers.map(d => d.key), ...data.holdings.filter(isSecurity).map(h => h.symbol)], date]);
+    const recent = (symbol: string) => closes.filter(r => r.symbol === symbol);
+    const spy = recent(CONTROL);
     const current = spy.find(r => r.date === date), previous = spy.filter(r => r.date < date).at(-1);
     const spyReturn = current && previous && previous.close > 0 ? current.close / previous.close - 1 : null;
     // Each other daily driver's change over the same session. Yields are published a day late,
     // so a recent date can be missing some; those are reported rather than treated as zero.
     const driverChange = new Map<string, number>();
     const missingDrivers: string[] = [];
-    for (const driver of DRIVERS.filter(d => d.key !== CONTROL && d.period === 'day')) {
-        const rows = await recent(driver.key);
+    for (const driver of otherDrivers) {
+        const rows = recent(driver.key);
         const now = rows.find(r => r.date === date), before = rows.filter(r => r.date < date).at(-1);
         const change = !now || !before || !previous || before.date !== previous.date ? NaN
             : driver.change === 'difference' ? now.close - before.close : before.close > 0 && now.close > 0 ? now.close / before.close - 1 : NaN;
@@ -51,7 +58,7 @@ export async function moves(session: string, date: string): Promise<MovesRespons
     const holdings: HoldingMove[] = [];
     for (const h of data.holdings) {
         // Cash, bonds held directly and property have no daily price, so they have no daily move.
-        const history = isSecurity(h) ? await recent(h.symbol) : [];
+        const history = isSecurity(h) ? recent(h.symbol) : [];
         const price = history.find(r => r.date === date), prior = history.filter(r => r.date < date).at(-1);
         // Same market session on both series; missing date means no move.
         const actual = price && prior && previous && prior.date === previous.date && prior.close > 0 ? Math.round((price.close / prior.close - 1) * h.valueUsd * 100) / 100 : null;
