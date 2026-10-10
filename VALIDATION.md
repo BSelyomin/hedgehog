@@ -1,5 +1,14 @@
 # Validation and phase status
 
+## Holdings-linked event history (2026-10-10)
+
+All 144 Vitest tests, strict TypeScript checks and the Next.js production build pass in the Node 24 container.
+
+Added a separate current-holdings history tab, grouped contract outcomes, verified release sources, aligned holding/SPY close comparisons, explicit missing-data states and event-page navigation. Tests cover return arithmetic, pre-open timing across DST/weekends, incomplete/future/intraday windows, missing benchmark/stock dates, session ownership, unowned-symbol filters, subject matching, post-release quote labeling and unsupported market hours. The original calibration and trust paths remain unchanged.
+
+Live validation of the 25-holding portfolio found 49 linked inflation event identifiers; the newest twelve include eight supported comparisons across three BLS release dates. The September 11 example uses September 10 and September 11 closes for both TLT and SPY. Migration 005 and release seeding completed without changing settled probabilities or outcomes. Broader release-time discovery and exchange holiday calendars remain future work.
+
+
 ## Subject evidence and event context (2026-10-09)
 
 All 122 tests, strict TypeScript checks and the production build pass. Migration 004 applied locally and identity recovery verified all 127 stored observations: 126 inflation contracts across 49 event identifiers and one interest-rate contract in one event. Company and stock-market subject views correctly report no verified history. Stored probabilities and outcomes are not changed by identity recovery.

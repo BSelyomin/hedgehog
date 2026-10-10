@@ -213,3 +213,29 @@ export interface ErrorResponse extends Freshness {
 export interface HealthResponse extends Freshness {
     status: 'ok';
 }
+
+export interface HistoricalPriceMove {
+    beforeDate: string;
+    afterDate: string;
+    beforeClose: number;
+    afterClose: number;
+    change: number;
+}
+export interface HoldingEventHistory {
+    eventTicker: string;
+    seriesTicker: string;
+    title: string;
+    subjects: string[];
+    release: {at: string;sourceUrl: string} | null;
+    windowNote: string | null;
+    spyMove: HistoricalPriceMove | null;
+    predictions: {ticker: string;title: string;probability: number;outcome: number;quoteAt: string;closeAt: string;predatesRelease: boolean | null}[];
+    holdings: {symbol: string;type: LinkType;evidence: string;measuredAt: string | null;moveNote: string | null;move: HistoricalPriceMove | null}[];
+}
+export interface HoldingsHistoryResponse extends Freshness {
+    holdings: string[];
+    totalLinkedEvents: number;
+    displayedEvents: number;
+    currentHoldings: true;
+    events: HoldingEventHistory[];
+}

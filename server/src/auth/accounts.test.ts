@@ -203,3 +203,8 @@ it('scopes briefing reads and refresh generation to the authenticated portfolio'
     assert.equal(refresh.status,503);
     assert.ok(String(calls.find(c => c.sql.includes('pg_try_advisory_lock'))?.values[0]).includes(`user:${id}`));
 });
+it('scopes past-event history to the account resolved by authentication',async()=>{
+ respond=sql=>sql.includes('JOIN users')?result([account]):result();
+ const response=await request(createApp(),'/holdings-history?userId=someone-else',{headers:headers(true)});
+ assert.equal(response.status,200);assert.deepEqual(calls.find(c=>c.sql.includes('FROM holdings'))?.values,[`user:${id}`]);
+});

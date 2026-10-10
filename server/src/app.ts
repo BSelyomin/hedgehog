@@ -6,6 +6,8 @@ import { getHoldings, saveHoldings, validateHoldings } from './services/holdings
 import { exposure, calendar, eventDetail } from './services/exposure.ts';
 import { moves } from './services/moves.ts';
 import { earnings } from './services/earnings.ts';
+import { holdingsHistory } from './services/holdings-history.ts';
+import { HISTORY_SUBJECTS } from './services/history-subjects.ts';
 import { trackRecord } from './services/track-record.ts';
 import { briefing } from './jobs/briefing.ts';
 import { briefingDay } from './services/briefing-content.ts';
@@ -47,6 +49,11 @@ app.get('/moves', async (req, res) => { const date = String(req.query.date ?? re
     return;
 } res.json(await moves(res.locals.session, date)); });
 app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase())); });
+app.get('/holdings-history', async (req,res) => {
+    const subject=String(req.query.subject??'all'),symbol=req.query.symbol===undefined?undefined:String(req.query.symbol).trim().toUpperCase();
+    if(subject!=='all'&&!HISTORY_SUBJECTS.some(s=>s.id===subject) || symbol!==undefined&&!/^[A-Z][A-Z0-9.\-^=]{0,14}$/.test(symbol)) {res.status(400).json({error:'Choose a supported subject and ticker',asOf:null});return;}
+    res.json(await holdingsHistory(res.locals.session,subject,symbol));
+});
 app.get('/track-record', async (_req, res) => { res.json(await trackRecord(res.locals.session)); });
 async function readBriefing(session: string): Promise<BriefingResponse> {
     const date = briefingDay();

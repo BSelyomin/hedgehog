@@ -1,10 +1,12 @@
 'use client';
+import { HoldingsHistory } from './holdings-history';
 import { useState } from 'react';
 import type { TrackRecordResponse, CategoryRecord, ExposureResponse, HistorySubject } from '../../../shared/types';
 import { percent, number, dateText, useData, Card, Fresh, Status, Empty, href, Progress } from '../common';
 const historyDate = (s:string|null) => s ? new Date(s).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : 'unavailable';
 
-export function TrackRecord() {
+export function TrackRecord({initialView='accuracy'}:{initialView?:string}={}) {
+    const [view,setView]=useState(initialView==='holdings'?'holdings':'accuracy');
     const {data,error}=useData<TrackRecordResponse>('/track-record');
     const {data:portfolio}=useData<ExposureResponse>('/exposure');
     const [selected,setSelected]=useState('all');
@@ -13,9 +15,15 @@ export function TrackRecord() {
     const event=portfolio?.events.filter(e=>subject?.id!=='all' && subject?.seriesTickers.includes(e.seriesTicker??'')).sort((a,b)=>Date.parse(a.closeTime)-Date.parse(b.closeTime))[0];
     return <><h1>How much evidence supports these odds?</h1><p>See how earlier Kalshi predictions compared with real outcomes, before you put weight on today's odds.</p>
     <Status error={error} loading={!data&&!error}/><Fresh asOf={data?.asOf??null}/>
+    <div className="toggle" role="tablist" aria-label="Track record views" onKeyDown={e=>{
+        if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+        e.preventDefault(); const next=e.key==='Home'?'accuracy':e.key==='End'?'holdings':view==='accuracy'?'holdings':'accuracy';
+        setView(next); document.getElementById(next==='accuracy'?'accuracy-tab':'holdings-tab')?.focus();
+    }}><button role="tab" tabIndex={view==='accuracy'?0:-1} id="accuracy-tab" aria-selected={view==='accuracy'} aria-controls="accuracy-panel" className={view==='accuracy'?'active':''} onClick={()=>setView('accuracy')}>Forecast accuracy</button><button role="tab" tabIndex={view==='holdings'?0:-1} id="holdings-tab" aria-selected={view==='holdings'} aria-controls="holdings-panel" className={view==='holdings'?'active':''} onClick={()=>setView('holdings')}>Past events linked to my holdings</button></div>
     {data && <><div className="toolbar"><label>What are you following? <select value={subject?.id??'all'} onChange={e=>setSelected(e.target.value)}>{data.subjects.map(s=><option key={s.id} value={s.id}>{s.title}{!s.record?' — no verified history yet':''}</option>)}</select></label></div>
-    {subject?.id==='all' && <p className="note">Choose a subject above to find evidence for the odds you're watching and see its connection to your holdings. All history gives you the full sample.</p>}
-    <p className="note">Subject views use only historical series with reviewed matching tags. All history includes every verified observation; the broader Kalshi categories remain in the details.</p>
+    {subject?.id==='all' && <p className="note">Choose a subject above to find evidence for the odds you're watching and see its connection to your holdings. {view==='accuracy'?'All history gives you the full sample.':'The event-history tab shows only events linked to your current holdings.'}</p>}
+    <p className="note">Subject views use only historical series with reviewed matching tags. {view==='accuracy'?'All history includes every verified observation; the broader Kalshi categories remain in the details.':'Past-event connections use current holdings and current relationship evidence.'}</p>
+    {view==='holdings' ? <div id="holdings-panel" role="tabpanel" aria-labelledby="holdings-tab"><HoldingsHistory subject={subject?.id??'all'} symbols={portfolio?.holdings.map(h=>h.symbol)??[]}/></div> : <div id="accuracy-panel" role="tabpanel" aria-labelledby="accuracy-tab">
     {!category && <Card><h2>No verified {subject?.title.toLowerCase()} history yet</h2><Empty>We have no usable settled outcomes and earlier quotes for this subject yet.</Empty><p>Choose another subject or All history to inspect available evidence. Your holdings CSV cannot supply historical odds or outcomes.</p></Card>}
     {category && <CategoryEvidence category={category} minSettled={data.minSettled} subject={subject}/>}
     {subject?.id!=='all' && <Card><h2>What this evidence helps you judge</h2>{event ? <>
@@ -24,6 +32,7 @@ export function TrackRecord() {
     <h3>What the history adds</h3><p>{category?`The ${subject.title.toLowerCase()} sample above checks whether earlier probabilities matched outcomes in series with the same reviewed subject tags.`:'We do not yet have verified history for this subject. Its current odds have no historical comparison here.'} It helps you assess the support behind these odds, without estimating what this event would do to your stocks.</p><a href={href('event',event.ticker)}>Review this event →</a>
     </> : <p>No current reviewed {subject?.title.toLowerCase()} event is linked to your holdings. You can still inspect the forecasting history above.</p>}</Card>}
     <details><summary>Original Kalshi categories and data coverage</summary><Card><p>{data.totalMarkets} verified markets across {data.categories.length} Kalshi categories. History is collected from {data.reviewedSeries} reviewed market series.</p><p>Categories in this view: {subject?.kalshiCategories.join(', ')||'No verified history'}.</p><div className="scroll"><table><thead><tr><th>Kalshi category</th><th>Markets checked</th><th>Average gap</th><th>History used in trust</th></tr></thead><tbody>{data.categories.map(c=><tr key={c.category}><td>{c.category}</td><td>{c.count}</td><td>{number(c.avgMiss)} pts</td><td>{c.eligibleForTrust?'Yes':'Not enough history'}</td></tr>)}</tbody></table></div><p className="note">Trust scoring still uses these original category statistics. Subject comparisons do not change the trust formula.</p></Card></details>
+    </div>}
     </>}
     <p className="note">Historical results help you judge the evidence. They do not guarantee the next outcome. Trust also considers the quote's spread, activity and open interest.</p></>;
 }
