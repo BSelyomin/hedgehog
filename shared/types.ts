@@ -230,12 +230,22 @@ export interface HoldingEventHistory {
     windowNote: string | null;
     spyMove: HistoricalPriceMove | null;
     predictions: {ticker: string;title: string;probability: number;outcome: number;quoteAt: string;closeAt: string;predatesRelease: boolean | null}[];
-    holdings: {symbol: string;type: LinkType;evidence: string;measuredAt: string | null;moveNote: string | null;move: HistoricalPriceMove | null}[];
+    outcome: {
+        contracts: number;
+        yes: number;
+        // The contract whose earlier midpoint was furthest from what happened; null when only quotes taken at or after the release exist.
+        biggestMiss: {title: string;probability: number;outcome: number} | null;
+    };
+    holdings: {symbol: string;type: LinkType;evidence: string;measuredAt: string | null;moveNote: string | null;move: HistoricalPriceMove | null;
+        // Holding change minus SPY change over the same dates, as a plain difference in return.
+        vsSpy: number | null}[];
 }
 export interface HoldingsHistoryResponse extends Freshness {
     holdings: string[];
     totalLinkedEvents: number;
     displayedEvents: number;
+    // Displayed events with a verified release time and at least one holding price comparison.
+    comparableEvents: number;
     currentHoldings: true;
     events: HoldingEventHistory[];
 }

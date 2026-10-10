@@ -2,7 +2,7 @@ import {beforeEach,it,expect,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({query:vi.fn(),getHoldings:vi.fn()}));
 vi.mock('../db.ts',()=>({query:mocks.query,iso:(d:Date|null)=>d?.toISOString()??null}));
 vi.mock('./holdings.ts',()=>({getHoldings:mocks.getHoldings}));
-import {holdingsHistory} from './holdings-history.ts';
+import {holdingsHistory,summarizeOutcome} from './holdings-history.ts';
 const observation={ticker:'CPI-AUG-THRESHOLD',event_ticker:'KXCPI-26AUG',series_ticker:'KXCPI',title:'CPI above threshold?',prob_24h_before:.7,outcome:1,odds_time:new Date('2026-09-10T12:29:00Z'),close_time:new Date('2026-09-11T12:29:00Z'),loaded_at:new Date('2026-10-01T00:00:00Z'),event_title:'CPI August',released_at:new Date('2026-09-11T12:30:00Z'),source_url:'https://www.bls.gov/news.release/archives/cpi_09112026.htm'};
 beforeEach(()=>{
  mocks.query.mockReset();mocks.getHoldings.mockReset().mockResolvedValue({holdings:[{symbol:'TLT',valueUsd:10000}]});
@@ -21,6 +21,7 @@ it('uses only the requested current portfolio and reviewed links with a common S
  expect(d.events[0].holdings[0].type).toBe('Measured');expect(d.events[0].holdings[0].move?.change).toBeCloseTo(.05);expect(d.events[0].spyMove?.change).toBeCloseTo(.02);
  expect(d.events[0].holdings[0].move?.beforeDate).toBe(d.events[0].spyMove?.beforeDate);expect(d.events[0].predictions[0].predatesRelease).toBe(true);
  expect(d.events[0].holdings[0]).not.toHaveProperty('dollarProfit');
+ expect(d.events[0].holdings[0].vsSpy).toBeCloseTo(.03);expect(d.comparableEvents).toBe(1);expect(d.events[0].outcome).toEqual({contracts:1,yes:1,biggestMiss:null});
 });
 it('never substitutes market close time when the release is not verified',async()=>{
  const original=mocks.query.getMockImplementation()!;
@@ -45,4 +46,10 @@ it('does not assume non-US security closes happen after the US release',async()=
   return original(sql);
  });
  const h=(await holdingsHistory('session')).events[0].holdings[0];expect(h.move).toBeNull();expect(h.moveNote).toContain('not been verified');
+});
+
+it('names the largest miss and ignores quotes taken after the release',()=>{
+ const c=[{title:'a',probability:.9,outcome:0},{title:'b',probability:.99,outcome:0},{title:'c',probability:.6,outcome:1}];
+ expect(summarizeOutcome(c,[true,false,true])).toEqual({contracts:3,yes:1,biggestMiss:c[0]});
+ expect(summarizeOutcome([{title:'c',probability:.6,outcome:1}],[true]).biggestMiss).toBeNull();
 });
