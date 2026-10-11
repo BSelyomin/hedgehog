@@ -74,3 +74,5 @@ Docker setup, Kalshi polling, Yahoo price loading, Snowflake tagging and one Cor
 ## Brokerage accounts
 
 Read-only SnapTrade linking is available under **Brokerages** for signed-in users, with separate sandbox and live modes. Manual entry and CSV imports remain available. Configure commercial test keys and follow [SNAPTRADE.md](SNAPTRADE.md) for sandbox setup and the test checklist. Docker passes the connector settings to the backend.
+
+Thanks!
