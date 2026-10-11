@@ -1,5 +1,18 @@
 # Validation and phase status
 
+## Response-caching merge verification (2026-10-10)
+
+Merge `24582d6` is complete, with no unmerged index entries or remaining source conflict
+markers. The merged daily read-along briefing, supported-link reach, restored history routes
+and response caching are retained.
+
+- The existing suite passed all 745 tests in a disposable Node 24 container with two workers.
+- Both frontend and backend TypeScript checks passed.
+- Vitest's web pattern omitted `forecasts-cache.test.ts`. The pattern now includes both `.ts`
+  and `.tsx` tests; all five formerly omitted cache tests passed separately. Total verified:
+  750 tests across 79 files. No assertions or password-hashing settings were weakened.
+- This verification checked the merged source. It did not rebuild or restart running containers.
+
 ## Reach, a daily read-along briefing, the other timeframes and questions about an event (2026-10-10)
 
 All 659 tests and both TypeScript checks pass.
