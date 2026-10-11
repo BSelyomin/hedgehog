@@ -30,6 +30,21 @@ the root Dockerfile builds these same applications for local Compose.
    enabled. Keep the repository workspace/shared files available. Build, install and framework
    settings are defined separately on each service. Remove the previous frontend-only Root
    Directory `web` setting and any manually configured `API_INTERNAL_URL` in Vercel.
+   Both services use the configured `npm ci` install and `npm run build` commands
+   in their own directory. Their package manifests explicitly declare the development
+   dependencies needed there: TypeScript, Vitest and Node typings. Vitest is required
+   because strict TypeScript checks include the test files. Root-only development
+   dependencies are not automatically included by a service-only workspace install.
+   Keep development dependencies enabled for builds. Do not use workspace selectors
+   such as `npm run build -w server` inside a standalone service build context.
+   If a log says "This is not the tsc command you are looking for", `npx` fetched
+   the unrelated `tsc` package because the real compiler was absent. Install the declared
+   TypeScript dependency; installing the package named `tsc` does not fix it.
+   Next.js uses `web/tsconfig.build.json` to check the frontend application and shared
+   types during production builds. Frontend integration tests import backend helpers,
+   so they remain in the full monorepo `npm run lint` and `npm test` checks using
+   `web/tsconfig.json`; a web-only deployment does not need PostgreSQL or AI dependencies
+   to type-check those tests. Strict application checking remains enabled.
 2. These cron intervals and the server's 800-second duration require **Pro or Enterprise**.
    Hobby accepts only daily cron schedules and cannot deploy this configuration unchanged.
    The web proxy retains its 120-second function limit and existing request deadlines.
@@ -99,7 +114,35 @@ Use a recent Vercel CLI with Services support. From the repository root run:
 vercel dev
 ```
 
-The CLI runs both services and injects the binding. `vercel dev -L` selects local-only
+After changing build dependencies, redeploy once without reusing the old build cache:
+
+```bash
+npx vercel deploy --prod --force
+```
+
+If a build still exits with 127, inspect the failing service's full build log for
+`tsc: not found` or `next: not found`. Confirm the service's install command ran for that
+service and that the project Root Directory is `.`. The final exit-code line alone
+does not identify which executable was missing.
+
+For a compiler exit 1, retrieve the deployment's build output instead of the client
+debug stack (replace the example URL with the failed deployment URL):
+
+```bash
+npx vercel inspect https://your-failed-deployment.vercel.app --logs
+```
+
+Find the first `error TS...` diagnostic. The server command prints compiler
+diagnostics and keeps strict checking of application and test files enabled. A local
+comparison is `npm --prefix server --workspaces=false run build` from the repository
+root. CLI build-log reference: https://vercel.com/docs/cli/inspect.
+
+The SWC lockfile warning means optional compiler packages for other platforms are
+missing from the lockfile. To let Next.js repair it on a machine with npm-registry
+access, run `npm run build -w web` locally from the repository root, inspect the
+resulting package-lock.json changes and include them in the next deployment.
+
+For local development, `vercel dev` runs both services and injects the binding. `vercel dev -L` selects local-only
 operation. Configure database/provider variables and `CRON_SECRET` for the local environment
 as well. Cron timers do not run automatically locally: call the authenticated endpoints
 manually. With no secret, maintenance fails closed. With no runtime binding on Vercel, the

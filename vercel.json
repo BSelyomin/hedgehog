@@ -1,15 +1,15 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "$schema": "https://vercel.sh",
   "services": {
     "server": {
       "root": "server",
       "framework": "express",
       "entrypoint": "src/server.ts",
-      "installCommand": "npm ci --include=dev",
+      "installCommand": "npm install --include=dev",
       "buildCommand": "npm run build",
       "functions": {
         "src/server.ts": {
-          "maxDuration": 800,
+          "maxDuration": 300,
           "includeFiles": "{seed,migrations}/**"
         }
       }
@@ -17,7 +17,7 @@
     "web": {
       "root": "web",
       "framework": "nextjs",
-      "installCommand": "npm ci --include=dev",
+      "installCommand": "npm install --include=dev",
       "buildCommand": "npm run build",
       "bindings": [
         {
