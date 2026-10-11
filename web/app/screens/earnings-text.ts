@@ -58,11 +58,12 @@ export function summarizeEvenOdds(metric: EarningsMetric): string {
 export const leadTickers = (metric: EarningsMetric) => new Set([metric.evenOdds?.above?.ticker, metric.evenOdds?.below?.ticker].filter((ticker): ticker is string => Boolean(ticker)));
 
 // The average size of the move across past reports and what it is in dollars on the holding.
-export function describeTypicalMove(data: EarningsResponse, money: (value: number) => string): string | null {
+// `whose` names the position's owner: "your", or "Alex’s" for someone signed in.
+export function describeTypicalMove(data: EarningsResponse, money: (value: number) => string, whose = 'your'): string | null {
     const typical = data.typicalMove;
     if (!typical || !data.position)
         return null;
-    return `±${(typical.percent * 100).toFixed(1)}% ≈ ±${money(typical.usd)} on your ${money(data.position.valueUsd)}`;
+    return `±${(typical.percent * 100).toFixed(1)}% ≈ ±${money(typical.usd)} on ${whose} ${money(data.position.valueUsd)}`;
 }
 
 export const signed = (move: number) => `${move < 0 ? '−' : '+'}${Math.abs(move * 100).toFixed(1)}`;

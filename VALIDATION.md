@@ -1,5 +1,34 @@
 # Validation and phase status
 
+## Screens name the person signed in; an audit of every endpoint (2026-10-10)
+
+All 620 tests and both TypeScript checks pass.
+
+- **Names.** Signed in, the headings and figure lines read "Alex’s exposure map", "What moved
+  Alex’s portfolio", "of Alex’s portfolio"; a guest still reads "Your". Checked in a browser as
+  a guest and as a throwaway account (since removed) on Add holdings, Overview, Calendar,
+  Earnings, Moves, Track record and an event page: no browser errors, and a long name wraps
+  inside its heading at phone width with no sideways scroll.
+- **Audit.** A script saved the feature-tour portfolio in a guest session, read every endpoint
+  and checked the figures against each other: sums and shares on the Overview and the category
+  cards, the calendar's window and order, each Moves window (change = end − start, market +
+  beyond = change, totals = the rows, odds moves of 3+ points read at or before each close and
+  under seven days old, settlements inside the window), earnings (typical move = the average of
+  the moves shown, ladders, even odds), track-record accuracy, grades, sorting and filters,
+  forecast arithmetic, and that bad input is refused. All of it held.
+- **Found, not yet changed.**
+  - *Reach counts links the Overview hides.* An event's share counts every linked holding,
+    topic links included, while the Overview's rows show only Direct, Calculated and Related.
+    With the tour portfolio the widest-reaching event reads 89.4% and its row shows holdings
+    worth 12.9%; the rest is a house linked by an unmeasured topic. Ten events sent to the
+    Overview have no link it shows, so the "Linked events" count (366) is ten more than its rows.
+  - *The briefing is made once per portfolio, not once a day.* Its cache key leaves out the
+    date, so an unchanged portfolio keeps its first briefing and "Reload briefing" returns it.
+  - *Slow pages.* `/exposure`, `/calendar`, `/event/:ticker` and `/earnings/:symbol` took 4 to 7
+    seconds each; the calendar and every event page rebuild the whole exposure map.
+  - The event page's "Compare with past events" link names a By holding view the Track record
+    page no longer has.
+
 ## Odds polling restored after the one-attempt rule stopped it (2026-10-11)
 
 All 613 tests and both TypeScript checks pass. The password-hashing test exceeded its

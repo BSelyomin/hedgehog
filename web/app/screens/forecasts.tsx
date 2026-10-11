@@ -6,6 +6,7 @@ import type { EventForecastResponse, ForecastDriver, ForecastExclusion, Forecast
 import { api, Card, dateText, Empty, Fresh, href, money, percent, ReloadButton, Status, useData } from '../common';
 import { driverName } from './sensitivity';
 import { ForecastColumnHeading } from './forecast-column-heading';
+import { useOwner } from '../auth';
 
 const FORECAST_PAGE_SIZE = 10;
 const FORECAST_COLUMNS = [
@@ -42,6 +43,7 @@ export function Forecasts() {
     const events = useData<RankedForecastsResponse>('/forecasts/ranked-events');
     const [expanded, setExpanded] = useState<string[]>([]), [showTools, setShowTools] = useState(false), [revision, setRevision] = useState(0);
     const [page, setPage] = useState(1);
+    const owner = useOwner();
     const listHeading = useRef<HTMLHeadingElement>(null);
     const pageCount = Math.max(1, Math.ceil((events.data?.events.length ?? 0) / FORECAST_PAGE_SIZE));
     useEffect(() => { setPage(current => Math.min(current, pageCount)); }, [pageCount]);
@@ -58,7 +60,7 @@ export function Forecasts() {
         listHeading.current?.scrollIntoView({ block: 'start' });
     }
     return <>
-        <div className="row"><div><h1>Forecasts</h1><p>Which event results could move your portfolio—and which stocks could rise or fall.</p></div><ReloadButton onReload={reload}/></div>
+        <div className="row"><div><h1>Forecasts</h1><p>Which event results could move {owner.their} portfolio—and which stocks could rise or fall.</p></div><ReloadButton onReload={reload}/></div>
         <Status error={events.error} loading={!events.data && !events.error}/><Fresh asOf={events.data?.asOf ?? null}/>
         {events.data && <>
             <p className="note">Portfolio value: <strong className="mono">{money(events.data.totalValue)}</strong>. Showing {events.data.events.length} of {events.data.groupedEvents ?? events.data.candidateEvents} forecast groups from {events.data.candidateEvents} linked events, ranked by measured daily dollar sensitivity.</p>
@@ -80,6 +82,7 @@ interface AutomaticAIState { data: ForecastAssessmentsResponse | null; error: st
 function AutomaticAssessments({ onUpdate }: { onUpdate: (state: AutomaticAIState) => void }) {
     const { data, error, reload } = useData<ForecastAssessmentsResponse>('/forecasts/assessments');
     const started = useRef(Date.now()), [stopped, setStopped] = useState(false);
+    const owner = useOwner();
     useEffect(() => { onUpdate({ data, error, stopped }); }, [data, error, stopped, onUpdate]);
     useEffect(() => {
         if (stopped || error || !data?.assessments.some(item => item.assessment.status === 'pending')) return;
@@ -89,7 +92,7 @@ function AutomaticAssessments({ onUpdate }: { onUpdate: (state: AutomaticAIState
     }, [data, error, stopped, reload]);
     async function retry() { started.current = Date.now(); setStopped(false); await reload(); }
     return <div className="row"><p className="note" role="status">{error || (stopped ? 'AI estimates are taking longer than expected. Reload to check again.'
-        : !data || data.assessments.some(item => item.assessment.status === 'pending') ? 'Snowflake is evaluating related contracts together in the background. Completed forecasts appear below.' : 'AI estimates checked against your current holdings.')}</p>
+        : !data || data.assessments.some(item => item.assessment.status === 'pending') ? 'Snowflake is evaluating related contracts together in the background. Completed forecasts appear below.' : `AI estimates checked against ${owner.their} current holdings.`)}</p>
         <ReloadButton label="Reload AI estimates" onReload={retry}/></div>;
 }
 
@@ -353,8 +356,8 @@ function ForecastTools() {
 export function ForecastsContent({ data, markets, marketsError = '', marketsLoading = false }: {
     data: ForecastsResponse; markets: ForecastMarket[]; marketsError?: string; marketsLoading?: boolean;
 }) {
-    const baseline = data.baseline;
-    if (data.totalValue === 0) return <Empty><a href={href('holdings')}>Add holdings</a> or connect a brokerage to forecast your portfolio.</Empty>;
+    const baseline = data.baseline, owner = useOwner();
+    if (data.totalValue === 0) return <Empty><a href={href('holdings')}>Add holdings</a> or connect a brokerage to forecast {owner.their} portfolio.</Empty>;
     return <>
         <Card className="forecast-baseline"><div className="row"><h2>Next trading-day value forecast</h2><span className="chip plain">Measured from price history</span></div>
             <div className="stats forecast-stats">

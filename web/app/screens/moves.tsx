@@ -8,6 +8,7 @@ import { describeLeadMove, driverName, driverPhrase } from './sensitivity';
 import { CategoryFilter } from './category-controls';
 import { activeSelection, selectedSymbols, selectionMove, useCategorySelection } from './category-filter';
 import { RANGES, describeChange, driverEvents, eventLines, scopeDrivers, scopeEvents, scopeRows, sharedReasons, signed, tableRows, type Scoped } from './move-scope';
+import { useOwner } from '../auth';
 
 // A session date (YYYY-MM-DD) as a day, whatever the reader's time zone.
 const session = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
@@ -44,8 +45,9 @@ export function Moves() {
     // data, which loads in the background so that the moves themselves are never kept waiting for it.
     const selection = useCategorySelection();
     const exposure = useData<ExposureResponse>('/exposure').data;
+    const owner = useOwner();
     return <>
-        <div className="row" id="moves-top"><div><h1>What moved your portfolio</h1><p>Your holdings at two closes, beside the Kalshi events of the same window</p></div><label>Window ends<input type="date" value={date || data?.date || ''} onChange={e => setDate(e.target.value)}/></label></div>
+        <div className="row" id="moves-top"><div><h1>What moved {owner.their} portfolio</h1><p>{owner.Their} holdings at two closes, beside the Kalshi events of the same window</p></div><label>Window ends<input type="date" value={date || data?.date || ''} onChange={e => setDate(e.target.value)}/></label></div>
         <div className="actions move-controls">
             <div className="toggle" role="group" aria-label="Length of the window">{RANGES.map(option => <button key={option.key} aria-pressed={option.key === range} className={option.key === range ? 'active' : ''} onClick={() => setRange(option.key)}>{option.label}</button>)}</div>
             <ReloadButton onReload={() => reload()}/><button disabled={!date} onClick={() => setDate('')}>Latest trading session</button>
@@ -61,13 +63,14 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
     const [topics, setTopics] = useState(false);
     // The holding whose driver's events are open in its row.
     const [open, setOpen] = useState('');
+    const owner = useOwner();
     // Everything on the screen, the table included, covers the same holdings: the one picked, else the chosen category, else all.
     const rows = scopeRows(data.holdings, chosen, focus);
     const { listed, unpriced } = tableRows(rows, search);
     const whole = !focus && !chosen, part = selectionMove(rows);
     // The whole portfolio's figures are the server's, which also checks that every move covers the same sessions.
     const totals = whole ? { ...part, startValue: data.startValue, endValue: data.endValue, actual: data.total, fromMarket: data.fromMarket, beyondMarket: data.beyondMarket } : part;
-    const subject = focus || (chosen ? 'The chosen holdings' : data.unpricedValue > 0 ? 'Your listed securities' : 'Your portfolio');
+    const subject = focus || (chosen ? 'The chosen holdings' : data.unpricedValue > 0 ? `${owner.Their} listed securities` : `${owner.Their} portfolio`);
     const symbols = focus ? new Set([focus]) : chosen;
     const settled = scopeEvents(data.settledEvents, symbols, theme, topics), moved = scopeEvents(data.movedEvents, symbols, theme, topics);
     const through = (key: string): Behind => ({ moved: scopeEvents(data.movedEvents, symbols, theme, false, key), settled: scopeEvents(data.settledEvents, symbols, theme, false, key) });
@@ -116,7 +119,7 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
             {focus ? <p className="note table-scope">Showing only <strong>{focus}</strong>, the holding you picked. <button className="reset-filters" onClick={() => setFocus('')}>Show {chosen ? 'the chosen holdings' : 'all holdings'}</button></p>
                 : <p className="note">Pick a holding to see only that holding: its row here, its change, what mattered most for it, and the Kalshi events linked to it.</p>}
             <label className="move-search">Search holdings<input type="search" placeholder="Ticker, e.g. AAPL" value={search} onChange={e => setSearch(e.target.value)}/></label>
-            <p className="note">Search filters the rows below. Totals above cover {data.unpricedValue > 0 ? `listed securities; ${money(data.unpricedValue)} in cash, bonds held directly and property has no daily price and is left out` : 'your full portfolio'}.</p>
+            <p className="note">Search filters the rows below. Totals above cover {data.unpricedValue > 0 ? `listed securities; ${money(data.unpricedValue)} in cash, bonds held directly and property has no daily price and is left out` : `${owner.their} full portfolio`}.</p>
             {unpriced.length > 0 && <p className="note unpriced-note">Not listed, because {unpriced.length === 1 ? 'it has' : 'they have'} no daily price and so no move: {unpriced.map(holding => holding.symbol).join(', ')}. To see one anyway, search for its name (at least its first three letters).</p>}
             {shared.length > 0 && <p className="note shared-reasons">For every holding below: {shared.join(' ')}</p>}
             <div className="scroll"><table className="move-table"><thead><tr>{COLUMNS.map(column => <th key={column.name} scope="col"><ColumnName {...column}/></th>)}</tr></thead><tbody>
@@ -203,10 +206,12 @@ export function DriverEventList({ intro, moved, settled }: { intro: string; move
 // gives the Kalshi events linked through a driver, which open under its bar.
 export function LeadDrivers({ drivers, changes, missing, subject, events }: { drivers: DriverMove[]; changes: DriverChange[]; missing: string[]; subject?: string; events?: (driver: string) => Behind }) {
     const [open, setOpen] = useState('');
-    const lead = describeLeadMove(drivers, money);
+    const owner = useOwner();
+    // Whose move it is: the holding picked, else the person the portfolio belongs to.
+    const lead = describeLeadMove(drivers, money, subject ? `${subject}’s` : owner.their);
     return <Card className="lead-drivers"><h2>What mattered most{subject ? ` for ${subject}` : ''}</h2>
         {lead ? <>
-            <p className="driver-lead">{subject ? lead.replace('of your move', `of ${subject}’s move`) : lead}</p>
+            <p className="driver-lead">{lead}</p>
             <div className="driver-bars">{drivers.map((move, index) => {
                 const change = changes.find(candidate => candidate.driver === move.driver);
                 const behind = events?.(move.driver), count = behind ? behind.moved.length + behind.settled.length : 0, opened = open === move.driver;

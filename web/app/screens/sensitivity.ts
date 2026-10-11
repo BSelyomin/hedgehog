@@ -74,10 +74,11 @@ export function describeDrivers(ranks: DriverRank[]): string | null {
         + (rest.length ? `; then ${rest.map(rank => `${driverName(rank.driver).toLowerCase()} ${share(rank.typicalEffect)}`).join(', ')}` : '') + '.';
 }
 
-// The window's biggest driver for the holdings in view, with the runner-up for scale.
-export function describeLeadMove(moves: DriverMove[], money: (value: number) => string): string | null {
+// The window's biggest driver for the holdings in view, with the runner-up for scale. `whose`
+// names whose move it is: "your", a signed-in person's "Alex’s", or one holding's "XOM’s".
+export function describeLeadMove(moves: DriverMove[], money: (value: number) => string, whose = 'your'): string | null {
     if (!moves.length)
         return null;
     const [top, next] = moves;
-    return `${driverName(top.driver)} mattered most: about ${money(top.contribution)} of your move${next ? `, ahead of ${driverName(next.driver).toLowerCase()} at about ${money(next.contribution)}` : ''}.`;
+    return `${driverName(top.driver)} mattered most: about ${money(top.contribution)} of ${whose} move${next ? `, ahead of ${driverName(next.driver).toLowerCase()} at about ${money(next.contribution)}` : ''}.`;
 }

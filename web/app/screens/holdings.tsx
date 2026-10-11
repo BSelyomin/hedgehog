@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import type { AccountUser, AssetType, Holding, HoldingsResponse } from '../../../shared/types';
 import { money, api, useData, assetLabel, Card, Fresh, Status, Empty } from '../common';
 import { CSV_COLUMNS, parseHoldingsCsv } from './holdings-csv';
+import { ownerOf } from '../auth';
 
 const STATES = ['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware', 'District of Columbia', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming'];
 // What each kind of holding can be linked on, said before the user fills it in.
@@ -17,6 +18,7 @@ const typeHelp: Record<AssetType, string> = {
 
 export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
     const saved = useData<HoldingsResponse>('/holdings');
+    const owner = ownerOf(user?.name);
     const [notice, setNotice] = useState('');
     const [cleared, setCleared] = useState(false);
     const [search, setSearch] = useState('');
@@ -82,12 +84,12 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
     return <>
         <div className="hero">
             <div>
-                <span className="eyebrow">Kalshi odds · Your holdings</span>
-                <h1>See which real-world events your portfolio depends on.</h1>
+                <span className="eyebrow">Kalshi odds · {owner.Their} holdings</span>
+                <h1>See which real-world events {owner.their} portfolio depends on.</h1>
                 <p>Hedgehog links your stocks, funds, bonds, cash and property to prediction markets, shows what’s coming up and what moved today, and tells you how far to trust each number.</p>
             </div>
             <Card className="portfolio-editor">
-                <h2>Add your holdings</h2>
+                <h2>{owner.name ? `${owner.Their} holdings` : 'Add your holdings'}</h2>
                 <p className="note">Manual entry and CSV imports remain available. <a href="#brokerages">Connect a brokerage →</a></p>{!!saved.data?.brokerageHoldings?.length && <div><p className="note">Connected holdings (read-only; {saved.data.sandbox ? 'simulated sandbox data' : 'SnapTrade data'}). Values are quantity × provider price. Manual entries add to these values; remove any duplicate entries.</p>{saved.data.brokerageHoldings.map(h => <div className="row" key={h.symbol}><strong className="mono">{h.symbol}</strong><span className="mono">{money(h.valueUsd)}</span></div>)}<a href="#brokerages">Manage connected accounts</a></div>}
                 <form onSubmit={add} className="holding-form">
                     <label>Type<select disabled={busy || !saved.data} value={assetType} onChange={e => { setAssetType(e.target.value as AssetType); setError(''); }}>{(Object.keys(assetLabel) as AssetType[]).map(type => <option key={type} value={type}>{assetLabel[type]}</option>)}</select></label>
@@ -107,7 +109,7 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
                 <p className="note">{typeHelp[assetType]}</p>
                 <Status error={saved.error} loading={!saved.data && !saved.error} layout="compact"/>
                 <label>Search portfolio holdings<input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Find a ticker…" disabled={!saved.data}/></label>
-                {saved.data && <><p className="note" role="status">Showing {visibleHoldings.length} of {holdings.length} holdings. Saving includes your full portfolio.</p>
+                {saved.data && <><p className="note" role="status">Showing {visibleHoldings.length} of {holdings.length} holdings. Saving includes {owner.their} full portfolio.</p>
                 <div className="portfolio-list" tabIndex={0} role="region" aria-label="Portfolio holdings">
                     {visibleHoldings.map(holding => <div className="row holding" key={holding.symbol}>
                         <strong className="mono">{holding.symbol}</strong>{holding.assetType && <span className="chip plain">{assetLabel[holding.assetType]}</span>}<span className="mono">{money(holding.valueUsd)}</span>
@@ -126,7 +128,7 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
                 <p className="note">CSV columns: <span className="mono">{CSV_COLUMNS}</span>. Stocks and funds need only the first two; the rest describe cash, Treasuries, bonds and property. Try <span className="mono">examples/feature-tour.csv</span>.</p>
                 {notice && <p role="status">{notice}</p>}
                 <p className="note">Clearing immediately removes manual and CSV holdings {user ? 'from your account on every device' : 'for this guest session'}.</p>
-                <p className="note">Hedgehog reads odds and prices; it never trades. {user ? `Your portfolio is saved to ${user.email}.` : <>Your guest portfolio is stored on the server and linked to this browser. <a href="#signup">Create an account</a> to keep it across devices.</>}</p>
+                <p className="note">Hedgehog reads odds and prices; it never trades. {user ? `${owner.Their} portfolio is saved to ${user.email}.` : <>Your guest portfolio is stored on the server and linked to this browser. <a href="#signup">Create an account</a> to keep it across devices.</>}</p>
                 {saved.data && <Fresh asOf={cleared && !saved.data.brokerageHoldings?.length ? null : saved.data.asOf}/>}
             </Card>
         </div>

@@ -4,25 +4,27 @@ import { ExposureTable } from './exposure-table';
 import { CategoryCards, CategoryFilter } from './category-controls';
 import type { ExposureResponse, CalendarResponse, BriefingResponse } from '../../../shared/types';
 import { money, percent, dateText, href, api, useData, Card, Fresh, Status, LinkChip, EventDate, ReloadButton } from '../common';
+import { useOwner } from '../auth';
 
 export function Overview() {
     const { data, error, reload } = useData<ExposureResponse>('/exposure');
     const [revision, setRevision] = useState(0);
+    const owner = useOwner();
     const widest = data?.events[0];
     return <>
-        <div className="row"><div><h1>Your exposure map</h1><p>Your holdings and the events linked to them</p></div><div className="toolbar"><ReloadButton onReload={async () => { setRevision(v => v + 1); await reload(); }}/><a href="#holdings">Edit holdings →</a></div></div>
+        <div className="row"><div><h1>{owner.Their} exposure map</h1><p>{owner.Their} holdings and the events linked to them</p></div><div className="toolbar"><ReloadButton onReload={async () => { setRevision(v => v + 1); await reload(); }}/><a href="#holdings">Edit holdings →</a></div></div>
         <Status error={error} loading={!data && !error} layout="summary"/>
         {data && <>
             <Fresh asOf={data.asOf}/>
             <div className="stats overview-stats">
-                <Card><span className="muted">Portfolio value · entered by you</span><strong className="number">{money(data.totalValue)}</strong><span className="muted">{data.holdings.length} holdings</span></Card>
+                <Card><span className="muted">Portfolio value · entered by {owner.they}</span><strong className="number">{money(data.totalValue)}</strong><span className="muted">{data.holdings.length} holdings</span></Card>
                 <Card className="widest-event"><span className="muted">Widest-reaching event</span><h3>{widest?.title ?? 'No links yet'}</h3>
-                    <p>{widest ? `${percent(widest.share)} of your value linked` : 'Add holdings and review market tags.'}</p>
+                    <p>{widest ? `${percent(widest.share)} of ${owner.their} value linked` : 'Add holdings and review market tags.'}</p>
                     {widest && <p className="note">Ends <time dateTime={widest.closeTime}>{dateText(widest.closeTime, true)}</time> · Kalshi market close</p>}
                 </Card>
                 <EndingSoon key={revision}/>
                 <Card><span className="muted">Linked events (all future dates)</span><strong className="number">{data.events.length}</strong><p className="note">Calendar defaults to the next 14 days.</p><a href="#calendar">Open calendar →</a></Card>
-                <Card><span className="muted">Daily price changes</span><h3>Understand your move</h3><a href="#moves">Open move explainer →</a></Card>
+                <Card><span className="muted">Daily price changes</span><h3>Understand {owner.their} move</h3><a href="#moves">Open move explainer →</a></Card>
             </div>
             <CategoryCards categories={data.categories}/>
             <Card className="exposure-map">
@@ -31,7 +33,7 @@ export function Overview() {
                 </div>
                 <CategoryFilter categories={data.categories}/>
                 <ExposureTable data={data}/>
-                <details className="exposure-help"><summary>How to read this table</summary><p className="note">Red = Direct; green = Calculated from a holding’s own terms (cash, bonds, a mortgage); blue = Related, backed by historical measurements. Only connected holdings appear, strongest links first. Color describes the link, not the direction of a price move. Share and linked-holding counts use all source links, including those hidden by filters, and your full portfolio value. They show portfolio reach, not how much holdings would move.</p></details>
+                <details className="exposure-help"><summary>How to read this table</summary><p className="note">Red = Direct; green = Calculated from a holding’s own terms (cash, bonds, a mortgage); blue = Related, backed by historical measurements. Only connected holdings appear, strongest links first. Color describes the link, not the direction of a price move. Share and linked-holding counts use all source links, including those hidden by filters, and {owner.their} full portfolio value. They show portfolio reach, not how much holdings would move.</p></details>
             </Card>
         </>}
         <Briefing key={revision}/>
@@ -52,11 +54,12 @@ function EndingSoon() {
 
 export function Briefing() {
     const { data, error, reload } = useData<BriefingResponse>('/briefing');
+    const owner = useOwner();
     return <Card>
-        <div className="row"><h2>Your saved briefing</h2><ReloadButton label="Reload briefing" onReload={() => reload('/briefing/reload')}/></div>
+        <div className="row"><h2>{owner.Their} saved briefing</h2><ReloadButton label="Reload briefing" onReload={() => reload('/briefing/reload')}/></div>
         <Status error={error} loading={!data && !error} layout="compact"/>
         {data && <>
-            <p className="note" role="status">{data.text ? 'Cached briefing for your current holdings.' : 'No cached briefing for your current holdings. Select Reload briefing to prepare one from available data.'}</p>
+            <p className="note" role="status">{data.text ? `Cached briefing for ${owner.their} current holdings.` : `No cached briefing for ${owner.their} current holdings. Select Reload briefing to prepare one from available data.`}</p>
             {data.generatedAt && <p className="note">Saved <time dateTime={data.generatedAt}>{new Date(data.generatedAt).toLocaleString()}</time>. This briefing describes that snapshot; current market figures may differ. Unchanged holdings reuse this saved briefing.</p>}
             {data.audioUrl && <audio controls preload="none" src={data.audioUrl}/>}
             {data.text && <details><summary>Read briefing</summary><p>{data.text}</p></details>}

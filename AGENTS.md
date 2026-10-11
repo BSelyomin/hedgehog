@@ -433,6 +433,14 @@ Seven screens, matching the designs in `/design` (screenshots or exports from th
    category or one holding; events that settled and odds that moved in the window)
 7. Track record (calibration chart, table by category, how trust is scored)
 
+**Whose portfolio.** Headings, subheadings and the lines that state a figure name the person
+signed in, as they wrote their name when creating the account: "Alex’s exposure map", "of
+Alex’s portfolio", "Alex holds this fund". A guest has no name and reads "Your" and "you"
+(`useOwner` and `ownerOf` in `web/app/auth.tsx`). Text that tells the reader how to use the
+screen or how a figure is worked out still says "you": "No holdings match your search", "the
+value you entered". The name stays in the browser and our own database: it is not put into the
+briefing text or any prompt, which go to ElevenLabs and Snowflake.
+
 Design tokens: background `#0E1116`, card `#151A21`, border `#2A313C`, text `#E8ECF1`,
 secondary text `#A3ADBA`, accent `#5AA2FF`, up `#7DB6FF`, down `#FF9F45`. Fonts: Space Grotesk
 (headings), IBM Plex Sans (body), IBM Plex Mono (all numbers). A column name can

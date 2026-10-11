@@ -4,6 +4,7 @@ import type { EventResponse, HoldingLink, Market } from '../../../shared/types';
 import { money, percent, number, dateText, useData, Card, Fresh, Status, Empty, TrustBadge, Progress, LinkChip, EventDate, ReloadButton } from '../common';
 import { OddsChart } from './odds-chart';
 import { describeCalculation, describeImportance, describeSensitivity } from './sensitivity';
+import { useOwner } from '../auth';
 
 export function EventPage({ ticker }: {
     ticker: string;
@@ -21,6 +22,7 @@ const OUTCOMES_PER_PAGE = 5;
 
 export function EventDetail({ data, requestedTicker, onReloadReporting }: { data: EventResponse; requestedTicker: string; onReloadReporting: () => Promise<unknown> }) {
     const historyId = useId();
+    const owner = useOwner();
     const markets = data.event.markets;
     const initialIndex = Math.max(0, markets.findIndex(m => m.ticker === requestedTicker));
     const [selection, setSelection] = useState(markets[initialIndex]?.ticker ?? '');
@@ -67,7 +69,7 @@ export function EventDetail({ data, requestedTicker, onReloadReporting }: { data
                         <p className="note">Each outcome shows its own midpoint. These quotes are not normalized.</p>
                     </Card>
                     <Card>
-                        <div className="row"><h2>Your holdings linked to this event</h2><span className="mono">{money(data.event.linkedValue)} · {percent(data.event.share)}</span></div>
+                        <div className="row"><h2>{owner.Their} holdings linked to this event</h2><span className="mono">{money(data.event.linkedValue)} · {percent(data.event.share)}</span></div>
                         {data.event.links.map(l => <LinkedHolding key={l.symbol} link={l}/>)}
                         <p className="note">Related links are measured against the underlying driver (oil, the 2-year Treasury yield or the S&P 500), not against the probability of this event. They describe past daily moves, not a forecast. Calculated links are exact arithmetic on the terms you entered for cash, bonds or a mortgage.</p>
                     </Card>
@@ -101,6 +103,7 @@ export function LinkedHolding({ link }: { link: HoldingLink }) {
 }
 
 function TrustBreakdown({ market }: { market: Market }) {
+    const owner = useOwner();
     const parts = [['Spread', market.trust.spread, 30], ['Activity', market.trust.activity, 25], ['Depth', market.trust.depth, 20], ['Track record', market.trust.trackRecord, 25]] as const;
     return <>
         <TrustBadge market={market}/>
@@ -109,6 +112,6 @@ function TrustBreakdown({ market }: { market: Market }) {
             {value !== null && <Progress value={value / max}/>}
         </div>)}
         <p className="note">Spread: {number(market.trust.spreadCents)} cents. {market.trust.trackRecord === null ? 'No track record yet; available quote components are rescaled.' : `${market.trust.categoryCount} settled markets in this category.`}</p>
-        <a href="#track-record">How trust is scored →</a><p><a href="#track-record/holdings">Compare with past events linked to your holdings →</a></p>
+        <a href="#track-record">How trust is scored →</a><p><a href="#track-record/holdings">Compare with past events linked to {owner.their} holdings →</a></p>
     </>;
 }

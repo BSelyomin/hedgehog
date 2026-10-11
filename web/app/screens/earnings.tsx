@@ -6,18 +6,20 @@ import { EarningsControls } from './earnings-controls';
 import { defaultEarningsFilters, earningsRows, filterEarningsRows, type EarningsFilters, type EarningsRow } from './earnings-filters';
 import { CallTopics, ExpectationCard, MetricsTable, MovesChart, UpcomingReports } from './earnings-preview';
 import { describeCall, describeTypicalMove } from './earnings-text';
+import { useOwner } from '../auth';
 
 export function Earnings() {
     const { data, error, reload } = useData<EarningsListResponse>('/earnings');
     const [symbol, setSymbol] = useState('');
     const [revision, setRevision] = useState(0);
     const [companySearch, setCompanySearch] = useState('');
+    const owner = useOwner();
     const term = companySearch.trim().toLowerCase();
     const companies = data?.companies.filter(company => !term || company.symbol.toLowerCase().includes(term) || (company.name ?? '').toLowerCase().includes(term)) ?? [];
     const selected = companies.find(company => company.symbol === symbol) ?? companies[0];
     return <div className="earnings-layout">
         <aside className="earnings-side">
-            <h2>Your upcoming reports</h2>
+            <h2>{owner.Their} upcoming reports</h2>
             {data && <>
                 <label>Search companies<input type="search" placeholder="Ticker or company name…" value={companySearch} onChange={event => setCompanySearch(event.target.value)}/></label>
                 {companySearch && <button className="reset-filters" onClick={() => setCompanySearch('')}>Clear company search</button>}
@@ -30,7 +32,7 @@ export function Earnings() {
             <div className="row"><h1>Earnings preview</h1><ReloadButton onReload={async () => { await reload(); setRevision(v => v + 1); }}/></div>
             <Status error={error} loading={!data && !error} layout="detail"/>
             {data && (selected ? <EarningsDetail key={`${selected.symbol}:${revision}`} symbol={selected.symbol}/>
-                : <Card><Empty>{data.companies.length ? 'No company matches this search. Try a ticker or clear the search.' : 'None of your holdings has an earnings call dated by Kalshi right now. Company markets still appear on the overview and calendar.'}</Empty><Fresh asOf={data.asOf}/></Card>)}
+                : <Card><Empty>{data.companies.length ? 'No company matches this search. Try a ticker or clear the search.' : `None of ${owner.their} holdings has an earnings call dated by Kalshi right now. Company markets still appear on the overview and calendar.`}</Empty><Fresh asOf={data.asOf}/></Card>)}
         </div>
     </div>;
 }
@@ -45,6 +47,7 @@ export function EarningsMarkets({ data }: { data: EarningsResponse }) {
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const heading = useRef<HTMLHeadingElement>(null);
+    const owner = useOwner();
     const rows = earningsRows(data);
     const matching = filterEarningsRows(rows, filters);
     const pages = Math.max(1, Math.ceil(matching.length / pageSize));
@@ -58,7 +61,7 @@ export function EarningsMarkets({ data }: { data: EarningsResponse }) {
     return <>
         <p className="earnings-subline">
             {data.call ? <>{describeCall(data.call)} (<time dateTime={data.call.time}>{data.call.session ? dateText(data.call.time, true) : dayOnly(data.call.time, true)}</time>)</> : 'No earnings call dated by Kalshi'}
-            {data.position && <> · Your position <span className="mono">{money(data.position.valueUsd)}</span> · <span className="mono">{percent(data.position.share)}</span> of portfolio</>}
+            {data.position && <> · {owner.Their} position <span className="mono">{money(data.position.valueUsd)}</span> · <span className="mono">{percent(data.position.share)}</span> of portfolio</>}
         </p>
         <Fresh asOf={data.asOf}/>
         {data.featured && <ExpectationCard metric={data.featured}/>}
@@ -98,7 +101,7 @@ const dayText = (date: string | null) => date ? new Date(`${date}T12:00:00Z`).to
 // How the stock moved across past results filings: the chart, the typical move, and the dates
 // and closes behind every bar.
 export function EarningsHistory({ data }: { data: EarningsResponse }) {
-    const typical = describeTypicalMove(data, money);
+    const typical = describeTypicalMove(data, money, useOwner().their);
     return <Card className="earnings-history"><h2>How {data.symbol} moved after past reports</h2>
         {data.history && <>
             <MovesChart symbol={data.symbol} history={data.history}/>

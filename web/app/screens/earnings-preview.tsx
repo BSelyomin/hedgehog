@@ -2,6 +2,7 @@
 import type { EarningsCall, EarningsCompany, EarningsMetric, EarningsReportMove, TrustSummary } from '../../../shared/types';
 import { money, percent, number, href, dateText, dayOnly, Card } from '../common';
 import { countdown, describeEvenOdds, firmQuote, leadTickers, signed, summarizeEvenOdds } from './earnings-text';
+import { useOwner } from '../auth';
 
 // One trust figure for a group of markets: the median of their scores.
 export function GroupTrust({ trust }: { trust: TrustSummary | null }) {
@@ -14,7 +15,7 @@ export function GroupTrust({ trust }: { trust: TrustSummary | null }) {
 export function UpcomingReports({ companies, selected, onSelect, now }: {
     companies: EarningsCompany[]; selected?: string; onSelect: (symbol: string) => void; now?: number;
 }) {
-    return <nav className="earnings-upcoming" aria-label="Your upcoming reports">
+    return <nav className="earnings-upcoming" aria-label={`${useOwner().Their} upcoming reports`}>
         {companies.map(company => <button key={company.symbol} className={`report-card${selected === company.symbol ? ' active' : ''}`} aria-pressed={selected === company.symbol} onClick={() => onSelect(company.symbol)}>
             <span className="report-card-top"><strong className="mono">{company.symbol}</strong><span className="note">{countdown(company.callTime, now)}</span></span>
             <span className="note">{company.markets} Kalshi {company.markets === 1 ? 'market' : 'markets'}</span>
