@@ -42,6 +42,65 @@
 .portfolio-actions button{flex:1}
 .portfolio-list:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media(max-width:600px){.portfolio-list{max-height:220px}}
+
+/* Keep the holdings editor across the page instead of beside a tall introduction. */
+.holdings-heading{margin-bottom:24px}
+.holdings-heading h1{font-size:clamp(28px,3vw,38px);margin:10px 0 12px}
+.holdings-heading p{margin:0}
+.holdings-page .portfolio-editor{padding:24px}
+.holdings-section-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 20px;margin-bottom:18px}
+.holdings-section-heading h2{margin:0}
+.holdings-page h3{margin:0 0 12px;font-size:18px}
+.holdings-import{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 24px;padding:18px 20px;background:#101720;border:1px solid #24476E;border-radius:12px}
+.holdings-import h3{margin:0 0 6px}
+.holdings-import .note{margin:0}
+.holdings-upload{display:inline-flex;align-items:center;justify-content:center;align-self:center;position:relative;min-height:44px;padding:10px 18px;border:1px solid var(--accent);border-radius:10px;background:#182a40;color:var(--text);font-size:15px;font-weight:600;cursor:pointer}
+.holdings-upload:hover{background:#24476E}
+.holdings-upload:focus-within{outline:2px solid var(--accent);outline-offset:4px}
+.holdings-upload.disabled{opacity:.5;cursor:default}
+.holdings-import-receipt{grid-column:1/-1;display:flex;align-items:flex-start;gap:12px;padding:14px;background:#132235;border:1px solid #24476E;border-radius:10px}
+.holdings-import-receipt>div{min-width:0}
+.holdings-import-receipt strong{display:block;overflow-wrap:anywhere;color:var(--text);margin-bottom:4px}
+.holdings-import-check{flex:none;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#24476E;color:var(--accent)}
+.holdings-csv-help{grid-column:1/-1;min-width:0}
+.holdings-page summary{min-height:44px;padding:12px 0;cursor:pointer;color:var(--muted);font-size:14px}
+.holdings-page summary:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+.holdings-csv-help summary{padding-bottom:8px}
+.holdings-csv-help p{overflow-wrap:anywhere;padding-bottom:8px}
+.holdings-entry{padding:22px 0;border-bottom:1px solid var(--border)}
+.holdings-entry .note{margin:12px 0 0}
+.holdings-page .holding-form{margin:0}
+.holdings-page .holding-form label{min-width:0}
+.holdings-review-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px 24px;margin-top:20px}
+.holdings-review-heading h3{margin:0}
+.holdings-review-heading label{flex:0 1 300px}
+.holdings-review-heading input{margin-top:6px}
+.holdings-page .portfolio-list{max-height:350px;margin-bottom:0}
+.holdings-identity{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
+.holdings-identity strong{overflow-wrap:anywhere}
+.holdings-page .holding .chip{margin:0}
+.holdings-connected{margin-top:18px;padding:4px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px}
+.holdings-page .portfolio-actions{margin-top:18px}
+.holdings-page .portfolio-actions .actions{margin:0;justify-content:flex-end}
+.holdings-page .portfolio-actions button{flex:0 1 auto}
+.holdings-page .portfolio-actions .primary{order:1}
+.holdings-page .portfolio-actions .error{margin-top:0}
+.holdings-how-it-works>summary{font-size:16px;color:var(--text)}
+.holdings-how-it-works .grid{gap:16px;margin-top:8px}
+.holdings-how-it-works .card{padding:20px;margin-bottom:0}
+.holdings-how-it-works h3{margin-top:10px}
+@media(max-width:600px){
+    .holdings-page .portfolio-editor{padding:18px}
+    .holdings-import{grid-template-columns:minmax(0,1fr);padding:16px;gap:10px}
+    .holdings-review-heading{align-items:flex-start}
+    .holdings-review-heading label{flex:1 1 100%}
+    .holdings-page .holding-form{grid-template-columns:minmax(0,1fr)}
+    .holdings-page .portfolio-list{max-height:300px}
+    .holdings-page .portfolio-list .holding{gap:8px}
+    .holdings-page .holding .chip{font-size:11px;padding:3px 6px}
+    .holdings-page .portfolio-actions .actions{flex-direction:column}
+    .holdings-page .portfolio-actions .primary{order:0}
+}
 @media(max-width:1000px){.exposure-detail-grid{grid-template-columns:1fr 1fr}.exposure-detail-grid section:last-child{grid-column:1/-1}.exposure-holding-details{max-height:180px}}
 @media(max-width:800px){
  .exposure-table{display:block;min-width:0}.exposure-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}.exposure-table tbody{display:block}.exposure-summary{display:grid;grid-template-columns:minmax(0,1fr) 98px;gap:8px 10px;padding:10px;border-bottom:1px solid var(--border)}.exposure-summary th,.exposure-summary td{padding:0;border:0;width:auto;min-width:0}.exposure-table .event-column{width:auto}.exposure-table .reach-column{width:auto;align-self:start;padding-top:6px}.exposure-summary .reach-column:before{content:attr(data-label);display:block;font-size:11px;color:var(--muted);margin-bottom:5px}.exposure-table .outcome-column{width:auto;grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px}.exposure-table .holdings-column{grid-column:1/-1}.outcome-odds{margin:0;flex-direction:column;align-items:flex-end;gap:0}.event-disclosure{min-height:56px}.exposure-table .event-title{font-size:14px}.event-close{font-size:11px}.exposure-detail-row:not([hidden]),.exposure-detail-row>td{display:block}.exposure-detail-grid{grid-template-columns:1fr;padding:8px 0;gap:20px}.exposure-detail-grid section:last-child{grid-column:auto}.exposure-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.exposure-scroll{max-height:650px}.exposure-map-heading{gap:12px}.exposure-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.exposure-toolbar .toggle,.exposure-toolbar .search-control{grid-column:1/-1;width:100%;min-width:0}.exposure-toolbar .toggle button{flex:1}.exposure-toolbar .sort-control{width:auto;min-width:0}.exposure-toolbar select{font-size:13px}.exposure-result-bar{gap:6px}.exposure-result-bar p{font-size:12px}.reset-filters{white-space:nowrap;font-size:12px}.exposure-map-heading h2{font-size:20px}

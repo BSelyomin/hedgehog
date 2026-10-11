@@ -22,19 +22,23 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
     const [notice, setNotice] = useState('');
     const [cleared, setCleared] = useState(false);
     const [search, setSearch] = useState('');
+    const [importedFile, setImportedFile] = useState<{ name: string; count: number } | null>(null);
+    const [operation, setOperation] = useState<'import' | 'save' | 'clear' | null>(null);
+    const busy = operation !== null;
     async function clearPortfolio() {
-        setBusy(true); setError(''); setNotice('');
+        setOperation('clear'); setError(''); setNotice('');
         try {
             await api<HoldingsResponse>('/holdings', { method: 'POST', body: JSON.stringify({ holdings: [] }) });
             setHoldings([]); setSymbol(''); setAmount(''); setSearch(''); setCleared(true);
+            setImportedFile(null);
             setNotice('Manual holdings cleared. Connected brokerage holdings are unchanged.');
         } catch (e) {
             setError((e as Error).message);
         } finally {
-            setBusy(false);
+            setOperation(null);
         }
     }
-    const [holdings, setHoldings] = useState<Holding[]>([]), [symbol, setSymbol] = useState(''), [amount, setAmount] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+    const [holdings, setHoldings] = useState<Holding[]>([]), [symbol, setSymbol] = useState(''), [amount, setAmount] = useState(''), [error, setError] = useState('');
     const [assetType, setAssetType] = useState<AssetType>('security'), [maturity, setMaturity] = useState(''), [couponRate, setCouponRate] = useState('');
     const [usState, setUsState] = useState(''), [mortgage, setMortgage] = useState(''), [rental, setRental] = useState(false);
     const fixedTerm = assetType === 'treasury' || assetType === 'bond';
@@ -62,7 +66,7 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
         setNotice(''); setHoldings([...holdings, assetType === 'security' ? { symbol: ticker, valueUsd: value } : { symbol: ticker, valueUsd: value, assetType, details }]);
         setSymbol(''); setAmount(''); setMaturity(''); setCouponRate(''); setMortgage(''); setRental(false); setSearch(''); setError('');
     }
-    async function save() { setBusy(true); setError(''); setNotice(''); try {
+    async function save() { setOperation('save'); setError(''); setNotice(''); try {
         await api('/holdings', { method: 'POST', body: JSON.stringify({ holdings }) });
         window.location.hash = 'overview';
     }
@@ -70,27 +74,52 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
         setError((e as Error).message);
     }
     finally {
-        setBusy(false);
+        setOperation(null);
     } }
     async function importCsv(file: File | undefined) { if (!file)
-        return; setBusy(true); setNotice(''); try {
-        setHoldings(parseHoldingsCsv(await file.text()));
+        return; setOperation('import'); setNotice(''); setError(''); try {
+        const imported = parseHoldingsCsv(await file.text());
+        setHoldings(imported);
+        setImportedFile({ name: file.name, count: imported.length });
         setSearch('');
         setError('');
     }
     catch (e) {
-        setError((e as Error).message);
-    } finally { setBusy(false); } }
-    return <>
-        <div className="hero">
-            <div>
+        setError(`Could not import ${file.name}: ${(e as Error).message}`);
+    } finally { setOperation(null); } }
+    return <div className="holdings-page">
+            <div className="holdings-heading">
                 <span className="eyebrow">Kalshi odds · {owner.Their} holdings</span>
                 <h1>See which real-world events {owner.their} portfolio depends on.</h1>
-                <p>Hedgehog links your stocks, funds, bonds, cash and property to prediction markets, shows what’s coming up and what moved today, and tells you how far to trust each number.</p>
+                <p>Add stocks, funds, cash, bonds or property. Review your holdings, then map them to Kalshi events.</p>
             </div>
             <Card className="portfolio-editor">
-                <h2>{owner.name ? `${owner.Their} holdings` : 'Add your holdings'}</h2>
-                <p className="note">Manual entry and CSV imports remain available. <a href="#brokerages">Connect a brokerage →</a></p>{!!saved.data?.brokerageHoldings?.length && <div><p className="note">Connected holdings (read-only; {saved.data.sandbox ? 'simulated sandbox data' : 'SnapTrade data'}). Values are quantity × provider price. Manual entries add to these values; remove any duplicate entries.</p>{saved.data.brokerageHoldings.map(h => <div className="row" key={h.symbol}><strong className="mono">{h.symbol}</strong><span className="mono">{money(h.valueUsd)}</span></div>)}<a href="#brokerages">Manage connected accounts</a></div>}
+                <div className="holdings-section-heading">
+                    <h2>{owner.name ? `${owner.Their} holdings` : 'Add your holdings'}</h2>
+                    <a className="account-link" href="#brokerages">Connect a brokerage →</a>
+                </div>
+                <div className="holdings-import">
+                    <div>
+                        <h3>Import a CSV</h3>
+                        <p className="note">Upload your holdings in one step. A new file replaces the manual / CSV list below.</p>
+                    </div>
+                    <label className={`holdings-upload${busy || !saved.data ? ' disabled' : ''}`}>
+                        <input className="sr-only" disabled={busy || !saved.data} type="file" accept=".csv,text/csv" aria-label="Import CSV (symbol,valueUsd) · optional type and terms" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; void importCsv(file); }}/>
+                        <span>{operation === 'import' ? 'Importing…' : importedFile ? 'Choose another CSV' : 'Choose CSV file'}</span>
+                    </label>
+                    {importedFile && <div className="holdings-import-receipt" role="status" aria-live="polite">
+                        <span className="holdings-import-check" aria-hidden="true">✓</span>
+                        <div><strong>{importedFile.name}</strong><p className="note">Successfully imported {importedFile.count} {importedFile.count === 1 ? 'holding' : 'holdings'}. Review the list, then select “Map my exposure” to save.</p></div>
+                    </div>}
+                    {operation === 'import' && <p className="note" role="status">Reading and validating your CSV…</p>}
+                    <details className="holdings-csv-help">
+                        <summary>CSV format and supported assets</summary>
+                        <p className="note">CSV columns: <span className="mono">{CSV_COLUMNS}</span>. Stocks and funds need only the first two; the rest describe cash, Treasuries, bonds and property. Try <span className="mono">examples/feature-tour.csv</span>.</p>
+                    </details>
+                </div>
+                {error && <p className="error" role="alert">{error}</p>}
+                <section className="holdings-entry" aria-labelledby="manual-holdings-heading">
+                <h3 id="manual-holdings-heading">Add a holding manually</h3>
                 <form onSubmit={add} className="holding-form">
                     <label>Type<select disabled={busy || !saved.data} value={assetType} onChange={e => { setAssetType(e.target.value as AssetType); setError(''); }}>{(Object.keys(assetLabel) as AssetType[]).map(type => <option key={type} value={type}>{assetLabel[type]}</option>)}</select></label>
                     <label>{assetType === 'security' ? 'Ticker' : 'Short name'}<input disabled={busy || !saved.data} required value={symbol} onChange={e => setSymbol(e.target.value)} placeholder={assetType === 'security' ? 'e.g. AAPL' : assetType === 'property' ? 'e.g. HOME' : assetType === 'cash' ? 'e.g. SAVINGS' : 'e.g. TNOTE-2031'} maxLength={15}/></label>
@@ -104,35 +133,41 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
                         <label>Adjustable mortgage balance ($, optional)<input disabled={busy || !saved.data} type="number" min="0" step="0.01" value={mortgage} onChange={e => setMortgage(e.target.value)} placeholder="Leave empty if fixed or none"/></label>
                         <label className="check-label"><input disabled={busy || !saved.data} type="checkbox" checked={rental} onChange={e => setRental(e.target.checked)}/>Rented out</label>
                     </>}
-                    <button disabled={busy || !saved.data} type="submit">Add</button>
+                    <button disabled={busy || !saved.data} type="submit">Add holding</button>
                 </form>
                 <p className="note">{typeHelp[assetType]}</p>
+                </section>
                 <Status error={saved.error} loading={!saved.data && !saved.error} layout="compact"/>
-                <label>Search portfolio holdings<input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Find a ticker…" disabled={!saved.data}/></label>
+                <div className="holdings-review-heading">
+                    <h3>Review manual / CSV holdings</h3>
+                    <label>Search portfolio holdings<input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Find a ticker…" disabled={!saved.data}/></label>
+                </div>
                 {saved.data && <><p className="note" role="status">Showing {visibleHoldings.length} of {holdings.length} holdings. Saving includes {owner.their} full portfolio.</p>
                 <div className="portfolio-list" tabIndex={0} role="region" aria-label="Portfolio holdings">
                     {visibleHoldings.map(holding => <div className="row holding" key={holding.symbol}>
-                        <strong className="mono">{holding.symbol}</strong>{holding.assetType && <span className="chip plain">{assetLabel[holding.assetType]}</span>}<span className="mono">{money(holding.valueUsd)}</span>
+                        <div className="holdings-identity"><strong className="mono">{holding.symbol}</strong><span className="chip plain">{assetLabel[holding.assetType ?? 'security']}</span></div><span className="mono">{money(holding.valueUsd)}</span>
                         <button disabled={busy || !saved.data} aria-label={`Remove ${holding.symbol}`} onClick={() => setHoldings(previous => previous.filter(row => row.symbol !== holding.symbol))}>×</button>
                     </div>)}
                     {!holdings.length ? <Empty>Add what you own to see which events reach your portfolio.</Empty> : !visibleHoldings.length && <Empty>No holdings match your search.</Empty>}
                 </div></>}
+                {!!saved.data?.brokerageHoldings?.length && <details className="holdings-connected">
+                    <summary>Connected brokerage holdings · {saved.data.brokerageHoldings.length}</summary>
+                    <p className="note">Read-only; {saved.data.sandbox ? 'simulated sandbox data' : 'SnapTrade data'}. Values are quantity × provider price. Manual entries add to these values; remove any duplicate entries.</p>{saved.data.brokerageHoldings.map(h => <div className="row holding" key={h.symbol}><strong className="mono">{h.symbol}</strong><span className="mono">{money(h.valueUsd)}</span></div>)}<a className="account-link" href="#brokerages">Manage connected accounts</a>
+                </details>}
                 <div className="portfolio-actions">
-                    <label>Import CSV (symbol,valueUsd) · optional type and terms<input disabled={busy || !saved.data} type="file" accept=".csv,text/csv" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; void importCsv(file); }}/></label>
-                    {error && <p className="error" role="alert">{error}</p>}
                     <div className="actions">
-                        <button className="primary" onClick={() => void save()} disabled={busy || !saved.data || !holdings.length && !saved.data.brokerageHoldings?.length}>{busy ? 'Saving…' : 'Map my exposure →'}</button>
-                        <button onClick={() => void clearPortfolio()} disabled={busy || !saved.data || (!holdings.length && (cleared || !(saved.data.manualHoldings ?? saved.data.holdings).length))}>Clear manual / CSV holdings</button>
+                        <button className="primary" onClick={() => void save()} disabled={busy || !saved.data || !holdings.length && !saved.data.brokerageHoldings?.length}>{operation === 'save' ? 'Saving…' : 'Map my exposure →'}</button>
+                        <button onClick={() => void clearPortfolio()} disabled={busy || !saved.data || (!holdings.length && (cleared || !(saved.data.manualHoldings ?? saved.data.holdings).length))}>{operation === 'clear' ? 'Clearing…' : 'Clear manual / CSV holdings'}</button>
                     </div>
                 </div>
-                <p className="note">CSV columns: <span className="mono">{CSV_COLUMNS}</span>. Stocks and funds need only the first two; the rest describe cash, Treasuries, bonds and property. Try <span className="mono">examples/feature-tour.csv</span>.</p>
                 {notice && <p role="status">{notice}</p>}
                 <p className="note">Clearing immediately removes manual and CSV holdings {user ? 'from your account on every device' : 'for this guest session'}.</p>
                 <p className="note">Hedgehog reads odds and prices; it never trades. {user ? `${owner.Their} portfolio is saved to ${user.email}.` : <>Your guest portfolio is stored on the server and linked to this browser. <a href="#signup">Create an account</a> to keep it across devices.</>}</p>
                 {saved.data && <Fresh asOf={cleared && !saved.data.brokerageHoldings?.length ? null : saved.data.asOf}/>}
             </Card>
-        </div>
-        <h2>How it works</h2>
-        <div className="grid">{[['Add what you own', 'Enter tickers and dollar values, import a CSV, or add cash, bonds and property by their terms.'], ['We match Kalshi markets', 'Direct company markets first, then figures calculated from a holding’s own terms and Related links backed by historical price measurements. Every link says which kind it is.'], ['Watch what matters to you', 'Explore upcoming events, earnings previews and daily moves, with evidence behind the odds.']].map(([title, text], i) => <Card key={title}><span className="eyebrow">0{i + 1}</span><h3>{title}</h3><p>{text}</p></Card>)}</div>
-    </>;
+        <details className="holdings-how-it-works">
+            <summary>How it works</summary>
+            <div className="grid">{[['Add what you own', 'Enter tickers and dollar values, import a CSV, or add cash, bonds and property by their terms.'], ['We match Kalshi markets', 'Direct company markets first, then figures calculated from a holding’s own terms and Related links backed by historical price measurements. Every link says which kind it is.'], ['Watch what matters to you', 'Explore upcoming events, earnings previews and daily moves, with evidence behind the odds.']].map(([title, text], i) => <Card key={title}><span className="eyebrow">0{i + 1}</span><h3>{title}</h3><p>{text}</p></Card>)}</div>
+        </details>
+    </div>;
 }
