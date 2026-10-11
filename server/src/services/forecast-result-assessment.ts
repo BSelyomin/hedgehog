@@ -3,12 +3,13 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { aiPool, query } from '../db.ts';
 import { cachedAI, contentHash, readAI } from './ai-cache.ts';
 import { assessmentPredictions, assessmentRequest, assessmentRejectionReasons, checkedForecastEstimate,
-    FORECAST_INSTRUCTIONS, FORECAST_SCHEMA, type ForecastAssessmentContext } from './forecast-assessment.ts';
+    FORECAST_INSTRUCTIONS, FORECAST_PROMPT, FORECAST_SCHEMA, type ForecastAssessmentContext } from './forecast-assessment.ts';
 import { loadForecasts } from './forecasts.ts';
 import { forecastResult, rankedForecasts } from './ranked-forecasts.ts';
 import { CortexError, cortexResult, isObject, readCortexResult, snowflakeConfigured, type SourcePassage } from './snowflake.ts';
 
-const INSTRUCTIONS = FORECAST_INSTRUCTIONS + ' This is an explicitly selected individual result. Return exactly one assumption for its marketTicker if it has allowedDrivers and no supported change. Keep jointForecasts empty. The other contracts are context only; do not substitute a combined forecast for this conditional result.';
+const LEGACY_INSTRUCTIONS = FORECAST_INSTRUCTIONS + ' This is an explicitly selected individual result. Return exactly one assumption for its marketTicker if it has allowedDrivers and no supported change. Keep jointForecasts empty. The other contracts are context only; do not substitute a combined forecast for this conditional result.';
+const INSTRUCTIONS = FORECAST_PROMPT + ' Assess only the single supplied market. Return its exact marketTicker as selectedMarketTicker and exactly one assumptions item using one allowedDriver, a finite change in its stated unit, and integer confidence from 0 to 100. Keep jointForecasts empty. Text must be short, qualitative and contain no numbers or URLs. Cite the supplied sourceIds. Missing verified driver-level mapping calls for a cautious, explicitly labeled driver assumption, not an empty assumptions array. Stock effects will be calculated from the supplied historical measurements by code.';
 const running = new Map<string, Promise<ForecastResultAssessmentResponse>>();
 let executing = 0;
 const failures = new Map<string, string>();
@@ -26,7 +27,8 @@ export async function forecastResultAssessment(session: string, ticker: string,
     // Neither quotes nor the arrival of sibling contracts should restart a stopped result.
     const failureIdentity = { session, marketTicker: ticker, groupKey: portfolioIdentity.groupKey,
         holdings: portfolioIdentity.holdings, measurements: portfolioIdentity.measurements,
-        instructions: INSTRUCTIONS, account: process.env.SNOWFLAKE_ACCOUNT_URL?.trim(), model: process.env.SNOWFLAKE_CORTEX_MODEL?.trim() };
+        // A prompt improvement does not authorize retrying a previously stopped request.
+        instructions: LEGACY_INSTRUCTIONS, account: process.env.SNOWFLAKE_ACCOUNT_URL?.trim(), model: process.env.SNOWFLAKE_CORTEX_MODEL?.trim() };
     const key = contentHash(failureIdentity);
     const status = (state: ForecastResultAssessmentResponse['status'], reason: string | null): ForecastResultAssessmentResponse => ({
         marketTicker: ticker, status: state, selectedMarketTicker: null, summary: null, generatedAt: null, reason, asOf: events.asOf });
@@ -40,6 +42,21 @@ export async function forecastResultAssessment(session: string, ticker: string,
     if (!input.markets[0]?.allowedDrivers.length) return status('unavailable', 'No reliable measured driver is available for the reviewed holdings linked to this result. Load price history and run the measurement job.');
     if (!snowflakeConfigured()) return status('unavailable', 'Configure Snowflake Cortex to enable AI assumptions.');
     if (!sources.length) return status('unavailable', 'No verified source references are available for this result.');
+    const schema = {
+        ...FORECAST_SCHEMA, properties: { ...FORECAST_SCHEMA.properties,
+            selectedMarketTicker: { type: 'string', enum: [ticker] },
+            assumptions: { ...FORECAST_SCHEMA.properties.assumptions, description: 'Return exactly one conditional driver assumption for the selected market.',
+                items: { ...FORECAST_SCHEMA.properties.assumptions.items,
+                    properties: { ...FORECAST_SCHEMA.properties.assumptions.items.properties,
+                        marketTicker: { type: 'string', enum: [ticker] },
+                        driver: { type: 'string', enum: input.markets[0].allowedDrivers },
+                        confidence: FORECAST_SCHEMA.properties.assumptions.items.properties.confidence } } },
+            jointForecasts: { ...FORECAST_SCHEMA.properties.jointForecasts, description: 'Return an empty array for this individual conditional result.' } }
+    };
+    // Sibling contracts belong to the combined assessment. Including thousands of
+    // them here swamps the conditional task without improving its measurements.
+    const targetedInput = { ...input, contracts: input.contracts.filter(m => m.marketTicker === ticker),
+        sources: sources.filter(s => !s.id.startsWith('event-') || input.markets.some(m => m.eventTicker === event.sourceEvents?.[Number(s.id.slice(6))]?.ticker)) };
 
     const ready = (stored: { result: unknown; input: unknown }, createdAt: string) => {
         const originalSources = isObject(stored.input) && Array.isArray(stored.input.sources) ? stored.input.sources as SourcePassage[] : [];
@@ -51,7 +68,8 @@ export async function forecastResultAssessment(session: string, ticker: string,
             generatedAt: createdAt, reason: checked.explanationReason, explanationStatus: checked.explanationStatus,
             assumptions: checked.assumptions, predictions, asOf: events.asOf };
     };
-    const cached = await readCortexResult(INSTRUCTIONS, FORECAST_SCHEMA, identity);
+    const cached = await readCortexResult(INSTRUCTIONS, schema, identity)
+        ?? await readCortexResult(LEGACY_INSTRUCTIONS, FORECAST_SCHEMA, identity);
     if (cached) {
         console.info('[Forecast result AI] cache_hit', { generatedAt: cached.createdAt });
         return ready(cached.value, cached.createdAt);
@@ -81,10 +99,10 @@ export async function forecastResultAssessment(session: string, ticker: string,
                 await delay(250);
             }
             executing++; acquired = true;
-            const stored = await cortexResult(INSTRUCTIONS, input, FORECAST_SCHEMA, identity, result => {
-                const checked = checkedForecastEstimate(result, input, sources);
+            const stored = await cortexResult(INSTRUCTIONS, targetedInput, schema, identity, result => {
+                const checked = checkedForecastEstimate(result, targetedInput, targetedInput.sources);
                 const accepted = checked?.selectedMarketTicker === ticker && checked.assumptions.length === 1;
-                const rejectionReasons = accepted ? [] : assessmentRejectionReasons(result, input, sources);
+                const rejectionReasons = accepted ? [] : assessmentRejectionReasons(result, targetedInput, targetedInput.sources);
                 console.info('[Forecast result AI] response_validated', { accepted, rejectionReasons,
                     assumptions: checked?.assumptions.map(a => ({ driver: a.driver, change: a.change, confidence: a.confidence })) ?? [] });
                 if (!accepted) throw new CortexError(`Snowflake result estimate rejected: ${rejectionReasons.join(', ')}.`);

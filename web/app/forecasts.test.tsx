@@ -185,6 +185,8 @@ it('renders all event groups as vertical table rows and each dated result with i
     assert.ok(!outcomes.includes('forecast-result-options') && !outcomes.includes('role="tab'));
     const expanded = renderToStaticMarkup(<ForecastTable events={[base]} expanded={['level:SPY']} onToggle={() => {}}/>);
     assert.ok(expanded.includes('Hide results') && expanded.includes('Dated result forecasts') && expanded.includes('Combined Snowflake assessment'));
+    assert.ok(expanded.includes('aria-label="Selected result stock effects"') && expanded.includes('<h3>Selected result stock effects</h3>'));
+    assert.ok(!expanded.includes('Minimize') && !expanded.includes('Expand ↓') && !expanded.includes('forecast-stock-effects-action'));
 });
 
 it('shows the actual reason in result cells and offers an explicit inline measured assumption', () => {
@@ -303,6 +305,10 @@ it('shows individual estimate coverage and statuses instead of asking for manual
     assert.equal((html.match(/Loading result estimate/g) ?? []).length, 9);
     assert.equal((html.match(/Loading stock directions/g) ?? []).length, 9);
     for (const label of ['$30.00', '↑ AAA', 'AI confidence: 62%', '70.0%', 'Snowflake estimating this result', 'AI result unavailable', 'Automatic retries are stopped']) assert.ok(html.includes(label), label);
+    assert.ok(!html.includes('Stock directions unavailable'));
+    assert.equal((html.match(/The result estimate failed validation/g) ?? []).length, 2, 'Both cells must expose the actual failure reason');
+    const retryable = renderToStaticMarkup(<OutcomeTable event={event} selected="M11" onSelect={() => {}} individual={individual} onRequest={() => {}}/>);
+    assert.ok(retryable.includes('Retry stock estimate'));
     assert.ok(!html.includes('Needs a driver assumption') && !html.includes('Enter a driver-change assumption') && !html.includes('Unmeasured'));
     event.outcomes[0].result = { ...source.result, unavailableReason: 'no-measurement', reason: 'Insufficient aligned price history.' };
     const missing = renderToStaticMarkup(<OutcomeTable event={event} selected="M0" onSelect={() => {}}/>);

@@ -585,8 +585,17 @@ click **View results** to load stock effects for all of that family's missing re
 Cached results appear immediately, and a browser queue runs at most two requests at a time.
 Each row shows queued/loading status followed by measured dollar effects, stock directions
 and self-rated AI confidence. **View stock effects** selects a row and opens its existing
-calculation; it does not start inference. Selected effects can be minimized and expanded
-without discarding their data or manual inputs. Closing/reopening a family reuses saved work.
+calculation; it does not start inference. Selected effects stay visible inside the family
+dropdown. Closing/reopening a family reuses saved work. Failed rows show their actual reason
+and offer **Retry stock estimate** without requiring the stock-effects details to be opened.
+
+Individual completions receive only the selected contract and its source references, without
+combined-forecast instructions. The schema restricts the ticker and driver to supplied IDs;
+code still validates the assumption count, finite change, confidence range and measured effects.
+Existing successful individual caches remain readable, and stopped failures remain stopped
+after this prompt change. After deploying, use **Retry stock estimate** once for a previously
+failed row to assess it with the revised prompt. Snowflake's supported schema constraints are
+documented at https://docs.snowflake.com/en/sql-reference/functions/ai_complete-structured-outputs.
 
 `GET /forecasts/result/:ticker/assessment` reads saved status without starting AI work.
 `POST` to the same path authorizes one attempt, and `POST` to its `/retry` path explicitly

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { pool, aiPool } from '../db.ts';
 import { buildForecasts } from './forecast-model.ts';
 import { predictEventResult, rankForecastEvents } from './event-predictions.ts';
-import { assessmentRequest, type ForecastAssessmentContext } from './forecast-assessment.ts';
+import { assessmentRequest, FORECAST_INSTRUCTIONS, FORECAST_SCHEMA, type ForecastAssessmentContext } from './forecast-assessment.ts';
+import { contentHash } from './ai-cache.ts';
 import { forecastResultAssessment } from './forecast-result-assessment.ts';
 import { createApp } from '../app.ts';
 import { request } from '../auth/request-test.ts';
@@ -59,6 +60,11 @@ beforeEach(() => {
         const payload = JSON.parse(String(options?.body)), input = JSON.parse(payload.messages[1].content);
         assert.equal(payload.response_format.type, 'json_schema');
         assert.equal(input.markets.length, 1); assert.equal(input.jointContext.required, false);
+        assert.equal(input.contracts.length, 1); assert.equal(input.contracts[0].marketTicker, input.markets[0].marketTicker);
+        const schema = payload.response_format.json_schema.schema;
+        assert.deepEqual(schema.properties.selectedMarketTicker.enum, [input.markets[0].marketTicker]);
+        assert.deepEqual(schema.properties.assumptions.items.properties.driver.enum, input.markets[0].allowedDrivers);
+        assert.ok(!payload.messages[0].content.includes('Evaluate ALL contracts'));
         await pause;
         return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({
             selectedMarketTicker: input.markets[0].marketTicker, text: sourceText, sourceIds: ['event-0'],
@@ -96,6 +102,32 @@ it('keeps a cached assumption across quote and sibling changes but invalidates c
     assert.equal((await forecastResultAssessment(session, ticker, 'start', context))!.predictions![0].result.changeUsd, 20); assert.equal(fetches, 2);
     context.model.holdings[0].valueUsd = 2000; context.model.data.drivers[0].holdings[0].valueUsd = 2000; context.model.data.totalValue = 2000;
     assert.equal((await forecastResultAssessment(session, ticker, 'start', context))!.predictions![0].result.changeUsd, 40); assert.equal(fetches, 3);
+});
+
+const legacyInstructions = FORECAST_INSTRUCTIONS + ' This is an explicitly selected individual result. Return exactly one assumption for its marketTicker if it has allowedDrivers and no supported change. Keep jointForecasts empty. The other contracts are context only; do not substitute a combined forecast for this conditional result.';
+it('reuses a valid individual estimate saved with the previous family prompt', async () => {
+    const ticker = 'E-M11';
+    await forecastResultAssessment(session, ticker, 'start', context);
+    const saved = [...records.values()][0]; records.clear();
+    const { identity: portfolio } = assessmentRequest(context.events.events[0], context.model.data, context.model.holdings, ticker);
+    const identity = { ...portfolio, outcomes: portfolio.outcomes.filter(m => m.ticker === ticker), session };
+    const hash = contentHash({ account: process.env.SNOWFLAKE_ACCOUNT_URL, model: process.env.SNOWFLAKE_CORTEX_MODEL,
+        instructions: legacyInstructions, schema: FORECAST_SCHEMA, input: identity });
+    records.set(`cortex-v1:${hash}`, saved);
+    const ready = (await forecastResultAssessment(session, ticker, 'start', context))!;
+    assert.equal(ready.status, 'ready'); assert.deepEqual(ready.predictions![0].result.gainingStocks, ['AAA']); assert.equal(fetches, 1);
+});
+
+it('keeps failures from the previous prompt stopped until the user explicitly retries', async () => {
+    const ticker = 'E-M11';
+    const { identity: portfolio } = assessmentRequest(context.events.events[0], context.model.data, context.model.holdings, ticker);
+    const hash = contentHash({ session, marketTicker: ticker, groupKey: portfolio.groupKey,
+        holdings: portfolio.holdings, measurements: portfolio.measurements, instructions: legacyInstructions,
+        account: process.env.SNOWFLAKE_ACCOUNT_URL, model: process.env.SNOWFLAKE_CORTEX_MODEL });
+    records.set(`forecast-result-failure-v1:${hash}`, { value: { reason: 'Previous rejected estimate.' }, created_at: new Date() });
+    const failed = (await forecastResultAssessment(session, ticker, 'start', context))!;
+    assert.equal(failed.status, 'unavailable'); assert.match(failed.reason!, /Previous rejected estimate/); assert.equal(fetches, 0);
+    assert.equal((await forecastResultAssessment(session, ticker, 'retry', context))!.status, 'ready'); assert.equal(fetches, 1);
 });
 
 it('stops rejected results across ordinary reads and starts, with an isolated explicit retry', async () => {
