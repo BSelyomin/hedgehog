@@ -11,7 +11,7 @@ export function Overview() {
     const widest = data?.events[0];
     return <>
         <div className="row"><div><h1>Your exposure map</h1><p>Your holdings and the events linked to them</p></div><div className="toolbar"><ReloadButton onReload={async () => { setRevision(v => v + 1); await reload(); }}/><a href="#holdings">Edit holdings →</a></div></div>
-        <Status error={error} loading={!data && !error}/>
+        <Status error={error} loading={!data && !error} layout="summary"/>
         {data && <>
             <Fresh asOf={data.asOf}/>
             <div className="stats overview-stats">
@@ -42,7 +42,7 @@ function EndingSoon() {
     const { data, error } = useData<CalendarResponse>('/calendar?days=14');
     const next = data?.events[0];
     return <Card className="ending-soon"><span className="muted">Events coming up</span>
-        {error ? <p className="note">Upcoming events unavailable.</p> : !data ? <p className="note" role="status">Loading upcoming events…</p> : <>
+        {error ? <p className="note">Upcoming events unavailable.</p> : !data ? <Status error="" loading layout="compact" label="Loading upcoming events"/> : <>
             <strong className="number">{data.events.length}</strong><p className="note">In the next 14 days</p>
             {next ? <><a href={href('event', next.ticker)}>{next.title}</a><p className="note">Next: <EventDate event={next} showYear/></p></> : <p className="note">No linked events fall in this window.</p>}
         </>}
@@ -54,7 +54,7 @@ export function Briefing() {
     const { data, error, reload } = useData<BriefingResponse>('/briefing');
     return <Card>
         <div className="row"><h2>Your saved briefing</h2><ReloadButton label="Reload briefing" onReload={() => reload('/briefing/reload')}/></div>
-        <Status error={error} loading={!data && !error}/>
+        <Status error={error} loading={!data && !error} layout="compact"/>
         {data && <>
             <p className="note" role="status">{data.text ? 'Cached briefing for your current holdings.' : 'No cached briefing for your current holdings. Select Reload briefing to prepare one from available data.'}</p>
             {data.generatedAt && <p className="note">Saved <time dateTime={data.generatedAt}>{new Date(data.generatedAt).toLocaleString()}</time>. This briefing describes that snapshot; current market figures may differ. Unchanged holdings reuse this saved briefing.</p>}

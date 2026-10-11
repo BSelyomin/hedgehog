@@ -38,9 +38,9 @@ export function TrackRecord({initialView='accuracy'}:{initialView?:string}={}) {
         {view==='accuracy'?<label>Portfolio relevance<select value={relevant?'holdings':'all'} onChange={e=>setRelevant(e.target.value==='holdings')}><option value="all">All markets</option><option value="holdings">Linked to my holdings</option></select></label>:<label>Holding<select value={holding&&heldSymbols.includes(holding)?holding:''} onChange={e=>setHolding(e.target.value)}><option value="">All stocks and funds</option>{securities.map(h=><option key={h.symbol} value={h.symbol}>{h.symbol}</option>)}</select></label>}
         <label>Forecast horizon<select value={horizon} onChange={e=>setHorizon(Number(e.target.value))}>{FORECAST_HORIZONS.map(h=><option key={h.hours} value={h.hours}>{h.label} before trading close</option>)}</select></label>
     </div>
-    <Status error={error} loading={!data&&!error}/><Fresh asOf={data?.asOf??null}/>
+    <Status error={error} loading={!data&&!error} layout="summary"/>{data && <Fresh asOf={data.asOf}/>}
     {data&&<div id={view==='accuracy'?'accuracy-panel':'holdings-panel'} role="tabpanel" aria-labelledby={view==='accuracy'?'accuracy-tab':'holdings-tab'}>
-        {view==='holdings'&&<Status error={portfolioError} loading={!portfolio&&!portfolioError}/>}
+        {view==='holdings'&&<Status error={portfolioError} loading={!portfolio&&!portfolioError} layout="compact"/>}
         <p className="note">{view==='holdings'?'Showing historical market records linked to your current stocks and funds. Choose a holding to inspect its relevant themes.':relevant?'Showing themes linked to your current holdings.':'Choose a market theme to see its record and connection to your holdings.'} Each record evaluates the whole theme’s reviewed markets, not your investment returns.</p>
         <p className="note">Quotes are bid–ask midpoints from about {horizonName(horizon)} before trading close, within one minute of that target. Trading close is not the time an outcome was released or settled.</p>
         {!subject?<ThemeOverview themes={themes} horizonHours={horizon} relevant={view==='holdings'||relevant} select={setSelected}/>:

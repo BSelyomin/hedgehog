@@ -17,7 +17,7 @@ export function OddsChart({ ticker, name }: { ticker: string; name: string }) {
             </div>
         </div>
         <div className="odds-chart-body">
-            <Status error={error} loading={!data && !error}/>
+            <Status error={error} loading={!data && !error} layout="chart"/>
             {data && <OddsPlot data={data}/>}
         </div>
     </div>;
