@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, FormEvent } from 'react';
 import type { AssetType, ExposureEvent, LinkType, Market } from '../../shared/types';
 import { Explain } from './explain';
+import { LoadingSkeleton, type SkeletonLayout } from './loading-skeleton';
 export const money = (n: number | null) => n === null ? 'Unavailable' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
 
 export const percent = (n: number | null) => n === null ? 'Unavailable' : `${(n * 100).toFixed(1)}%`;
@@ -78,13 +79,14 @@ export { api, setSessionKey } from '../lib/api-client';
 export function useData<T>(path: string) {
     const [data, setData] = useState<T | null>(null), [error, setError] = useState('');
     const controller = useRef<AbortController | null>(null);
-    const reload = useCallback(async (reloadPath?: string) => {
+    const reload = useCallback(async (reloadPath?: string, refresh = true) => {
         controller.current?.abort();
         const request = new AbortController();
         controller.current = request;
         setError('');
+        setData(null);
         try {
-            const result = await api<T>(reloadPath ?? path, { signal: request.signal, method: reloadPath ? 'POST' : 'GET', body: reloadPath ? '{}' : undefined });
+            const result = await api<T>(reloadPath ?? path, { signal: request.signal, cache: refresh ? 'reload' : undefined, method: reloadPath ? 'POST' : 'GET', body: reloadPath ? '{}' : undefined });
             if (!request.signal.aborted) setData(result);
         } catch (e) {
             if (!request.signal.aborted) {
@@ -96,7 +98,7 @@ export function useData<T>(path: string) {
     }, [path]);
     useEffect(() => {
         setData(null);
-        void reload().catch(() => {});
+        void reload(undefined, false).catch(() => {});
         return () => controller.current?.abort();
     }, [reload]);
     return { data, error, reload };
@@ -163,10 +165,12 @@ export function Fresh({ asOf }: {
     asOf: string | null;
 }) { return <p className="note">{asOf ? <>Data updated <time dateTime={asOf}>{dateText(asOf)}</time></> : 'No source data available yet'}</p>; }
 
-export function Status({ error, loading }: {
+export function Status({ error, loading, layout = 'rows', label }: {
     error: string;
     loading: boolean;
-}) { return error ? <p role="alert" className="error">{error}. Check the backend connection and try again.</p> : loading ? <p role="status" className="empty">Loading your data…</p> : null; }
+    layout?: SkeletonLayout;
+    label?: string;
+}) { return error ? <p role="alert" className="error">{error}. Check the backend connection and try again.</p> : loading ? <LoadingSkeleton layout={layout} label={label}/> : null; }
 
 export function Empty({ children }: {
     children: ReactNode;

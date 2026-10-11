@@ -7,10 +7,12 @@ import { EventPage } from './screens/event';
 import { Moves } from './screens/moves';
 import { Earnings } from './screens/earnings';
 import { TrackRecord } from './screens/track-record';
+import { Forecasts } from './screens/forecasts';
 import { AccountProvider, useAccount } from './auth';
 import { AccountScreen } from './screens/account';
 import { Brokerages } from './screens/brokerages';
 import { useData } from './common';
+import { LoadingSkeleton } from './loading-skeleton';
 import type { HealthResponse } from '../../shared/types';
 
 export default function Hedgehog() {
@@ -34,7 +36,7 @@ function Shell() {
         return () => window.removeEventListener('hashchange', change);
     }, []);
 
-    const tabs = [['brokerages', 'Brokerages'], ['overview', 'Overview'], ['calendar', 'Calendar'], ['earnings', 'Earnings'], ['moves', 'Moves'], ['track-record', 'Track record']];
+    const tabs = [['brokerages', 'Brokerages'], ['overview', 'Overview'], ['calendar', 'Calendar'], ['earnings', 'Earnings'], ['moves', 'Moves'], ['forecasts', 'Forecasts'], ['track-record', 'Track record']];
     let screen;
     switch (route) {
         case 'signup': case 'signin': case 'account': screen = <AccountScreen signup={route === 'signup'}/>; break;
@@ -43,6 +45,7 @@ function Shell() {
         case 'calendar': screen = <Calendar/>; break;
         case 'event': screen = <EventPage ticker={id}/>; break;
         case 'moves': screen = <Moves/>; break;
+        case 'forecasts': screen = <Forecasts/>; break;
         case 'earnings': screen = <Earnings/>; break;
         case 'track-record': screen = <TrackRecord initialView={id}/>; break;
         default: screen = <AddHoldings user={session?.user}/>;
@@ -64,7 +67,7 @@ function Shell() {
         <main>
             {health.data?.readOnly && <p className="account-notice" role="status">The database is read-only right now. You are seeing saved data: odds are not updating and changes cannot be saved.</p>}
             {notice && <p className="account-notice" role="status">{notice}</p>}
-            {checking ? <p role="status">Loading your session…</p> : error ?
+            {checking ? <LoadingSkeleton layout="summary" label="Loading your session"/> : error ?
                 <div><p role="alert" className="error">{error}</p><button onClick={() => void refresh()}>Retry connection</button></div> :
                 <div key={session?.sessionKey}>{screen}</div>
             }

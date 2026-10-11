@@ -21,7 +21,7 @@ it('stores a real seven-day candle even when 24-hour and 30-day quotes are absen
  expect(stored).toHaveLength(1);expect(stored[0][1].slice(0,2)).toEqual(['M',168]);expect(stored[0][1].slice(6,8)).toEqual([.4,.6]);
  expect(mocks.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO settled_markets'))).toBe(false);
  const skipped=mocks.query.mock.calls.filter(([sql])=>sql.includes('INSERT INTO backfill_skips'));
- expect(skipped.map(([,values])=>values[5]).sort((a,b)=>a-b)).toEqual([1,24,720]);
+ expect(skipped.map(([,values])=>values[5]).sort((a,b)=>Number(a)-Number(b))).toEqual([1,24,720]);
  expect(skipped.every(([,values])=>values[3]==='no_quote')).toBe(true);
 });
 it('does not ask Kalshi for a quote from before a market was listed',async()=>{
@@ -30,10 +30,10 @@ it('does not ask Kalshi for a quote from before a market was listed',async()=>{
  mocks.kalshi.mockImplementation(async(path:string)=>path.endsWith('/candlesticks')?{candlesticks:[]}:{markets:[listed],cursor:''});
  await backfill({series:['S'],maxMarkets:1});
  const asked=new Set(mocks.kalshi.mock.calls.filter(([path])=>String(path).endsWith('/candlesticks')).map(([,params])=>(Date.parse(listed.close_time)/1000-Number(params.end_ts))/3600));
- expect([...asked].sort((a,b)=>a-b)).toEqual([1,24]);
+ expect([...asked].sort((a,b)=>Number(a)-Number(b))).toEqual([1,24]);
  // All four are still noted as unscored, so coverage is reported and not silently smaller.
  const skipped=mocks.query.mock.calls.filter(([sql])=>sql.includes('INSERT INTO backfill_skips'));
- expect(skipped.map(([,values])=>values[5]).sort((a,b)=>a-b)).toEqual([1,24,168,720]);
+ expect(skipped.map(([,values])=>values[5]).sort((a,b)=>Number(a)-Number(b))).toEqual([1,24,168,720]);
  expect(skipped.every(([,values])=>values[3]==='no_quote')).toBe(true);
 });
 it('does not advance a failed page or record an API outage as a missing quote',async()=>{
@@ -41,7 +41,8 @@ it('does not advance a failed page or record an API outage as a missing quote',a
   if(path.endsWith('/candlesticks')) throw new Error('Kalshi retry limit');
   return {markets:[market],cursor:'NEXT'};
  });
- await backfill({series:['S'],maxMarkets:1});
- expect(mocks.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO job_state'))).toBe(false);
+ await expect(backfill({series:['S'],maxMarkets:1})).rejects.toThrow('Backfill horizons stopped after failure');
+ expect(mocks.query.mock.calls.some(([sql,values])=>sql.includes('INSERT INTO job_state') && String(values[0]).startsWith('backfill:horizons-v1:'))).toBe(false);
+ expect(mocks.query.mock.calls.some(([sql,values])=>sql.includes('INSERT INTO job_state') && String(values[0]).startsWith('stopped-task:backfill-horizons:'))).toBe(true);
  expect(mocks.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO backfill_skips'))).toBe(false);
 });

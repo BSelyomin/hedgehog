@@ -2,6 +2,7 @@ import { FORECAST_HORIZONS } from '../../../shared/types.ts';
 import { query } from '../db.ts';
 import { emptyBook, kalshi, quote } from '../services/kalshi.ts';
 import type { Candle, HistoricalCandle, KalshiMarket } from '../services/kalshi.ts';
+import { runWithoutRetry } from '../services/no-retry.ts';
 
 const DAY = 86400;
 // The track record pairs each settled market's outcome with its odds 24 hours before close.
@@ -27,7 +28,7 @@ export async function loadCandles(series: string, ticker: string, params: Record
             const live = await kalshi<{ candlesticks: Candle[] }>(`/series/${encodeURIComponent(series)}/markets/${encodeURIComponent(ticker)}/candlesticks`, params);
             if (live.candlesticks.length) return live.candlesticks;
         } catch (error) {
-            if (!(error instanceof Error) || error.message !== 'Kalshi HTTP 404') throw error;
+            if (!(error instanceof Error) || !/^Kalshi HTTP 404(?:;|$)/.test(error.message)) throw error;
         }
     }
     try {
@@ -35,7 +36,7 @@ export async function loadCandles(series: string, ticker: string, params: Record
         return normalizeHistoricalCandles(archive.candlesticks);
     } catch (error) {
         // Empty live history plus no archive is missing data, not a retryable page failure.
-        if (error instanceof Error && error.message === 'Kalshi HTTP 404') return [];
+        if (error instanceof Error && /^Kalshi HTTP 404(?:;|$)/.test(error.message)) return [];
         throw error;
     }
 }
@@ -114,8 +115,8 @@ export async function backfillSeries(series: string, category: string) {
         try {
             read(m, normalizeHistoricalCandles((await kalshi<{ candlesticks: HistoricalCandle[] }>(`/historical/markets/${encodeURIComponent(m.ticker)}/candlesticks`, window(m))).candlesticks ?? []));
         } catch (error) {
-            // No archive for this market is missing data; anything else is an outage to retry.
-            if (!(error instanceof Error) || error.message !== 'Kalshi HTTP 404') throw error;
+            // No archive is missing data; other failures stop this series until explicitly resumed.
+            if (!(error instanceof Error) || !/^Kalshi HTTP 404(?:;|$)/.test(error.message)) throw error;
         }
     };
     const unanswered: KalshiMarket[] = [];
@@ -139,7 +140,7 @@ export async function backfillSeries(series: string, category: string) {
 }
 
 // Covers every series that can link to a holding. A series that fails keeps its place and is
-// retried on the next run; the rest carry on.
+// stopped until explicitly resumed; the rest carry on.
 export async function backfill(options: { series?: string[] } = {}) {
     const universe = await query<{ series_ticker: string; category: string | null }>(`SELECT s.series_ticker,(SELECT e.category FROM events e WHERE e.series_ticker=s.series_ticker ORDER BY e.ticker LIMIT 1) category
         FROM snapshot_series s ORDER BY s.series_ticker`)
@@ -149,13 +150,14 @@ export async function backfill(options: { series?: string[] } = {}) {
         if (!category)
             continue;
         try {
-            const result = await backfillSeries(series_ticker, category);
+            const result = await runWithoutRetry(`backfill:series:${series_ticker}`, () => backfillSeries(series_ticker, category));
+            if (!result) { total.failed++; continue; }
             total.series++; total.settled += result.settled; total.scored += result.scored; total.short += result.short; total.noQuote += result.noQuote;
             if (result.recent)
                 console.log('Settled markets scored', series_ticker, result.scored, 'of', result.recent, 'new;', result.short, 'listed under a day,', result.noQuote, 'without a quote');
         } catch {
             total.failed++;
-            console.warn('Backfill retry needed', series_ticker);
+            console.warn('Backfill stopped after failure; automatic retries disabled', series_ticker);
         }
     }
     console.log('Backfill complete', JSON.stringify(total));
@@ -198,7 +200,10 @@ export async function backfillHorizons(options: {series?: string[]; maxMarkets?:
             let failed = false;
             for (const m of page.markets) {
                 if (m.result !== 'yes' && m.result !== 'no') continue;
-                if (options.maxMarkets !== undefined && processed >= options.maxMarkets) return;
+                if (options.maxMarkets !== undefined && processed >= options.maxMarkets) {
+                    if (failed) throw new Error('Backfill horizons stopped after failure; rerun explicitly');
+                    return;
+                }
                 processed++;
                 const releasedAt = releases.find(r => r.event_ticker === m.event_ticker)?.released_at;
                 for (const {hours} of FORECAST_HORIZONS) {
@@ -221,7 +226,9 @@ export async function backfillHorizons(options: {series?: string[]; maxMarkets?:
                         // A market not yet listed at the mark has no quote there; Kalshi is not asked.
                         if (m.open_time && Date.parse(m.open_time) > target*1000) { await recordSkip(m,s,'no_quote',hours); continue; }
                         const params = {start_ts:String(target-60),end_ts:String(target),period_interval:'1'};
-                        const odds = oddsAtHorizon(await loadCandles(s.series_ticker,m.ticker,params,historical),m.close_time,hours);
+                        const candles = await runWithoutRetry(`backfill-horizons:${historical ? 'archive:' : ''}${m.ticker}:${hours}`, () => loadCandles(s.series_ticker,m.ticker,params,historical));
+                        if (!candles) { failed = true; continue; }
+                        const odds = oddsAtHorizon(candles,m.close_time,hours);
                         if (!odds) { await recordSkip(m,s,'no_quote',hours); continue; }
                         if (outcomeAlreadyKnown(m,odds.ts,releasedAt)) { await recordSkip(m,s,'outcome_known',hours); continue; }
                         const outcome = m.result === 'yes' ? 1 : 0;
@@ -233,11 +240,11 @@ export async function backfillHorizons(options: {series?: string[]; maxMarkets?:
                         await query('DELETE FROM backfill_skips WHERE ticker=$1 AND horizon_hours=$2',[m.ticker,hours]);
                     } catch {
                         failed = true;
-                        console.warn('Backfill retry needed',m.ticker,hours);
+                        console.warn('Backfill horizon stopped after failure; automatic retries disabled',m.ticker,hours);
                     }
                 }
             }
-            if (failed) break; // Keep the page for retries; every horizon is independently idempotent.
+            if (failed) throw new Error('Backfill horizons stopped after failure; rerun explicitly'); // Keep progress for manual resumption.
             const next = page.cursor ?? '';
             if (next && (next === cursor || seen.has(next))) throw new Error('Repeated cursor');
             seen.add(next); cursor = next;
@@ -246,7 +253,6 @@ export async function backfillHorizons(options: {series?: string[]; maxMarkets?:
     }
 }
 
-// Recover identity for existing observations without changing their quotes or outcomes.
 // Recover identity for existing observations without changing their quotes or outcomes.
 export async function historyMetadata() {
     const rows=await query<{ticker:string}>('SELECT ticker FROM settled_markets WHERE series_ticker IS NULL OR event_ticker IS NULL OR title IS NULL');

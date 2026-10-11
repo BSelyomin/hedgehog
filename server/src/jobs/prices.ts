@@ -4,12 +4,14 @@ import { seedFile } from '../seed.ts';
 import { storePrices } from './price-storage.ts';
 import { completedPriceDate } from '../services/price-date.ts';
 import { CONTROL, DRIVERS } from '../config/drivers.ts';
+import { runWithoutRetry } from '../services/no-retry.ts';
 export const yahoo = new YahooFinance();
 export async function prices() {
     // Only listed securities have a price history; cash, bonds held directly and property do not.
     const symbols = new Set([CONTROL, ...(await seedFile<string[]>('demo_symbols')), ...(await query<{
             symbol: string;
-        }>("SELECT DISTINCT symbol FROM portfolio_holdings WHERE asset_type='security'")).map(r => r.symbol), ...DRIVERS.filter(d => d.source === 'yahoo').map(d => d.key)]);
+        }>("SELECT DISTINCT symbol FROM portfolio_holdings WHERE asset_type='security'")).map(r => r.symbol), ...DRIVERS.filter(d => d.source === 'yahoo').map(d => d.key),
+        ...DRIVERS.flatMap(d => d.levelReference ? [d.levelReference.symbol] : [])]);
     const start = new Date();
     start.setUTCFullYear(start.getUTCFullYear() - 10);
     const cutoff = completedPriceDate();
@@ -22,7 +24,8 @@ export async function prices() {
             // the recent week, including provider corrections and the latest close.
             const period1 = saved && saved.first.getTime() <= start.getTime() + 45 * 86400000
                 ? new Date(Math.max(start.getTime(), saved.last.getTime() - 7 * 86400000)) : start;
-            const history = await yahoo.chart(symbol, { period1, interval: '1d' });
+            const history = await runWithoutRetry(`prices:yahoo:${symbol}`, () => yahoo.chart(symbol, { period1, interval: '1d' }));
+            if (!history) continue;
             const rows = history.quotes.flatMap(row => row.date.toISOString().slice(0, 10) <= cutoff && typeof row.close === 'number' && Number.isFinite(row.close)
                 ? [{ date: row.date.toISOString().slice(0, 10), close: row.close }] : []);
             await storePrices(symbol, rows);
@@ -40,15 +43,17 @@ export async function prices() {
         try {
             const url = new URL('https://api.stlouisfed.org/fred/series/observations');
             url.search = new URLSearchParams({ series_id: driver.key, api_key: process.env.FRED_API_KEY, file_type: 'json', observation_start: start.toISOString().slice(0, 10) }).toString();
-            const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
-            if (!response.ok)
-                throw new Error('FRED load failed');
-            const data = await response.json() as {
+            const data = await runWithoutRetry(`prices:fred:${driver.key}`, async () => {
+                const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+                if (!response.ok) throw new Error('FRED load failed');
+                return await response.json() as {
                 observations: {
                     date: string;
                     value: string;
                 }[];
-            };
+                };
+            });
+            if (!data) continue;
             const rows = data.observations.flatMap(row => row.date <= cutoff && row.value !== '.' && Number.isFinite(Number(row.value))
                 ? [{ date: row.date, close: Number(row.value) }] : []);
             await storePrices(driver.key, rows);

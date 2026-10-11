@@ -55,5 +55,18 @@
 | Track record | Calibration chart | Ten-point buckets; mean probability and observed outcome rate, no dots for empty buckets |
 | Track record | 70% headline | Observed rate for 65% ≤ probability < 75%, shown only with observations |
 | Briefing | Reach, moves and biggest odds move | Same backend services used by calendar/moves, rounded for template then number-checked |
+| Forecasts | Next-trading-day covered value | Current security holding values × (1 + predicted return); rolling 60-observation mean or zero return selected on an earlier 40-observation window |
+| Forecasts | Event rank / daily sensitivity | Sum of linked holding values × stored typical measured effect for the strongest relevant daily driver; gross exposure, not actual predicted event impact |
+| Forecasts | Specific result / stock direction | Verified Treasury yield strike boundary or range midpoint minus recent published FRED yield, × reliable measured coefficient; positive means up, negative down |
+| Forecasts | S&P result / proxy contribution | Stored index strike boundary or representative midpoint ÷ stored Yahoo ^GSPC reference − 1, × reliable measured SPY beta × holding value; explicitly a proxy |
+| Forecasts | Combined assessment odds | Selected contract's fresh bid–ask midpoint, displayed separately from dated cached Snowflake selection/prose; overlapping odds are never summed or averaged |
+| Forecasts | Full portfolio scenario value | Current total portfolio value plus linked modeled contributions, rounded in cents; excluded holdings explicitly remain at current values |
+| Forecasts | Estimated 80% value range | Point return plus empirical 10th/90th percentiles of independent validation errors, × covered value; future coverage unverified |
+| Forecasts | Validation RMSE | Square root of mean squared one-session errors on the final 20–60 held-out observations, scaled to current covered dollars; benchmark also shown |
+| Forecasts | Scenario contribution and value | Reliable measured_links coefficient × entered single-session driver change × holding value; sums in cents, unsupported holdings excluded |
+| Forecasts | AI assumption and confidence | Snowflake-generated one-session driver shock and integer 0–100 self-rating, explicitly authorized and labelled AI assumption / self-rated uncalibrated confidence; backend validates units, scope and ranges then applies reliable measured coefficients |
+| Forecasts | Assumed event result | Explicit user-entered driver change × reliable measured coefficient × reviewed event-linked holding value; labelled Your assumption, never an automatic event prediction |
+| Forecasts | Sensitivity bounds | Sum of each holding's coefficient endpoints under the entered shock; an envelope, not a joint confidence or prediction interval |
+| Forecasts | Event probability and expected value | Stored bid–ask midpoint (recent valid quotes only); p × yes covered value + (1 − p) × no covered value; outcome shocks entered by user, identical coverage required |
 
 UI chart axes, trust weights, band thresholds, date windows, introductory step labels and confidence-level labels are fixed method definitions, not market observations. Missing source observations show unavailable text or an empty state. Current event-level asOf is the latest snapshot among the linked market rows; individual markets carry their own asOf. Dates are shown in the viewer's local timezone. Briefing snapshot dates use the New York calendar day; cache keys use holdings and voice configuration, excluding dates and market changes.

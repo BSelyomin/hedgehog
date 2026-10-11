@@ -4,6 +4,7 @@ import { seedFile } from '../seed.ts';
 import { validTags } from '../services/ai-guard.ts';
 import { yahoo } from './prices.ts';
 import { createHash } from 'node:crypto';
+import { runWithoutRetry } from '../services/no-retry.ts';
 export async function stockTags() {
     const symbols = new Set([...(await seedFile<string[]>('demo_symbols')), ...(await query<{
             symbol: string;
@@ -13,7 +14,8 @@ export async function stockTags() {
         if (allowed.includes(symbol))
             await query(`INSERT INTO stock_tags VALUES($1,$1,'direct') ON CONFLICT DO NOTHING`, [symbol]);
         try {
-            const info = await yahoo.quoteSummary(symbol, { modules: ['assetProfile'] });
+            const info = await runWithoutRetry(`stock-tags:${symbol}`, () => yahoo.quoteSummary(symbol, { modules: ['assetProfile'] }));
+            if (!info) continue;
             const sector = info.assetProfile?.sector;
             if (!sector)
                 continue;
@@ -35,7 +37,7 @@ export async function tagSeries() {
         category?: string;
         previous_hash?: string;
     }>(`SELECT DISTINCT ON(e.series_ticker) e.series_ticker,e.title,e.description,e.category,j.cursor previous_hash FROM events e LEFT JOIN job_state j ON j.name='tag-series:'||e.series_ticker WHERE EXISTS (SELECT 1 FROM markets m WHERE m.event_ticker=e.ticker AND m.status='active' AND m.close_time>now()) ORDER BY e.series_ticker,e.updated_at DESC,e.ticker`);
-    const pending = series.map(s => ({ ...s, hash: createHash('sha256').update(JSON.stringify([allowed, s.title, s.description, s.category ?? ''])).digest('hex') })).filter(s => s.hash !== s.previous_hash);
+    const pending = series.map(s => ({ ...s, hash: createHash('sha256').update(JSON.stringify([allowed, s.title, s.description, s.category ?? ''])).digest('hex') })).filter(s => s.hash !== s.previous_hash && `failed:${s.hash}` !== s.previous_hash);
     let added = 0;
     console.log('Series awaiting classification', pending.length);
     async function processBatch(i: number) {
@@ -52,7 +54,8 @@ export async function tagSeries() {
             );
         }
         catch {
-            console.warn('Snowflake series tagging failed for one batch; will retry');
+            for (const s of batch) await query(`INSERT INTO job_state(name,cursor) VALUES($1,$2) ON CONFLICT(name) DO UPDATE SET cursor=excluded.cursor,updated_at=now()`, [`tag-series:${s.series_ticker}`, `failed:${s.hash}`]);
+            console.warn('Snowflake series tagging stopped for a failed batch; automatic retries disabled');
             return;
         }
         if (!isObject(result) || !Array.isArray(result.series))

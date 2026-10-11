@@ -54,18 +54,9 @@ export const numberField = (value: unknown): number | null => { if ((typeof valu
 export async function kalshi<T>(path: string, params: Record<string, string> = {}): Promise<T> {
     const url = new URL(`${KALSHI_BASE}${path}`);
     url.search = new URLSearchParams(params).toString();
-    for (let attempt = 0; attempt < 5; attempt++) {
-        const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
-        if (response.ok)
-            return await response.json() as T;
-        if (response.status !== 429 && response.status < 500)
-            throw new Error(`Kalshi HTTP ${response.status}`);
-        if (attempt === 4)
-            throw new Error('Kalshi retry limit');
-        const retry = Number(response.headers.get('retry-after'));
-        await new Promise(resolve => setTimeout(resolve, Math.min(30000, Math.max(1000 * 2 ** attempt, Number.isFinite(retry) ? retry * 1000 : 0))));
-    }
-    throw new Error('Kalshi request failed');
+    const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    if (!response.ok) throw new Error(`Kalshi HTTP ${response.status}; automatic retries are disabled`);
+    return await response.json() as T;
 }
 // Strike types observed in stored Kalshi markets. A range ladder is an exclusive event of
 // 'between' buckets plus optional open-ended end caps ("86° or below", "95° or above").

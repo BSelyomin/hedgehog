@@ -105,16 +105,16 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
                     <button disabled={busy || !saved.data} type="submit">Add</button>
                 </form>
                 <p className="note">{typeHelp[assetType]}</p>
-                <Status error={saved.error} loading={!saved.data && !saved.error}/>
+                <Status error={saved.error} loading={!saved.data && !saved.error} layout="compact"/>
                 <label>Search portfolio holdings<input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Find a ticker…" disabled={!saved.data}/></label>
-                <p className="note" role="status">Showing {visibleHoldings.length} of {holdings.length} holdings. Saving includes your full portfolio.</p>
+                {saved.data && <><p className="note" role="status">Showing {visibleHoldings.length} of {holdings.length} holdings. Saving includes your full portfolio.</p>
                 <div className="portfolio-list" tabIndex={0} role="region" aria-label="Portfolio holdings">
                     {visibleHoldings.map(holding => <div className="row holding" key={holding.symbol}>
                         <strong className="mono">{holding.symbol}</strong>{holding.assetType && <span className="chip plain">{assetLabel[holding.assetType]}</span>}<span className="mono">{money(holding.valueUsd)}</span>
                         <button disabled={busy || !saved.data} aria-label={`Remove ${holding.symbol}`} onClick={() => setHoldings(previous => previous.filter(row => row.symbol !== holding.symbol))}>×</button>
                     </div>)}
                     {!holdings.length ? <Empty>Add what you own to see which events reach your portfolio.</Empty> : !visibleHoldings.length && <Empty>No holdings match your search.</Empty>}
-                </div>
+                </div></>}
                 <div className="portfolio-actions">
                     <label>Import CSV (symbol,valueUsd) · optional type and terms<input disabled={busy || !saved.data} type="file" accept=".csv,text/csv" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; void importCsv(file); }}/></label>
                     {error && <p className="error" role="alert">{error}</p>}
@@ -127,7 +127,7 @@ export function AddHoldings({ user }: { user?: AccountUser | null } = {}) {
                 {notice && <p role="status">{notice}</p>}
                 <p className="note">Clearing immediately removes manual and CSV holdings {user ? 'from your account on every device' : 'for this guest session'}.</p>
                 <p className="note">Hedgehog reads odds and prices; it never trades. {user ? `Your portfolio is saved to ${user.email}.` : <>Your guest portfolio is stored on the server and linked to this browser. <a href="#signup">Create an account</a> to keep it across devices.</>}</p>
-                <Fresh asOf={cleared && !saved.data?.brokerageHoldings?.length ? null : saved.data?.asOf ?? null}/>
+                {saved.data && <Fresh asOf={cleared && !saved.data.brokerageHoldings?.length ? null : saved.data.asOf}/>}
             </Card>
         </div>
         <h2>How it works</h2>

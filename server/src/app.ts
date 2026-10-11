@@ -16,6 +16,10 @@ import { earnings, earningsList } from './services/earnings.ts';
 import { holdingsHistory } from './services/holdings-history.ts';
 import { HISTORY_SUBJECTS } from './services/history-subjects.ts';
 import { trackRecord } from './services/track-record.ts';
+import { forecasts, forecastMarkets, scenarioForecast, eventForecast, validateEventForecast } from './services/forecasts.ts';
+import { validateScenario } from './services/forecast-model.ts';
+import { rankedForecasts, forecastResult } from './services/ranked-forecasts.ts';
+import { forecastAssessment, forecastAssessments, retryForecastAssessment } from './services/forecast-assessment.ts';
 import { FORECAST_HORIZONS, TRACK_GRADES, TRACK_SORTS } from '../../shared/types.ts';
 import type { TrackGrade } from '../../shared/types.ts';
 // What a failed request tells the browser. Postgres reports 25006 when a write reaches a
@@ -53,6 +57,47 @@ catch (error) {
     return;
 } res.json(await saveHoldings(res.locals.session, holdings)); });
 app.get('/exposure', async (_req, res) => { res.json(await exposure(res.locals.session)); });
+app.get('/forecasts', async (_req, res) => { res.json(await forecasts(res.locals.session)); });
+app.get('/forecasts/events', async (_req, res) => { res.json(await forecastMarkets(res.locals.session)); });
+app.get('/forecasts/ranked-events', async (_req, res) => { res.json(await rankedForecasts(res.locals.session)); });
+app.get('/forecasts/assessments', async (_req, res) => { res.json(await forecastAssessments(res.locals.session)); });
+app.get('/forecasts/assessment/:ticker', async (req, res) => {
+    const result = await forecastAssessment(res.locals.session, req.params.ticker);
+    if (!result) { res.status(404).json({ error: 'No linked forecast group found', asOf: null }); return; }
+    res.json(result);
+});
+app.post('/forecasts/assessment/:ticker', async (req, res) => {
+    const result = await retryForecastAssessment(res.locals.session, req.params.ticker);
+    if (!result) { res.status(404).json({ error: 'No linked forecast group found', asOf: null }); return; }
+    res.json(result);
+});
+app.get('/forecasts/result/:ticker', async (req, res) => {
+    const result = await forecastResult(res.locals.session, req.params.ticker);
+    if (!result) { res.status(404).json({ error: 'No linked open market found', asOf: null }); return; }
+    res.json(result);
+});
+app.post('/forecasts/result/:ticker', async (req, res) => {
+    let input;
+    try { input = validateScenario(req.body); }
+    catch (error) { res.status(400).json({ error: (error as Error).message, asOf: null }); return; }
+    const result = await forecastResult(res.locals.session, req.params.ticker, input);
+    if (!result) { res.status(404).json({ error: 'No linked open market found', asOf: null }); return; }
+    res.json(result);
+});
+app.post('/forecasts/scenario', async (req, res) => {
+    let input;
+    try { input = validateScenario(req.body); }
+    catch (error) { res.status(400).json({ error: (error as Error).message, asOf: null }); return; }
+    res.json(await scenarioForecast(res.locals.session, input));
+});
+app.post('/forecasts/event', async (req, res) => {
+    let input;
+    try { input = validateEventForecast(req.body); }
+    catch (error) { res.status(400).json({ error: (error as Error).message, asOf: null }); return; }
+    const result = await eventForecast(res.locals.session, input);
+    if (!result) { res.status(404).json({ error: 'No linked open market found', asOf: null }); return; }
+    res.json(result);
+});
 app.get('/calendar', async (req, res) => { const days = Number(req.query.days ?? 14); if (!Number.isInteger(days) || days < 1 || days > 90) {
     res.status(400).json({ error: 'days must be 1–90', asOf: null });
     return;

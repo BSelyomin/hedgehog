@@ -1,5 +1,6 @@
 import { trackEntities } from './track-entities.ts';
 import cron from 'node-cron';
+import type { PoolClient } from 'pg';
 import { pool, query } from '../db.ts';
 import { poll } from './poll.ts';
 import { prices } from './prices.ts';
@@ -12,44 +13,44 @@ import { syncBrokerages } from '../brokerages/service.ts';
 import { earningsDates } from './earnings-dates.ts';
 import { oddsCandles } from './odds-candles.ts';
 import { profiles } from './profiles.ts';
-const reportDates = () => earningsDates().catch(() => console.warn('Earnings report dates unavailable'));
-// A job's lock lives on a database session, so that only one backend sharing the database runs
-// the job. If that backend died without closing the session (a laptop going to sleep, a killed
-// container behind the database's proxy), the session stayed open and held the lock: on
-// 2026-10-10 that stopped every backend polling for an hour. The session now asks the server to
-// end it after LOCK_SECONDS without a statement, and the job sends one every HEARTBEAT_MS while
-// it runs, so a dead backend's lock is gone within about two minutes.
+const reportDates = earningsDates;
+const stoppedJobs = new Set<string>();
+export const scheduledJobNames = ['poll', 'nightly', 'briefings', 'enrich', 'session-cleanup', 'brokerages', 'price-history', 'earnings-dates', 'bootstrap', 'odds-candles'] as const;
+// The lock belongs to a database session. Keep it alive during healthy work, but
+// let the database expire an abandoned session so a dead backend cannot hold it.
 export const LOCK_SECONDS = 120;
 export const HEARTBEAT_MS = 30000;
 export async function runJob(name: string, job: () => Promise<void>) {
-    const client = await pool.connect();
-    let held = false, beat: ReturnType<typeof setInterval> | undefined;
+    if (stoppedJobs.has(name)) return;
+    let client: PoolClient | null = null, held = false;
+    let beat: ReturnType<typeof setInterval> | undefined;
     try {
+        if ((await query('SELECT name FROM job_state WHERE name=$1', [`stopped-job:${name}`])).length) { stoppedJobs.add(name); return; }
+        client = await pool.connect();
         await client.query(`SET idle_session_timeout = '${LOCK_SECONDS}s'`);
         held = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) locked', [`hedgehog:${name}`])).rows[0].locked;
-        if (!held)
-            return;
-        beat = setInterval(() => { client.query('SELECT 1').catch(() => {}); }, HEARTBEAT_MS);
+        if (!held) return;
+        beat = setInterval(() => { void client!.query('SELECT 1').catch(() => clearInterval(beat)); }, HEARTBEAT_MS);
         beat.unref();
-        try {
-            await job();
-        }
-        catch {
-            console.warn('Job failed; will retry:', name);
-        }
+        await job();
+    }
+    catch {
+        stoppedJobs.add(name);
+        try { await query("INSERT INTO job_state(name,cursor) VALUES($1,'failed') ON CONFLICT(name) DO UPDATE SET cursor='failed',updated_at=now()", [`stopped-job:${name}`]); }
+        catch { /* Keep stopped in memory when storage is unavailable. */ }
+        console.warn('Job stopped after failure; automatic retries disabled:', name);
     }
     finally {
         clearInterval(beat);
-        try {
-            if (held)
-                await client.query('SELECT pg_advisory_unlock(hashtext($1))', [`hedgehog:${name}`]);
-            // The connection goes back to the pool, where sitting idle is normal.
-            await client.query('RESET idle_session_timeout');
-            client.release();
-        }
-        catch {
-            // The session is already gone, and its lock with it. Do not reuse the connection.
-            client.release(true);
+        if (client) {
+            try {
+                if (held) await client.query('SELECT pg_advisory_unlock(hashtext($1))', [`hedgehog:${name}`]);
+                await client.query('RESET idle_session_timeout');
+                client.release();
+            } catch {
+                // The lock session is already gone; discard it instead of reusing it.
+                client.release(true);
+            }
         }
     }
 }

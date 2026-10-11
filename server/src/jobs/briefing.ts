@@ -6,6 +6,8 @@ import { exposure } from '../services/exposure.ts';
 import { moves } from '../services/moves.ts';
 import { getHoldings, portfolioRevision } from '../services/holdings.ts';
 import { briefingDay, buildBriefing, morningReady } from '../services/briefing-content.ts';
+import { contentHash } from '../services/ai-cache.ts';
+import { runWithoutRetry } from '../services/no-retry.ts';
 
 interface BriefingSnapshot { date: string; text: string; audio: string | null; asOf: string | null }
 
@@ -31,7 +33,7 @@ export async function briefing(session: string, requested = false) {
         JSON.stringify(portfolio.holdings) !== JSON.stringify(sourcePortfolio.holdings)) return;
     const snapshotAsOf = portfolio.asOf ?? move.asOf ?? sourcePortfolio.asOf;
     const text = `${sourcePortfolio.sandbox ? 'This portfolio includes simulated SnapTrade sandbox holdings. ' : ''}${buildBriefing(portfolio, move, now)}`;
-    await cachedAI<BriefingSnapshot>('briefing-v1', identity, async () => {
+    const produce = () => cachedAI<BriefingSnapshot>('briefing-v1', identity, async () => {
         let audio: Buffer | null = null;
         if (process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID) {
             const client = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY });
@@ -45,6 +47,8 @@ export async function briefing(session: string, requested = false) {
         }
         return { date, text, audio: audio?.toString('base64') ?? null, asOf: snapshotAsOf };
     });
+    if (requested) await produce(); // One explicit user attempt; the SDK still has maxRetries: 0.
+    else await runWithoutRetry(`briefings:${contentHash(identity)}`, produce);
 }
 
 export async function savedBriefing(session: string) {

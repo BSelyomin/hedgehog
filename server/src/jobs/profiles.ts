@@ -1,5 +1,6 @@
 import { query } from '../db.ts';
 import { yahoo } from './prices.ts';
+import { runWithoutRetry } from '../services/no-retry.ts';
 
 export interface SecurityProfile {
     symbol: string;
@@ -49,7 +50,7 @@ export async function profiles() {
         WHERE h.asset_type='security' AND (p.symbol IS NULL OR p.updated_at<now()-interval '30 days') ORDER BY h.symbol`);
     for (const { symbol } of due) {
         try {
-            const profile = await fetchProfile(symbol);
+            const profile = await runWithoutRetry(`profiles:${symbol}`, () => fetchProfile(symbol));
             if (!profile) {
                 console.warn('No security profile for symbol', symbol);
                 continue;
@@ -59,8 +60,8 @@ export async function profiles() {
             [profile.symbol, profile.quote_type, profile.name, profile.sector, profile.industry, profile.fund_category]);
             console.log('Security profile loaded', symbol, profile.quote_type);
         } catch {
-            // Left without a row, so the holding shows as Unclassified and is tried again next run.
-            console.warn('Security profile unavailable', symbol);
+            // Keep unclassified; failed provider work requires an explicit CLI run.
+            console.warn('Security profile stopped after failure; automatic retries disabled', symbol);
         }
     }
 }

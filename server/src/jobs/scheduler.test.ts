@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ client: { query: vi.fn(), release: vi.fn() } }));
-vi.mock('../db.ts', () => ({ pool: { connect: async () => mocks.client }, query: vi.fn() }));
+const mocks = vi.hoisted(() => ({ query: vi.fn(), client: { query: vi.fn(), release: vi.fn() } }));
+vi.mock('../db.ts', () => ({ pool: { connect: async () => mocks.client }, query: mocks.query }));
 // The scheduler imports every job; none of them runs here.
 vi.mock('./poll.ts', () => ({ poll: vi.fn() }));
 vi.mock('./prices.ts', () => ({ prices: vi.fn() }));
@@ -18,7 +18,7 @@ import { HEARTBEAT_MS, LOCK_SECONDS, runJob } from './scheduler.ts';
 
 const statements = () => mocks.client.query.mock.calls.map(([sql]) => String(sql));
 const database = (locked: boolean) => mocks.client.query.mockImplementation(async (sql: string) => ({ rows: sql.includes('pg_try_advisory_lock') ? [{ locked }] : [] }));
-beforeEach(() => { vi.useFakeTimers(); vi.spyOn(console, 'warn').mockImplementation(() => {}); });
+beforeEach(() => { mocks.query.mockReset().mockResolvedValue([]); vi.useFakeTimers(); vi.spyOn(console, 'warn').mockImplementation(() => {}); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); mocks.client.query.mockReset(); mocks.client.release.mockReset(); });
 
 it('asks the server to end the lock’s session if it goes quiet, and keeps it alive while the job runs', async () => {
@@ -53,9 +53,13 @@ it('does not run a job another backend holds, and still hands back a clean conne
 it('releases the lock when the job fails', async () => {
     database(true);
     await runJob('measure', async () => { throw new Error('boom'); });
-    expect(console.warn).toHaveBeenCalledWith('Job failed; will retry:', 'measure');
+    expect(console.warn).toHaveBeenCalledWith('Job stopped after failure; automatic retries disabled:', 'measure');
+    expect(mocks.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO job_state'), ['stopped-job:measure']);
     expect(statements()).toContain('SELECT pg_advisory_unlock(hashtext($1))');
     expect(mocks.client.release).toHaveBeenCalledExactlyOnceWith();
+    const retry = vi.fn();
+    await runJob('measure', retry);
+    expect(retry).not.toHaveBeenCalled();
 });
 it('discards the connection, without throwing, when the server has already ended the session', async () => {
     mocks.client.query.mockImplementation(async (sql: string) => {

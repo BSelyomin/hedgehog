@@ -50,7 +50,7 @@ export function Moves() {
             <div className="toggle" role="group" aria-label="Length of the window">{RANGES.map(option => <button key={option.key} aria-pressed={option.key === range} className={option.key === range ? 'active' : ''} onClick={() => setRange(option.key)}>{option.label}</button>)}</div>
             <ReloadButton onReload={() => reload()}/><button disabled={!date} onClick={() => setDate('')}>Latest trading session</button>
         </div>
-        <Status error={error} loading={!data && !error}/><Fresh asOf={data?.asOf ?? null}/>
+        <Status error={error} loading={!data && !error} layout="summary"/>{data && <Fresh asOf={data.asOf}/>}
         {data && <MoveView data={data} exposure={exposure} chosen={exposure ? selectedSymbols(exposure.categories, selection) : null}
             theme={exposure ? activeSelection(exposure.categories, selection).theme : ''} focus={data.holdings.some(holding => holding.symbol === focus) ? focus : ''} setFocus={setFocus}/>}
     </>;

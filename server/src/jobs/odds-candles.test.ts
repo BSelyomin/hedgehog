@@ -105,7 +105,7 @@ describe('the candlestick job', () => {
     it('leaves progress alone when a request fails, and carries on with the rest', async () => {
         mocks.query.mockResolvedValueOnce(Array.from({ length: 150 }, (_, i) => ({ ticker: `M${String(i).padStart(3, '0')}`, open_time: new Date((NOW - DAY) * 1000), through: new Date((NOW - 2 * HOUR) * 1000) }))).mockResolvedValue([]);
         mocks.kalshi.mockRejectedValueOnce(new Error('Kalshi retry limit')).mockResolvedValueOnce({ markets: [{ market_ticker: 'M100', candlesticks: [candle(NOW - HOUR, '0.2000', '0.2200')] }] });
-        await oddsCandles(60);
+        await expect(oddsCandles(60)).rejects.toThrow('Candlestick job stopped after failure');
         expect(mocks.kalshi).toHaveBeenCalledTimes(2);
         expect(progress()).toHaveLength(1);
         expect(progress()[0][0]).toHaveLength(50);
