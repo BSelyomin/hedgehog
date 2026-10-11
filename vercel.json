@@ -5,7 +5,7 @@
       "root": "server",
       "framework": "express",
       "entrypoint": "src/server.ts",
-      "installCommand": "npm ci --prefix .. --include=dev",
+      "installCommand": "cd .. && npm ci --include=dev",
       "buildCommand": "npm run build",
       "functions": {
         "src/server.ts": {
@@ -17,7 +17,7 @@
     "web": {
       "root": "web",
       "framework": "nextjs",
-      "installCommand": "npm ci --prefix .. --include=dev",
+      "installCommand": "npm ci --include=dev",
       "buildCommand": "npm run build",
       "bindings": [
         {
@@ -33,19 +33,17 @@
     { "source": "/(.*)", "destination": { "service": "web" } }
   ],
   "crons": [
-  { "path": "/api/internal/jobs/poll", "schedule": "0 0 * * *" },
-  { "path": "/api/internal/jobs/nightly", "schedule": "30 2 * * *" },
-  { "path": "/api/internal/jobs/track-record", "schedule": "45 2 * * *" },
-  { "path": "/api/internal/jobs/briefings-morning", "schedule": "0 12 * * *" },
-  { "path": "/api/internal/jobs/odds-candles-daily", "schedule": "20 4 * * *" },
-  { "path": "/api/internal/jobs/earnings-dates", "schedule": "30 3 * * *" },
-  
-  { "path": "/api/internal/jobs/enrich", "schedule": "0 1 * * *" },
-  { "path": "/api/internal/jobs/session-cleanup", "schedule": "15 1 * * *" },
-  { "path": "/api/internal/jobs/brokerages", "schedule": "20 1 * * *" },
-  { "path": "/api/internal/jobs/briefings", "schedule": "15 5 * * *" },
-  { "path": "/api/internal/jobs/odds-candles-hourly", "schedule": "5 5 * * *" },
-  { "path": "/api/internal/jobs/price-history", "schedule": "10 5 * * *" }
-]
-
+    { "path": "/api/internal/jobs/poll", "schedule": "0 0 * * *" },
+    { "path": "/api/internal/jobs/nightly", "schedule": "30 2 * * *" },
+    { "path": "/api/internal/jobs/track-record", "schedule": "45 2 * * *" },
+    { "path": "/api/internal/jobs/briefings-morning", "schedule": "0 12 * * *" },
+    { "path": "/api/internal/jobs/odds-candles-daily", "schedule": "20 4 * * *" },
+    { "path": "/api/internal/jobs/earnings-dates", "schedule": "30 3 * * *" },
+    { "path": "/api/internal/jobs/enrich", "schedule": "0 1 * * *" },
+    { "path": "/api/internal/jobs/session-cleanup", "schedule": "15 1 * * *" },
+    { "path": "/api/internal/jobs/brokerages", "schedule": "20 1 * * *" },
+    { "path": "/api/internal/jobs/briefings", "schedule": "15 5 * * *" },
+    { "path": "/api/internal/jobs/odds-candles-hourly", "schedule": "5 5 * * *" },
+    { "path": "/api/internal/jobs/price-history", "schedule": "10 5 * * *" }
+  ]
 }
