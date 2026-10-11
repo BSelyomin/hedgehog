@@ -9,15 +9,15 @@ vi.mock('./tagging.ts', () => ({ stockTags: vi.fn(), tagSeries: vi.fn() }));
 vi.mock('./measure.ts', () => ({ measure: vi.fn() }));
 vi.mock('./summaries.ts', () => ({ summaries: vi.fn() }));
 vi.mock('./briefing.ts', () => ({ briefings: vi.fn() }));
-vi.mock('./backfill.ts', () => ({ backfill: vi.fn(), backfillHorizons: vi.fn() }));
+vi.mock('./backfill.ts', () => ({ backfill: vi.fn(), backfillTimeframes: vi.fn() }));
 vi.mock('./track-entities.ts', () => ({ trackEntities: vi.fn() }));
 vi.mock('./earnings-dates.ts', () => ({ earningsDates: vi.fn() }));
 vi.mock('./odds-candles.ts', () => ({ oddsCandles: vi.fn() }));
 vi.mock('./profiles.ts', () => ({ profiles: vi.fn() }));
 vi.mock('../brokerages/service.ts', () => ({ syncBrokerages: vi.fn() }));
-import { HEARTBEAT_MS, HORIZON_MARKETS, LATE_TICK_MS, LOCK_SECONDS, RETRYING_JOBS, runJob, scheduler } from './scheduler.ts';
+import { HEARTBEAT_MS, LATE_TICK_MS, LOCK_SECONDS, RETRYING_JOBS, runJob, scheduler } from './scheduler.ts';
 import cron from 'node-cron';
-import { backfill, backfillHorizons } from './backfill.ts';
+import { backfill, backfillTimeframes } from './backfill.ts';
 import { summaries } from './summaries.ts';
 
 const statements = () => mocks.client.query.mock.calls.map(([sql]) => String(sql));
@@ -118,12 +118,14 @@ it('runs a tick that fires late, and keeps the track record apart from the night
         expect([expression, options?.missedExecutionTolerance]).toEqual([expression, LATE_TICK_MS]);
     expect(LATE_TICK_MS).toBeGreaterThanOrEqual(5 * 60 * 1000);
     expect(schedule.mock.calls.filter(([, , options]) => options?.timezone === 'America/New_York').map(([expression]) => expression).sort()).toEqual(['0 8 * * *', '15 * * * *', '20 0 * * *', '30 22 * * *', '30 22 * * *', '45 22 * * *']);
-    // 10:45 pm runs the backfill, bounded, under the retrying job; 10:30 pm runs the AI work without it.
-    vi.mocked(backfill).mockClear(); vi.mocked(backfillHorizons).mockClear(); vi.mocked(summaries).mockClear();
+    // 10:45 pm runs the backfill and then the other timeframes, under the retrying job; 10:30 pm runs the AI work without them.
+    vi.mocked(backfill).mockClear(); vi.mocked(backfillTimeframes).mockClear(); vi.mocked(summaries).mockClear();
     const at = (expression: string) => schedule.mock.calls.filter(([e]) => e === expression).map(([, task]) => task as () => Promise<void>);
     await at('45 22 * * *')[0]();
     expect(backfill).toHaveBeenCalledTimes(1);
-    expect(backfillHorizons).toHaveBeenCalledWith({ maxMarkets: HORIZON_MARKETS });
+    // The timeframes ask only about what is unanswered, so they need no nightly limit.
+    expect(backfillTimeframes).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(backfill).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(backfillTimeframes).mock.invocationCallOrder[0]);
     expect(summaries).not.toHaveBeenCalled();
     vi.mocked(backfill).mockClear();
     for (const task of at('30 22 * * *')) await task();

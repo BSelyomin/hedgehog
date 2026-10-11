@@ -1,12 +1,12 @@
 import type { ExposureResponse, ExposureEvent, Market, EventResponse, CalendarResponse } from '../../../shared/types.ts';
 import { query, iso } from '../db.ts';
 import { getHoldings } from './holdings.ts';
-import { matchHolding, linkRank, rankDrivers } from './matching.ts';
+import { matchHolding, linkRank, rankDrivers, reach } from './matching.ts';
 import type { MeasuredRow } from './matching.ts';
 import { ASSET_TAGS, assetLink, assetType, isSecurity } from './asset-links.ts';
 import { trustScore } from '../config/trust.ts';
 import { eventTime, isRangeLadder, marketKind, quotedSpread, statedDate } from './kalshi.ts';
-import { numbersSupported, safeSources } from './ai-guard.ts';
+import { numbersSupported, safeSources, spelledFigure } from './ai-guard.ts';
 import { trackRecord } from './track-record.ts';
 import { categorize, fundClasses, linkThemes, noCategories } from './categories.ts';
 import type { SecurityProfile } from '../jobs/profiles.ts';
@@ -87,13 +87,12 @@ export async function exposure(session: string): Promise<ExposureResponse> {
         const ladder = isRangeLadder(e.mutually_exclusive, rows.map(m => m.strike_type));
         // An empty book has no midpoint, so it has no probability, spread or trust score.
         const outcomes: Market[] = rows.map(m => { const spread = quotedSpread(m.yes_bid, m.yes_ask); return { ticker: m.ticker, title: m.title, subtitle: m.subtitle, probability: spread === null ? null : m.mid, spread, asOf: iso(m.ts), kind: marketKind(m.strike_type, e.category, m.title, ladder), floorStrike: m.floor_strike ?? null, trust: trustScore(spread === null ? null : spread * 100, m.volume_24h, m.open_interest, category?.avgMiss ?? null, category?.count ?? 0) }; });
-        const linkedValue = links.reduce((s, l) => s + l.valueUsd, 0);
-        result.push({ seriesTicker: e.series_ticker, ticker: e.ticker, title: e.title, category: e.category, mutuallyExclusive: e.mutually_exclusive, closeTime: new Date(Math.min(...rows.map(m => new Date(m.close_time).getTime()))).toISOString(), eventTime: timing.time.toISOString(), eventTimeSource: timing.source, linkedValue, share: totalValue ? linkedValue / totalValue : 0, links, markets: outcomes, themes: [...new Set(links.flatMap(l => l.themes))] });
+        result.push({ seriesTicker: e.series_ticker, ticker: e.ticker, title: e.title, category: e.category, mutuallyExclusive: e.mutually_exclusive, closeTime: new Date(Math.min(...rows.map(m => new Date(m.close_time).getTime()))).toISOString(), eventTime: timing.time.toISOString(), eventTimeSource: timing.source, ...reach(links, totalValue), links, markets: outcomes, themes: [...new Set(links.flatMap(l => l.themes))] });
     }
     const timestamps = markets.flatMap(m => m.ts ? [new Date(m.ts).getTime()] : []).filter(Number.isFinite);
     const asOf = timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null;
     const byHolding = holdings.map(h => ({ symbol: h.symbol, events: result.flatMap(e => { const l = e.links.find(l => l.symbol === h.symbol); return l ? [{ ticker: e.ticker, title: e.title, type: l.type }] : []; }).sort((a, b) => linkRank[a.type] - linkRank[b.type]), drivers: isSecurity(h) ? rankDrivers(h.symbol, measurements) : [] }));
-    return { holdings, totalValue, byHolding, categories: categorize(holdings, result, profiles, measurements, await fundClasses()), events: result.sort((a, b) => b.share - a.share), asOf };
+    return { holdings, totalValue, byHolding, categories: categorize(holdings, result, profiles, measurements, await fundClasses()), events: result.sort((a, b) => b.share - a.share || (b.topicValue ?? 0) - (a.topicValue ?? 0)), asOf };
 }
 export async function calendar(session: string, days: number): Promise<CalendarResponse> { const data = await exposure(session); const end = Date.now() + days * 86400000; return { days, asOf: data.asOf, categories: data.categories, events: data.events.filter(e => Date.parse(e.eventTime) <= end).sort((a, b) => Date.parse(a.eventTime) - Date.parse(b.eventTime)) }; }
 export async function eventDetail(session: string, ticker: string): Promise<EventResponse | null> {
@@ -112,5 +111,5 @@ export async function eventDetail(session: string, ticker: string): Promise<Even
     }>('SELECT * FROM summaries WHERE event_ticker=$1', [event.ticker]);
     const s = saved[0];
     const sources = s ? safeSources(s.sources) : [];
-    return { event, asOf: data.asOf, summary: s && sources.length && numbersSupported(s.text, s.input_data) ? { text: s.text, sources, generatedAt: iso(s.updated_at)! } : null };
+    return { event, asOf: data.asOf, summary: s && sources.length && numbersSupported(s.text, s.input_data) && !spelledFigure(s.text) ? { text: s.text, sources, generatedAt: iso(s.updated_at)! } : null };
 }

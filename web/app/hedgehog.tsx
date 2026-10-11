@@ -7,6 +7,7 @@ import { EventPage } from './screens/event';
 import { Moves } from './screens/moves';
 import { Earnings } from './screens/earnings';
 import { TrackRecord } from './screens/track-record';
+import { TrackRecord as TrackHistory } from './screens/track-record-details';
 import { Forecasts } from './screens/forecasts';
 import { AccountProvider, useAccount } from './auth';
 import { AccountScreen } from './screens/account';
@@ -47,7 +48,9 @@ function Shell() {
         case 'moves': screen = <Moves/>; break;
         case 'forecasts': screen = <Forecasts/>; break;
         case 'earnings': screen = <Earnings/>; break;
-        case 'track-record': screen = <TrackRecord initialView={id}/>; break;
+        // Two views sit beside the ratings: calibration by market theme with how trust is scored,
+        // and past events with how the holdings moved around them.
+        case 'track-record': screen = id === 'holdings' || id === 'calibration' ? <TrackHistory key={id} initialView={id === 'holdings' ? 'holdings' : 'accuracy'}/> : <TrackRecord initialView={id}/>; break;
         default: screen = <AddHoldings user={session?.user}/>;
     }
     return <>

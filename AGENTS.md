@@ -134,8 +134,8 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
 | `stock_tags` | symbol, tag, link_type ('direct', 'measured', 'related') | sector table + 10-K job |
 | `measured_links` | symbol, driver, b, se, low, high, days, reliable, computed_at, effect | nightly job |
 | `settled_markets` | ticker, category, prob_24h_before, outcome (0/1), close_time, odds_time, series_ticker, event_ticker, title | backfill |
-| `forecast_observations` | ticker, horizon_hours (1, 24, 168 or 720), series_ticker, event_ticker, title, category, yes_bid, yes_ask, outcome, close_time, odds_time | `backfillHorizons`: the quote in the minute before each mark |
-| `backfill_skips` | ticker, horizon_hours, series_ticker, category, reason ('no_quote' or 'outcome_known'), close_time | `backfillHorizons`: settled markets it could not score |
+| `forecast_observations` | ticker, horizon_hours (1, 168 or 720), series_ticker, event_ticker, title, category, yes_bid, yes_ask, outcome, close_time, odds_time | `backfillTimeframes`: the quote standing at each mark, for the markets in `settled_markets` |
+| `backfill_skips` | ticker, horizon_hours, series_ticker, category, reason ('no_quote' or 'outcome_known'), close_time | `backfillTimeframes`: a market with no usable quote at that mark |
 | `event_releases` | event_ticker PK, title, released_at, source_url | seeded from `server/seed/event_releases.json` (written by a human from official release pages) |
 | `track_entities` | symbol PK, name, kind ('company', 'fund' or 'index') | `trackEntities`, hourly: Yahoo's name and type for each ticker in the tag list |
 | `holdings` | session_id, symbol, value_usd, asset_type ('security', 'cash', 'treasury', 'bond', 'property'), details | add-holdings screen |
@@ -170,8 +170,13 @@ daily change in `DGS2`; `treasury-yields` → daily change in `DGS10`; `mortgage
 change in `MORTGAGE30US`; `sp500` → SPY (this one is the stock's beta). The list lives in
 `server/src/config/drivers.ts`; add a driver there and nowhere else.
 
-Exposure for an event: `linkedValue` = sum of the values of holdings linked to it;
-`share` = `linkedValue / totalValue`. These show reach, not how much a holding would move.
+Exposure for an event: `linkedValue` = sum of the values of the holdings linked to it by more
+than a shared topic (Direct, Calculated or Measured); `share` = `linkedValue / totalValue`
+(`reach` in `server/src/services/matching.ts`). These show reach, not how much a holding would
+move. A topic link is listed with no figure and adds nothing: its value is `topicValue`, and an
+event with only topic links has no reach, is not on the Overview and is never the briefing's main
+event. Counting topic links made the widest event read 89% of a portfolio when the holdings
+shown for it were worth 13%; the rest was a house linked by topic.
 Sort links Direct → Calculated → Measured → Related. On screen these read Direct, Calculated,
 Related and Topic (see UI).
 
@@ -236,8 +241,10 @@ happened, at a chosen timeframe before close.
 
 - **One store per timeframe, no copies.** At 24 hours the page reads `settled_markets`, the
   record above. The 1-hour, 7-day and 30-day timeframes read `forecast_observations`, filled by
-  `backfillHorizons`, which keeps only a quote from the minute before the mark and so scores far
-  fewer markets. Do not add another table for the same history: a page reading a store that
+  `backfillTimeframes` by the same rule as the 24-hour reading: the close of the last hourly
+  candlestick ending at or before the mark, at most seven days old (`oddsStandingAt`). It reads
+  only the markets in `settled_markets`, so every timeframe scores the same questions; one not
+  yet listed at a mark, or with an empty book there, gets a skip and no row. Do not add another table for the same history: a page reading a store that
   only its own collector fills is empty on every database where that collector has not run.
 - **Which series.** Reviewed tags in `series_tags` only. The S&P 500 benchmark is the reviewed
   list `SP500_BENCHMARK_SERIES`.
@@ -251,8 +258,10 @@ happened, at a chosen timeframe before close.
 - **Linked holdings** of a theme or company open across the whole card, a tile each. A fund is
   itself the holding and a benchmark is tracked by one, so their cards state the position
   instead of "related to your holdings".
-- `backfillHorizons` asks Kalshi for up to four quotes a market. The nightly job gives it
-  `HORIZON_MARKETS` markets and runs it last; do not run it unbounded on a schedule.
+- `backfillTimeframes` runs after the backfill each night. A market gets a row or a skip for each
+  timeframe once, so a run asks Kalshi only about what is still unanswered and needs no limit.
+  `backfillHorizons` is the earlier collector (a quote from the minute before the mark, one
+  request a market and timeframe); it is kept for the command line and is not scheduled.
 
 ## Categories
 
@@ -395,6 +404,16 @@ Laid out as in `/design`: upcoming reports on the left, then the chosen company'
   If the index or valid sources are absent, generate no summary. This does not search the open web.
 - **Number check:** before showing or speaking any AI text, extract every number in it and
   confirm each appears in the input data. Fail closed: fall back to the plain template text.
+  A figure spelled out in words ("thirteen point eight million", "twenty twenty-six") cannot be
+  read by that check, so text that does it is refused as well (`spelledFigure` in
+  `server/src/services/ai-guard.ts`). A summary is asked for with no figures at all; the sources
+  carry them.
+- **Ask about this event:** the event page takes a question and answers it from reporting
+  retrieved for that question (`server/src/services/event-answer.ts`): Cortex Search, then one
+  structured completion. An answer is shown only when it cites passages that were retrieved and
+  passes the number check against the market data it was given; when the passages do not answer
+  the question, no answer is shown. It never predicts the outcome. One attempt, and a browser may
+  ask eight questions in ten minutes.
 - **Provenance:** new AI tags use `source = 'snowflake'`; keep legacy Gemini rows and review states.
 - **Storage:** application data stays in Tiger Data/PostgreSQL; Snowflake handles AI and optional
   source retrieval. PAT credentials stay server-side. No new SDK dependency is needed.
@@ -405,6 +424,18 @@ Build the briefing text from a template filled with database numbers (top events
 share, today's move split, biggest odds move). AI may only smooth the wording, then the
 number check runs. Send to ElevenLabs, cache one MP3 per day, serve at `GET /briefing`.
 
+- **One a day.** A portfolio's briefing is kept for its New York day and replaced by the next
+  day's, so the store holds one for each portfolio and never a day's worth more. The morning run
+  makes them for accounts; a guest's is made when the guest presses Reload briefing.
+- **A transcript that follows the voice.** The speech is requested with character timings
+  (`convertWithTimestamps`), and each sentence is stored with when it is spoken
+  (`sentenceTimes`). The screen marks the sentence being spoken and plays from one that is
+  pressed. Timings that do not match the text exactly are not used: the transcript is then
+  shown without following the voice.
+- **Each figure leads to its screen.** A sentence that states a figure carries a link to where
+  that figure is shown: Moves, or the event's page (`briefingSentences`).
+- Only the briefing text is sent to ElevenLabs. The person's name is not in it.
+
 ## API
 
 Every response type lives in `/shared/types.ts`. Write the types first; then the web app can build
@@ -413,7 +444,8 @@ against mock data while the server is built.
 `POST /holdings` · `GET /exposure` · `GET /calendar?days=14` · `GET /event/:ticker` ·
 `GET /odds/:ticker?range=day|week|month|all` ·
 `GET /moves?date=&range=day|week|month|quarter` · `GET /earnings` · `GET /earnings/:symbol` · `GET /track-record` ·
-`GET /track-record/ratings?horizon=&sort=&grade=&scored=&search=&page=&fundPage=` · `GET /briefing`
+`GET /track-record/ratings?horizon=&sort=&grade=&scored=&search=&page=&fundPage=` · `GET /briefing` ·
+`POST /event/:ticker/ask`
 
 Every response includes `asOf` (when the data was last updated).
 
@@ -431,7 +463,9 @@ Seven screens, matching the designs in `/design` (screenshots or exports from th
 5. Earnings preview
 6. Move explainer (a window of 1 day / 1 week / 1 month / 3 months; the whole portfolio, a
    category or one holding; events that settled and odds that moved in the window)
-7. Track record (calibration chart, table by category, how trust is scored)
+7. Track record (ratings by theme, company and fund at `#track-record`; the calibration chart,
+   table by category and how trust is scored at `#track-record/calibration`; past events and how
+   the holdings moved around them at `#track-record/holdings`)
 
 **Whose portfolio.** Headings, subheadings and the lines that state a figure name the person
 signed in, as they wrote their name when creating the account: "Alex’s exposure map", "of

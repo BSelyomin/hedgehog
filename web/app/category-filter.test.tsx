@@ -132,7 +132,8 @@ describe('overview table with a category chosen', () => {
         setCategorySelection({ assetClass: '', theme: 'oil' });
         const html = renderToStaticMarkup(<ExposureTable data={data}/>);
         expect(tiles(html)).toEqual(['OIL:XOM', 'OIL:USO']);
-        expect(html).toContain('1 of 4 events · 2 of 6 holdings · category filter on');
+        // Of the four events sent, HOUSING is linked only by topic, so the table has three to show.
+        expect(html).toContain('1 of 3 events · 2 of 6 holdings · category filter on');
     });
     it('narrows to the chosen asset class and leaves out events it touches only by topic', () => {
         setCategorySelection({ assetClass: 'bonds', theme: '' });

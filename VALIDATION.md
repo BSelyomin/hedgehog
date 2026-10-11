@@ -1,5 +1,31 @@
 # Validation and phase status
 
+## Reach, a daily read-along briefing, the other timeframes and questions about an event (2026-10-10)
+
+All 659 tests and both TypeScript checks pass.
+
+- **Reach.** An event's share now counts only holdings linked by more than a shared topic. With
+  the tour portfolio the widest event reads 83.5% (a mortgage-rate event; the house is linked to
+  it by its adjustable mortgage) where it read 89.4% for shelter inflation, of which 76.5 points
+  were topic links. The Overview's count is 356 events, the number of rows it shows; the ten
+  topic-only events are on the Calendar with "Topic link only" and no share.
+- **Briefing.** Made once a day and replaced the next day. Checked live: one ElevenLabs request
+  of 31 seconds returned audio and timings that matched all ten sentences; the screen marked the
+  sentence being spoken at 0.2, 6 and 20 seconds; five sentences link to Moves or an event page.
+- **Timeframes.** The 1-hour, 7-day and 30-day records are read by the 24-hour rule from the
+  markets already scored. Migration 018 replaces the table's rule that a quote be from the
+  minute before the mark, which had refused every such row. The run was still going when this
+  was written; see the reply for how far it got.
+- **Summaries.** The 49 stopped summaries had all failed the number check by repeating a figure
+  from the reporting. Asked for words only, the model spelled figures out ("thirteen point eight
+  million"), which the digit check cannot read; that is now refused too, and summaries are asked
+  for with no figures at all.
+- **Questions.** "What has been reported about oil prices recently?" on an oil event returned an
+  answer citing 3 of 5 retrieved sources with its one number matched to the market data; "Why
+  might crude supply be tight?" and an unrelated question returned no answer, as intended.
+- **History views.** `#track-record/holdings` and `#track-record/calibration` open the views the
+  event page links to.
+
 ## Screens name the person signed in; an audit of every endpoint (2026-10-10)
 
 All 620 tests and both TypeScript checks pass.

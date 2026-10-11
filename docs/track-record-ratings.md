@@ -43,7 +43,11 @@ that was off unless switched on. On a database where it had not run the page sho
 yet" beside a full `settled_markets`. Migration 017 removes those five tables and the
 `track-history`, `track-companies` and `track-funds` jobs.
 
-The nightly job runs `backfill-horizons` last and for a set number of markets
+Since 2026-10-10 the nightly job fills these timeframes with `backfill-timeframes` instead, by
+the 24-hour rule (the quote standing at the mark), and `backfill-horizons` is no longer
+scheduled. What follows describes the earlier arrangement.
+
+The nightly job ran `backfill-horizons` last and for a set number of markets
 (`HORIZON_MARKETS` in `server/src/jobs/scheduler.ts`), carrying on the night after. Unbounded, it
 would ask Kalshi for up to four quotes for every settled market of every reviewed series.
 

@@ -39,7 +39,7 @@ describe('whose portfolio the screens name', () => {
         expect(as('Alex', <Overview/>)).toContain('<h2>Alex’s saved briefing</h2>');
         expect(as('Alex', <Moves/>)).toContain('<h1>What moved Alex’s portfolio</h1><p>Alex’s holdings at two closes, beside the Kalshi events of the same window</p>');
         expect(as('Alex', <Calendar/>)).toContain('<p>Explore the events linked to Alex’s holdings by event date and portfolio reach.</p>');
-        expect(as('Alex', <Calendar/>)).toContain('Portfolio share always uses Alex’s full portfolio.');
+        expect(as('Alex', <Calendar/>)).toContain('Portfolio share always uses Alex’s full portfolio, and counts a holding only when it is linked by more than a shared topic.');
         expect(as('Alex', <Earnings/>)).toContain('<h2>Alex’s upcoming reports</h2>');
         expect(as('Alex', <Forecasts/>)).toContain('<p>Which event results could move Alex’s portfolio—and which stocks could rise or fall.</p>');
         const holdings = renderToStaticMarkup(<AddHoldings user={user('Alex')}/>);

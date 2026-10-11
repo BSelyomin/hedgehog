@@ -8,7 +8,7 @@ import { stockTags, tagSeries } from './tagging.ts';
 import { measure } from './measure.ts';
 import { summaries } from './summaries.ts';
 import { briefings } from './briefing.ts';
-import { backfill, backfillHorizons } from './backfill.ts';
+import { backfill, backfillTimeframes } from './backfill.ts';
 import { syncBrokerages } from '../brokerages/service.ts';
 import { earningsDates } from './earnings-dates.ts';
 import { oddsCandles } from './odds-candles.ts';
@@ -66,11 +66,6 @@ export async function runJob(name: string, job: () => Promise<void>) {
         }
     }
 }
-// The other timeframes of the track record ask Kalshi for up to four quotes a market, one request
-// each. Without a limit a night's run would walk every settled market of every reviewed series,
-// which is days of requests under the nightly lock. It takes this many markets a night, after the
-// summaries and briefings, and carries on from where it stopped the night after.
-export const HORIZON_MARKETS = 300;
 // A tick that fires late still runs. The scheduling library drops one that is more than a second
 // late, and in a virtual machine whose clock is corrected in steps (Docker Desktop on a laptop)
 // every five-minute timer fired 20 to 30 seconds late: on 2026-10-10 no scheduled job ran on that
@@ -82,7 +77,7 @@ export function scheduler() {
     // The track record is Kalshi's data and retries; the nightly job is AI work and stops on a
     // failure. They are separate jobs so that neither rule reaches the other.
     const tasks = [every('*/5 * * * *', () => runJob('poll', poll)), every('30 22 * * *', () => runJob('nightly', async () => { await stockTags(); await tagSeries(); await summaries(); await briefings(); }), { timezone: 'America/New_York' }),
-        every('45 22 * * *', () => runJob('track-record', async () => { await backfill(); await backfillHorizons({ maxMarkets: HORIZON_MARKETS }); }), { timezone: 'America/New_York' }), every('0 8 * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), every('0 * * * *', () => runJob('enrich', async () => { await stockTags(); await tagSeries(); await summaries(); await briefings(); }))];
+        every('45 22 * * *', () => runJob('track-record', async () => { await backfill(); await backfillTimeframes(); }), { timezone: 'America/New_York' }), every('0 8 * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), every('0 * * * *', () => runJob('enrich', async () => { await stockTags(); await tagSeries(); await summaries(); await briefings(); }))];
     tasks.push(every('15 * * * *', () => runJob('session-cleanup', async () => {
         await query('DELETE FROM auth_sessions WHERE expires_at<=now()');
         await query('DELETE FROM auth_rate_limits WHERE resets_at<=now()');
