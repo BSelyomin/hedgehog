@@ -4,30 +4,43 @@ import type { BrokerageConnectResponse, BrokeragesResponse } from '../../../shar
 import { BrokerageActivity } from './brokerage-activity';
 import { useAccount } from '../auth';
 import { api, Card, Fresh, money, Status } from '../common';
+import { cacheResponse, getCachedResponse } from '../../lib/api-client';
+
+const PORTAL_RETURN_KEY = 'hedgehog-brokerage-return';
 
 export function Brokerages() {
     const { session } = useAccount();
-    const [data, setData] = useState<BrokeragesResponse | null>(null);
+    const [data, setData] = useState<BrokeragesResponse | null>(() => session?.user ? getCachedResponse('/brokerages') : null);
     const [busy, setBusy] = useState(false), [error, setError] = useState('');
     const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null);
     useEffect(() => {
         if (!session?.user) return;
+        const userId = session.user.id;
         let active = true;
-        setBusy(true);
-        // Pull provider's cached account data after the hosted portal returns.
+        // Visiting the page reads Hedgehog's saved accounts. Only a hosted portal
+        // return or the Sync button imports SnapTrade's provider snapshot.
         api<BrokeragesResponse>('/brokerages').then(async status => {
             if (!active) return;
             setData(status);
-            if (status.configured) {
+            let portalReturn = false;
+            try {
+                portalReturn = window.sessionStorage.getItem(PORTAL_RETURN_KEY) === userId;
+                if (portalReturn) window.sessionStorage.removeItem(PORTAL_RETURN_KEY);
+            } catch { /* If storage is blocked, the explicit Sync button remains available. */ }
+            if (status.configured && portalReturn) {
+                setBusy(true);
                 const synced = await api<BrokeragesResponse>('/brokerages/sync', { method: 'POST', body: '{}' });
-                if (active) setData(synced);
+                if (active) { cacheResponse('/brokerages', synced, session.sessionKey); setData(synced); }
             }
         }).catch(e => { if (active) setError(e.message); }).finally(() => { if (active) setBusy(false); });
         return () => { active = false; };
     }, [session?.user?.id]);
     async function update(path: string, body: object = {}) {
         setBusy(true); setError('');
-        try { setData(await api<BrokeragesResponse>(path, { method: 'POST', body: JSON.stringify(body) })); }
+        try {
+            const value = await api<BrokeragesResponse>(path, { method: 'POST', body: JSON.stringify(body) });
+            cacheResponse('/brokerages', value, session?.sessionKey); setData(value);
+        }
         catch (e) { setError((e as Error).message); }
         finally { setBusy(false); setConfirmDisconnect(null); }
     }
@@ -35,6 +48,7 @@ export function Brokerages() {
         setBusy(true); setError('');
         try {
             const result = await api<BrokerageConnectResponse>('/brokerages/connect', { method: 'POST', body: JSON.stringify(reconnect ? { reconnect } : {}) });
+            try { window.sessionStorage.setItem(PORTAL_RETURN_KEY, session!.user!.id); } catch { /* Manual Sync works without storage. */ }
             window.location.assign(result.portalUrl);
         } catch (e) { setError((e as Error).message); setBusy(false); }
     }

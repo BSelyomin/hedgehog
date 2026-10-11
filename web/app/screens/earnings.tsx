@@ -7,6 +7,7 @@ import { defaultEarningsFilters, earningsRows, filterEarningsRows, type Earnings
 import { CallTopics, ExpectationCard, MetricsTable, MovesChart, UpcomingReports } from './earnings-preview';
 import { describeCall, describeTypicalMove } from './earnings-text';
 import { useOwner } from '../auth';
+import { api, invalidateCachedResponses } from '../../lib/api-client';
 
 export function Earnings() {
     const { data, error, reload } = useData<EarningsListResponse>('/earnings');
@@ -17,6 +18,17 @@ export function Earnings() {
     const term = companySearch.trim().toLowerCase();
     const companies = data?.companies.filter(company => !term || company.symbol.toLowerCase().includes(term) || (company.name ?? '').toLowerCase().includes(term)) ?? [];
     const selected = companies.find(company => company.symbol === symbol) ?? companies[0];
+    async function refresh() {
+        invalidateCachedResponses('/earnings/');
+        const next = await reload();
+        if (!next) return;
+        const visible = next.companies.filter(company => !term || company.symbol.toLowerCase().includes(term) || (company.name ?? '').toLowerCase().includes(term));
+        const target = visible.find(company => company.symbol === symbol) ?? visible[0];
+        // The refreshed list already rebuilt the server snapshot. A normal detail
+        // read reuses it; populate the browser cache before remounting the detail.
+        if (target) await api<EarningsResponse>(`/earnings/${encodeURIComponent(target.symbol)}`);
+        setRevision(v => v + 1);
+    }
     return <div className="earnings-layout">
         <aside className="earnings-side">
             <h2>{owner.Their} upcoming reports</h2>
@@ -29,7 +41,7 @@ export function Earnings() {
         </aside>
         <div className="earnings-main">
             <span className="eyebrow">{selected ? `${selected.symbol}${selected.name ? ` · ${selected.name}` : ''}` : 'Company results'}</span>
-            <div className="row"><h1>Earnings preview</h1><ReloadButton onReload={async () => { await reload(); setRevision(v => v + 1); }}/></div>
+            <div className="row"><h1>Earnings preview</h1><ReloadButton onReload={refresh}/></div>
             <Status error={error} loading={!data && !error} layout="detail"/>
             {data && (selected ? <EarningsDetail key={`${selected.symbol}:${revision}`} symbol={selected.symbol}/>
                 : <Card><Empty>{data.companies.length ? 'No company matches this search. Try a ticker or clear the search.' : `None of ${owner.their} holdings has an earnings call dated by Kalshi right now. Company markets still appear on the overview and calendar.`}</Empty><Fresh asOf={data.asOf}/></Card>)}

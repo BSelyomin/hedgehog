@@ -14,9 +14,9 @@ export { splitMove } from '../math/move.ts';
 // Compares today's holdings at two closes. No history of what was held is stored, so the amount
 // held now is assumed held throughout: the value entered is read as the worth at the latest
 // stored close and scaled by the price to each end of the window.
-export async function moves(session: string, requestedDate?: string, snapshot?: ExposureResponse, range: MoveRange = 'day'): Promise<MovesResponse> {
+export async function moves(session: string, requestedDate?: string, snapshot?: Pick<ExposureResponse, 'holdings'>, range: MoveRange = 'day'): Promise<MovesResponse> {
     const data = snapshot ?? await timed('holdings', () => getHoldings(session));
-    const cutoff = completedPriceDate();
+    const cutoff = completedPriceDate(new Date(Date.now()));
     if (!data.holdings.length) return { date: requestedDate ?? cutoff, requestedDate: requestedDate ?? null, range, startDate: null,
         notes: ['Add holdings to see how they moved.'], asOf: null, holdings: [], spyReturn: null, startValue: null, endValue: null,
         total: null, fromMarket: null, beyondMarket: null, oddsWindow: null, movedEvents: [], settledEvents: [], drivers: [], driverChanges: [], missingDrivers: [], unpricedValue: 0 };

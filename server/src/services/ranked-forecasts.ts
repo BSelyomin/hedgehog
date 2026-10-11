@@ -23,8 +23,8 @@ const relevant = `WITH relevant AS MATERIALIZED (
 const linkedSymbols = `ARRAY(SELECT symbol FROM unnest($1::text[])s(symbol)
     WHERE symbol=ANY(r.tags) OR EXISTS(SELECT 1 FROM stock_tags st WHERE st.symbol=s.symbol AND st.tag=ANY(r.tags)))`;
 
-export async function rankedForecasts(session: string): Promise<RankedForecastsResponse> {
-    const { data, holdings, prices, cutoff } = await loadForecasts(session, 2);
+export async function rankedForecasts(session: string, snapshot?: Awaited<ReturnType<typeof loadForecasts>>): Promise<RankedForecastsResponse> {
+    const { data, holdings, prices, cutoff } = snapshot ?? await loadForecasts(session, 2);
     const symbols = holdings.filter(isSecurity).map(h => h.symbol);
     const notes = ['Events are ranked by gross measured daily driver sensitivity in dollars: the sum of each holding’s typical measured effect. This compares potential exposure; it is not a forecast of the event’s actual impact.',
         'Related formats across targets and times share one family. Snowflake evaluates the full family for a joint driver estimate; confidence is self-rated and uncalibrated. Individual verified scenarios and contract odds stay separate.'];
@@ -84,9 +84,9 @@ export async function rankedForecasts(session: string): Promise<RankedForecastsR
         asOf: sourceTimes.length ? new Date(Math.max(...sourceTimes)).toISOString() : null };
 }
 
-export async function forecastResult(session: string, ticker: string, assumption?: unknown): Promise<ForecastResultResponse | null> {
+export async function forecastResult(session: string, ticker: string, assumption?: unknown, snapshot?: Awaited<ReturnType<typeof loadForecasts>>): Promise<ForecastResultResponse | null> {
     const request = assumption === undefined ? undefined : validateScenario(assumption);
-    const { data, holdings, prices, cutoff } = await loadForecasts(session, 2);
+    const { data, holdings, prices, cutoff } = snapshot ?? await loadForecasts(session, 2);
     const symbols = holdings.filter(isSecurity).map(h => h.symbol);
     if (!symbols.length) return null;
     const rows = await query<ResultMarketRow>(`${relevant}

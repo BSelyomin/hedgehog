@@ -1,6 +1,6 @@
 import { it, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { api, setSessionKey } from '../lib/api-client';
+import { api, getCachedResponse, invalidateCachedResponses, setSessionKey } from '../lib/api-client';
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; setSessionKey('reset-after-cache-test'); });
@@ -48,4 +48,25 @@ it('never saves an old in-flight portfolio reply after holdings change', async (
     await api('/holdings', { method: 'POST', body: '{}' });
     release(Response.json({ totalValue: 1000, asOf: null })); await stale;
     assert.equal((await api<{ totalValue: number }>('/forecasts')).totalValue, 2000); assert.equal(calls, 3);
+});
+
+it('refreshes ranked data once, then reads assessments/results normally without retaining earlier forecast page snapshots', async () => {
+    setSessionKey('forecast-page-refresh');
+    const calls: { path: string; refresh: string | null }[] = [];
+    let version = 1;
+    globalThis.fetch = async (url, options) => {
+        const path = String(url); calls.push({ path, refresh: new Headers(options?.headers).get('X-Hedgehog-Refresh') });
+        return Response.json({ version, assessments: [{ assessment: { status: 'ready' } }], asOf: null });
+    };
+    const paths = ['/forecasts/ranked-events', '/forecasts/assessments', '/forecasts/result/M'];
+    for (const path of [...paths, '/moves']) await api(path);
+    version = 2; calls.length = 0;
+    invalidateCachedResponses('/forecasts');
+    await api(paths[0], { cache: 'reload' });
+    await api(paths[1]); await api(paths[2]);
+    assert.deepEqual(calls, paths.map((path, i) => ({ path: `/api${path}`, refresh: i === 0 ? '1' : null })));
+    for (const path of paths) assert.equal(getCachedResponse<{ version: number }>(path)?.version, 2);
+    assert.equal(getCachedResponse<{ version: number }>('/moves')?.version, 1);
+    for (const path of paths) await api(path);
+    assert.equal(calls.length, 3);
 });

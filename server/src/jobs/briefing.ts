@@ -12,7 +12,7 @@ import { runWithoutRetry } from '../services/no-retry.ts';
 
 interface BriefingSnapshot { date: string; text: string; audio: string | null; asOf: string | null; parts?: BriefingPart[] }
 
-function briefingIdentity(session: string, portfolio: Awaited<ReturnType<typeof getHoldings>>) {
+export function briefingIdentity(session: string, portfolio: Awaited<ReturnType<typeof getHoldings>>) {
     return { session, portfolio: portfolioRevision(portfolio), voice: process.env.ELEVENLABS_VOICE_ID ?? '',
         enabled: Boolean(process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID), model: 'eleven_multilingual_v2' };
 }
@@ -56,12 +56,12 @@ export async function briefing(session: string, requested = false) {
     else await runWithoutRetry(`briefings:${contentHash(identity)}`, produce);
 }
 
-export async function savedBriefing(session: string) {
-    return readAI<BriefingSnapshot>('briefing-v1', briefingIdentity(session, await getHoldings(session)));
+export async function savedBriefing(session: string, portfolio?: Awaited<ReturnType<typeof getHoldings>>) {
+    return readAI<BriefingSnapshot>('briefing-v1', briefingIdentity(session, portfolio ?? await getHoldings(session)));
 }
 
-export async function briefingResponse(session: string): Promise<BriefingResponse> {
-    const saved = await savedBriefing(session), row = saved?.value;
+export async function briefingResponse(session: string, portfolio?: Awaited<ReturnType<typeof getHoldings>>): Promise<BriefingResponse> {
+    const saved = await savedBriefing(session, portfolio), row = saved?.value;
     return { date: row?.date ?? briefingDay(), today: briefingDay(), text: row?.text ?? null, parts: row?.parts ?? null,
         audioUrl: row?.audio ? `/api/briefing/audio?v=${encodeURIComponent(saved!.createdAt)}` : null,
         asOf: row?.asOf ?? null, generatedAt: saved?.createdAt ?? null };

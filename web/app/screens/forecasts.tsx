@@ -7,6 +7,7 @@ import { api, Card, dateText, Empty, Fresh, href, money, percent, ReloadButton, 
 import { driverName } from './sensitivity';
 import { ForecastColumnHeading } from './forecast-column-heading';
 import { useOwner } from '../auth';
+import { getCachedResponse, invalidateCachedResponses } from '../../lib/api-client';
 
 const FORECAST_PAGE_SIZE = 10;
 const FORECAST_COLUMNS = [
@@ -47,8 +48,12 @@ export function Forecasts() {
     const listHeading = useRef<HTMLHeadingElement>(null);
     const pageCount = Math.max(1, Math.ceil((events.data?.events.length ?? 0) / FORECAST_PAGE_SIZE));
     useEffect(() => { setPage(current => Math.min(current, pageCount)); }, [pageCount]);
-    const [ai, setAI] = useState<AutomaticAIState>({ data: null, error: '', stopped: false });
-    async function reload() { await events.reload(); setAI({ data: null, error: '', stopped: false }); setRevision(v => v + 1); }
+    const [ai, setAI] = useState<AutomaticAIState>(() => ({ data: getCachedResponse<ForecastAssessmentsResponse>('/forecasts/assessments'), error: '', stopped: false }));
+    async function reload() {
+        invalidateCachedResponses('/forecasts');
+        if (!await events.reload()) return;
+        setAI({ data: null, error: '', stopped: false }); setRevision(v => v + 1);
+    }
     async function retryEstimate(ticker: string) {
         await api<ForecastAssessmentResponse>(`/forecasts/assessment/${encodeURIComponent(ticker)}`, { method: 'POST', body: '{}' });
         setAI({ data: null, error: '', stopped: false }); setRevision(v => v + 1);
@@ -59,12 +64,12 @@ export function Forecasts() {
         listHeading.current?.focus({ preventScroll: true });
         listHeading.current?.scrollIntoView({ block: 'start' });
     }
-    return <>
+    return <div className="forecast-page">
         <div className="row"><div><h1>Forecasts</h1><p>Which event results could move {owner.their} portfolio—and which stocks could rise or fall.</p></div><ReloadButton onReload={reload}/></div>
         <Status error={events.error} loading={!events.data && !events.error}/><Fresh asOf={events.data?.asOf ?? null}/>
         {events.data && <>
             <p className="note">Portfolio value: <strong className="mono">{money(events.data.totalValue)}</strong>. Showing {events.data.events.length} of {events.data.groupedEvents ?? events.data.candidateEvents} forecast groups from {events.data.candidateEvents} linked events, ranked by measured daily dollar sensitivity.</p>
-            {events.data.notes.map(note => <p className="note" key={note}>{note}</p>)}
+            <details className="forecast-help"><summary>How to read these forecasts</summary>{events.data.notes.map(note => <p className="note" key={note}>{note}</p>)}</details>
             {!events.data.events.length ? <Empty>No linked events are available yet. <a href={href('holdings')}>Add holdings</a> and wait for reviewed market tags and measurements to load.</Empty> :
                 <Card className="forecast-table-card"><h2 ref={listHeading} tabIndex={-1}>Portfolio event forecasts</h2><p className="note">One row per event family across times and price targets. Snowflake evaluates the full family together for a combined forecast. Expand a row to compare the individual contracts and stock effects.</p>
                     <p className="note">{events.data.events.filter(event => event.outcomes.some(outcome => outcome.result.changeUsd !== null)).length} of {events.data.events.length} displayed groups have a verified result estimate. Snowflake makes best-effort driver assumptions for other measured groups. AI confidence is self-rated and uncalibrated; Kalshi odds remain separate.</p>
@@ -74,8 +79,8 @@ export function Forecasts() {
         <button className="forecast-tools-toggle" aria-expanded={showTools} aria-controls="forecast-tools" onClick={() => setShowTools(value => !value)}>
             {showTools ? 'Hide additional forecast tools' : 'Additional forecast tools'}
         </button>
-        {showTools && <div id="forecast-tools"><ForecastTools/></div>}
-    </>;
+        {showTools && <div id="forecast-tools"><ForecastTools key={revision}/></div>}
+    </div>;
 }
 
 interface AutomaticAIState { data: ForecastAssessmentsResponse | null; error: string; stopped: boolean }
@@ -87,7 +92,7 @@ function AutomaticAssessments({ onUpdate }: { onUpdate: (state: AutomaticAIState
     useEffect(() => {
         if (stopped || error || !data?.assessments.some(item => item.assessment.status === 'pending')) return;
         if (Date.now() - started.current >= 720000) { setStopped(true); return; }
-        const timer = setTimeout(() => { void reload().catch(() => {}); }, 5000);
+        const timer = setTimeout(() => { void reload(undefined, false).catch(() => {}); }, 5000);
         return () => clearTimeout(timer);
     }, [data, error, stopped, reload]);
     async function retry() { started.current = Date.now(); setStopped(false); await reload(); }
@@ -113,6 +118,25 @@ export function ForecastTable({ events, expanded, onToggle, onRetry, revision = 
     page?: number; onPageChange?: (page: number) => void;
 }) {
     const [assumptions, setAssumptions] = useState<Record<string, { source: RankedForecastEvent; revision: number; value: ForecastResultResponse }>>({});
+    const panels = useRef(new Map<string, HTMLDivElement>());
+    const resultButtons = useRef(new Map<string, HTMLButtonElement>());
+    const revealKey = useRef<string | null>(null);
+    function reveal(key: string) {
+        const panel = panels.current.get(key);
+        if (!panel) return;
+        panel.focus({ preventScroll: true });
+        panel.scrollIntoView({ block: 'start', inline: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+        revealKey.current = null;
+    }
+    function showResults(key: string) {
+        if (expanded.includes(key)) reveal(key);
+        else { revealKey.current = key; onToggle(key); }
+    }
+    function hideResults(key: string) {
+        resultButtons.current.get(key)?.focus();
+        onToggle(key);
+    }
+    useEffect(() => { if (revealKey.current) reveal(revealKey.current); }, [expanded, page]);
     useEffect(() => { setAssumptions({}); }, [events, revision]);
     const pageCount = Math.max(1, Math.ceil(events.length / FORECAST_PAGE_SIZE));
     const currentPage = Math.max(1, Math.min(page, pageCount));
@@ -150,13 +174,15 @@ export function ForecastTable({ events, expanded, onToggle, onRetry, revision = 
                 : <ResultChange result={preview}/>}
                 {assessment?.status === 'unavailable' && onRetry && <ReloadButton label="Retry estimate" onReload={() => onRetry(event.ticker)}/>}
                 {assessment?.status === 'ready' && assessment.reason && <span className="note">{assessment.reason}</span>}
-                {preview && preview.changeUsd !== null && marketSource && <span className="note"><a href={marketSource.url} target="_blank" rel="noreferrer">Market source</a> · <a href={`#${id}`} onClick={() => { if (!open) onToggle(key); }}>View measured stock evidence</a></span>}
+                {preview && preview.changeUsd !== null && marketSource && <span className="note"><a href={marketSource.url} target="_blank" rel="noreferrer">Market source</a> · <a href={`#${id}`} onClick={event => { event.preventDefault(); showResults(key); }}>View measured stock evidence</a></span>}
                 {joint && !assumed ? <span className="note">{joint.contextContracts} contracts across {joint.contextTimes} times · one-session estimate around <time dateTime={joint.horizon.closeTime}>{dateText(joint.horizon.closeTime, true)}</time>. Selected contract odds are separate.</span>
                     : !assumed && preview && preview.changeUsd !== null && <span className="note">{preview.basis === 'ai-assumption' ? 'AI driver estimate with measured stock effects.' : 'Measured effect at the stated market level.'}{assessment?.status === 'pending' ? ' Combined forecast pending.' : ''}</span>}</div></details></td>
-            <td><button type="button" aria-expanded={open} aria-controls={id} onClick={() => onToggle(key)}>{open ? 'Hide results' : 'View results'}</button></td>
-        </tr>{open && <tr id={id} className="forecast-expanded-row"><td colSpan={7}><EventResults key={`${event.ticker}|${revision}`} event={assessed} assessment={assessment} onAssumption={value => setAssumptions(values => {
+            <td><button className="forecast-results-toggle" type="button" aria-expanded={open} aria-controls={id} ref={node => { if (node) resultButtons.current.set(key, node); else resultButtons.current.delete(key); }} onClick={() => open ? hideResults(key) : showResults(key)}><span aria-hidden="true">{open ? '↓' : '›'}</span> {open ? 'Hide results' : 'View results'}</button>{open && <span className="forecast-open-hint">Results open below ↓</span>}</td>
+        </tr>{open && <tr className="forecast-expanded-row"><td colSpan={7}><div id={id} role="region" aria-labelledby={`${id}-heading`} tabIndex={-1} className="forecast-results-panel" ref={node => { if (node) panels.current.set(key, node); else panels.current.delete(key); }}>
+            <div className="row forecast-results-heading"><h3 id={`${id}-heading`}>Results for {event.title}</h3><button type="button" aria-label={`Close results for ${event.title}`} onClick={() => hideResults(key)}>Close results ↑</button></div>
+            <EventResults key={`${event.ticker}|${revision}`} event={assessed} assessment={assessment} onAssumption={value => setAssumptions(values => {
             const next = { ...values }; if (value) next[key] = { source: event, revision, value }; else delete next[key]; return next;
-        })}/></td></tr>}</Fragment>;
+        })}/></div></td></tr>}</Fragment>;
     })}</tbody></table></div>
         {events.length > 0 && <nav className="forecast-pagination" aria-label="Forecast pages">
             <button type="button" disabled={currentPage === 1} onClick={() => onPageChange?.(currentPage - 1)}>Previous</button>
@@ -169,16 +195,19 @@ export function ForecastTable({ events, expanded, onToggle, onRetry, revision = 
     </>;
 }
 
-export function ResultChange({ result }: { result?: ForecastResultSummary }) {
+export function ResultChange({ result, compact = false }: { result?: ForecastResultSummary; compact?: boolean }) {
     if (!result) return <span className="note">No open result. Reload events.</span>;
-    if (result.changeUsd !== null) return <><span className={`amount ${result.changeUsd < 0 ? 'orange' : 'blue'}`}>{money(result.changeUsd)}</span>
-        <span className="note">{result.basis === 'user-assumption' ? 'Your assumption · ' : result.basis === 'ai-assumption' ? 'AI assumption · ' : ''}{result.label}</span>
-        {result.basis === 'ai-assumption' && typeof result.confidence === 'number' && <span className="note">AI confidence: {result.confidence}% · self-rated, uncalibrated</span>}
+    const calculation = <><span className="note">{result.label}</span>
         {result.evidence && <span className="note">Calculation: holding value × measured sensitivity × {result.evidence.driver} change of {result.evidence.change.toFixed(3)}{result.evidence.unit === 'percent' ? '%' : ' percentage points'}. At least {result.evidence.observations} aligned observations; measured {dateText(result.evidence.measuredAt)}.
             {result.evidence.referenceUrl && <> <a href={result.evidence.referenceUrl} target="_blank" rel="noreferrer">Reference price source</a>.</>}</span>}</>;
+    if (result.changeUsd !== null) return <><span className={`amount ${result.changeUsd < 0 ? 'orange' : 'blue'}`}>{money(result.changeUsd)}</span>
+        <span className="note">{result.basis === 'user-assumption' ? 'Your assumption' : result.basis === 'ai-assumption' ? 'AI assumption' : 'Measured scenario'}</span>
+        {result.basis === 'ai-assumption' && typeof result.confidence === 'number' && <span className="note">AI confidence: {result.confidence}% · self-rated, uncalibrated</span>}
+        {compact ? <details className="forecast-calculation"><summary>Calculation details</summary>{calculation}</details> : calculation}</>;
     const labels = { 'outcome-mapping': 'Needs a driver assumption', 'missing-strike': 'No numeric result level',
         'missing-reference': 'Missing reference price', 'scenario-range': 'Outside model range', 'no-measurement': 'No reliable measurement' };
-    return <><strong>{result.unavailableReason ? labels[result.unavailableReason] : 'Effect unmeasured'}</strong><span className="note">{result.reason ?? 'No supported result estimate.'}</span></>;
+    const reason = <span className="note">{result.reason ?? 'No supported result estimate.'}</span>;
+    return <><strong>{result.unavailableReason ? labels[result.unavailableReason] : 'Effect unmeasured'}</strong>{compact ? <details className="forecast-calculation"><summary>Why unavailable</summary>{reason}</details> : reason}</>;
 }
 
 function EventResults({ event, onAssumption, assessment }: { event: RankedForecastEvent; onAssumption: (value: ForecastResultResponse | null) => void; assessment?: ForecastAssessmentResponse }) {
@@ -187,20 +216,21 @@ function EventResults({ event, onAssumption, assessment }: { event: RankedForeca
     const prediction = assessment?.predictions?.find(p => p.market.ticker === selected?.ticker);
     const measuredSymbols = prediction?.stocks.map(stock => stock.symbol) ?? event.measuredSymbols;
     const unmeasuredSymbols = [...event.measuredSymbols, ...event.unmeasuredSymbols].filter(symbol => !measuredSymbols.includes(symbol));
-    return <>
-        <Card><div className="row"><div><span className="eyebrow">{event.category}</span><h2>{event.title}</h2></div><a href={href('event', event.ticker)}>View evidence →</a></div>
+    return <div className="forecast-results-content">
+        <Card><div className="row"><span className="eyebrow">{event.category} · Dated result forecasts</span><a href={href('event', event.ticker)}>View event evidence →</a></div>
             {event.sourceEvents && event.sourceEvents.length > 1 && <p className="note">Combined {event.sourceEvents.length} related events into one forecast. Each outcome retains its own odds; overlapping contracts are never counted twice.</p>}
             <p className="note">Results across dates and times share this entry; each keeps its own market close and odds. Measured stocks for the selected result: {measuredSymbols.join(', ') || 'None yet'}.</p>
             {unmeasuredSymbols.length > 0 && <p className="note">Not modeled for the selected result: {unmeasuredSymbols.join(', ')}. Their actual future moves are unknown.</p>}
             {!!event.prices?.length && <div className="forecast-outcomes">{event.prices.map(price => <p className="note" key={price.symbol}><strong className="mono">{price.symbol}: {price.value.toFixed(3)}</strong> · {price.date} · <a href={price.url} target="_blank" rel="noreferrer">Price source</a></p>)}</div>}
             {!!event.sourceEvents?.length && <details><summary>Combined market sources</summary><ul>{event.sourceEvents.map(source => <li key={source.ticker}><a href={source.url} target="_blank" rel="noreferrer">{source.title}</a> <span className="mono">{source.ticker}</span></li>)}</ul></details>}
-            <h3>Dated result forecasts</h3><OutcomeTable event={event} selected={selected?.ticker ?? ''} onSelect={setTicker}/>
+            <OutcomeTable event={event} selected={selected?.ticker ?? ''} onSelect={setTicker}/>
             {!event.outcomes.length && <Empty>The last open market closed while loading. Reload to see current events.</Empty>}
         </Card>
-        {assessment ? <Card><h2>Combined Snowflake assessment</h2>{assessment.status === 'pending' ? <p className="note" role="status">Snowflake is generating best-effort assumptions. Estimates appear automatically when ready.</p>
-            : <AssessmentContent data={assessment} event={event} onSelect={setTicker}/>}</Card> : <ForecastAssessment event={event} onSelect={setTicker}/>}
-        {selected && <ResultDetails key={selected.ticker} ticker={selected.ticker} onAssumption={onAssumption} aiPrediction={prediction} assessment={assessment}/>}
-    </>;
+        {selected && <ResultDetails key={selected.ticker} ticker={selected.ticker} onAssumption={onAssumption} aiPrediction={prediction}/>}
+        <details className="forecast-extra-details"><summary>Combined assessment and sources{assessment?.status === 'pending' ? ' · In progress' : ''}</summary>
+            {assessment ? <AssessmentContent data={assessment} event={event} onSelect={setTicker}/> : <ForecastAssessment event={event} onSelect={setTicker}/>}
+        </details>
+    </div>;
 }
 
 export function OutcomeTable({ event, selected, onSelect }: { event: RankedForecastEvent; selected: string; onSelect: (ticker: string) => void }) {
@@ -210,7 +240,7 @@ export function OutcomeTable({ event, selected, onSelect }: { event: RankedForec
             <td><time dateTime={outcome.closeTime}>{dateText(outcome.closeTime, true)}</time></td>
             <th scope="row">{outcome.title}</th>
             <td className="amount">{percent(outcome.probability)}<span className="note">bid–ask midpoint</span></td>
-            <td><ResultChange result={outcome.result}/></td>
+            <td><ResultChange result={outcome.result} compact/></td>
             <td>{outcome.result.changeUsd === null ? <span className="note">Unmeasured</span> : <><span className="blue">↑ {outcome.result.gainingStocks.join(', ') || 'None'}</span><br/><span className="orange">↓ {outcome.result.losingStocks.join(', ') || 'None'}</span></>}</td>
             <td><button type="button" aria-pressed={selected === outcome.ticker} onClick={() => onSelect(outcome.ticker)}>View stock effects</button></td>
         </tr>)}</tbody></table></div>;
@@ -220,11 +250,11 @@ function ForecastAssessment({ event, onSelect }: { event: RankedForecastEvent; o
     const { data, error, reload } = useData<ForecastAssessmentResponse>(`/forecasts/assessment/${encodeURIComponent(event.ticker)}`);
     const started = useRef(Date.now()), [stopped, setStopped] = useState(false);
     useEffect(() => {
-        if (data?.status !== 'pending' || stopped) return;
+        if (data?.status !== 'pending' || stopped || error) return;
         if (Date.now() - started.current >= 90000) { setStopped(true); return; }
-        const timer = setTimeout(() => { void reload().catch(() => {}); }, 3000);
+        const timer = setTimeout(() => { void reload(undefined, false).catch(() => {}); }, 3000);
         return () => clearTimeout(timer);
-    }, [data, stopped, reload]);
+    }, [data, stopped, error, reload]);
     async function retry() { started.current = Date.now(); setStopped(false); await reload(); }
     return <Card><div className="row"><h2>Combined Snowflake assessment</h2><ReloadButton label="Reload assessment" onReload={retry}/></div>
         {error ? <p className="error" role="alert">{error}</p> : stopped ? <p className="note">The assessment is taking longer than expected. Reload assessment to check again.</p>
@@ -262,19 +292,16 @@ export function GroupPrediction({ data }: { data: ForecastGroupPrediction }) {
     </section>;
 }
 
-function ResultDetails({ ticker, onAssumption, aiPrediction, assessment }: { ticker: string; onAssumption: (value: ForecastResultResponse | null) => void; aiPrediction?: ForecastResultResponse; assessment?: ForecastAssessmentResponse }) {
+function ResultDetails({ ticker, onAssumption, aiPrediction }: { ticker: string; onAssumption: (value: ForecastResultResponse | null) => void; aiPrediction?: ForecastResultResponse }) {
     const { data, error, reload } = useData<ForecastResultResponse>(`/forecasts/result/${encodeURIComponent(ticker)}`);
     const [revision, setRevision] = useState(0);
     async function refresh() { onAssumption(null); setRevision(value => value + 1); await reload(); }
-    return <><div className="actions"><ReloadButton onReload={refresh} label="Reload result"/></div><Status error={error} loading={!data && !error}/>
-        {(aiPrediction || data) && <><ResultEstimate data={data ?? aiPrediction!} aiPrediction={aiPrediction} assessment={assessment}/><ResultAssumption key={`${ticker}|${(aiPrediction ?? data)!.asOf}|${revision}`} data={aiPrediction ?? data!} onResult={onAssumption}/></>}</>;
+    return <><div className="row forecast-selected-result"><h3>Selected result stock effects</h3><ReloadButton onReload={refresh} label="Reload result"/></div><Status error={error} loading={!data && !aiPrediction && !error}/>
+        {(aiPrediction || data) && <><ResultEstimate data={data ?? aiPrediction!} aiPrediction={aiPrediction}/><details className="forecast-extra-details"><summary>Calculate with your own driver assumption</summary><ResultAssumption key={`${ticker}|${(aiPrediction ?? data)!.asOf}|${revision}`} data={aiPrediction ?? data!} onResult={onAssumption}/></details></>}</>;
 }
 
-export function ResultEstimate({ data, aiPrediction, assessment }: { data: ForecastResultResponse; aiPrediction?: ForecastResultResponse; assessment?: ForecastAssessmentResponse }) {
-    if (!aiPrediction && data.result.changeUsd === null && data.scenarioDrivers?.length) return <Card><h2>AI result estimate</h2>
-        <p role="status">{assessment?.status === 'unavailable' ? assessment.reason ?? 'AI estimate unavailable. Use Retry estimate for one manual attempt.'
-            : assessment?.status === 'ready' ? 'Snowflake has no assumption for this contract. Select one of its assessed results or try the manual calculator.'
-                : 'Snowflake is making its best-effort driver-change assumption. Estimated dollar effects and self-rated confidence will appear here when ready.'}</p></Card>;
+export function ResultEstimate({ data, aiPrediction }: { data: ForecastResultResponse; aiPrediction?: ForecastResultResponse }) {
+    if (!aiPrediction && data.result.changeUsd === null && data.scenarioDrivers?.length) return null;
     return <PortfolioResult result={aiPrediction ?? data}/>;
 }
 

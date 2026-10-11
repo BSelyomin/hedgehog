@@ -60,6 +60,10 @@ it('shows ranked measured exposure, result-specific directions and the partial-p
         tags: ['fed-rates'], linkedSymbols: ['AAA', 'BBB'], eventTime: '2026-11-01', eventTimeSource: 'close', closeTime: '2026-11-01' }], models, holdings);
     const list = renderToStaticMarkup(<ForecastTable events={ranked} expanded={['E']} onToggle={() => {}}/>);
     assert.ok(list.includes('aria-expanded="true"') && list.includes('Daily sensitivity') && list.includes('$60.00'));
+    assert.ok(list.includes('Results open below ↓') && list.includes('Results for Treasury yield'));
+    assert.ok(list.includes('aria-controls="forecast-group-E"') && list.includes('id="forecast-group-E" role="region" aria-labelledby="forecast-group-E-heading" tabindex="-1"'));
+    assert.ok(list.includes('aria-label="Close results for Treasury yield"'));
+    assert.ok(list.includes('<summary>Combined assessment and sources</summary>') && !list.includes('<h2>Treasury yield</h2>'));
     assert.ok(list.includes('<table') && !list.includes('forecast-ranked-list'));
     const result = predictEventResult({ ticker: 'M', event_ticker: 'E', series_ticker: 'KXUST2AD', title: 'Above 4.25%', event_title: 'Treasury yield',
         close_time: new Date('2026-11-01'), tags: ['fed-rates'], ts: new Date(), yes_bid: .6, yes_ask: .8,
@@ -235,9 +239,10 @@ it('replaces the assumption-needed message with automatically loaded AI changes 
     assert.ok(outcomes.includes('$30.00') && outcomes.includes('↑ AAA') && outcomes.includes('62%'));
     const pending = renderToStaticMarkup(<ForecastTable events={[event]} expanded={[]} onToggle={() => {}} assessments={{ asOf: data.asOf, assessments: [{ eventTicker: 'FED', assessment: { ...assessment, status: 'pending', summary: null, predictions: [] } }] }}/>);
     assert.ok(pending.includes('Snowflake estimating') && !pending.includes('$30.00') && !pending.includes('Needs a driver assumption'));
-    const waitingDetails = renderToStaticMarkup(<ResultEstimate data={source} assessment={{ ...assessment, status: 'pending', predictions: [] }}/>);
-    assert.ok(waitingDetails.includes('best-effort driver-change assumption') && waitingDetails.includes('self-rated confidence'));
-    assert.ok(!waitingDetails.includes('Enter a driver-change assumption') && !waitingDetails.includes('$30.00'));
+    const waitingDetails = renderToStaticMarkup(<ResultEstimate data={source}/>);
+    assert.equal(waitingDetails, '', 'Unsupported results do not add a redundant AI placeholder card');
+    const readyDetails = renderToStaticMarkup(<ResultEstimate data={source} aiPrediction={prediction}/>);
+    assert.ok(readyDetails.includes('$30.00') && readyDetails.includes('62%') && readyDetails.includes('separate from event odds'));
     const failed = renderToStaticMarkup(<ForecastTable events={[event]} expanded={[]} onToggle={() => {}} assessments={{ asOf: data.asOf, assessments: [{ eventTicker: 'FED', assessment: { ...assessment, status: 'unavailable', reason: 'Configure Snowflake Cortex.', predictions: [] } }] }}/>);
     assert.ok(failed.includes('AI estimate unavailable') && failed.includes('Configure Snowflake Cortex.') && !failed.includes('$30.00'));
     const zeroConfidence = renderToStaticMarkup(<ResultChange result={{ ...prediction.result, confidence: 0 }}/>);
