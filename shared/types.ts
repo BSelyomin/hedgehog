@@ -199,8 +199,11 @@ export interface ExposureEvent {
     eventTime: string;
     /** 'stated' is a date Kalshi gives by day only; its time of day is not known. */
     eventTimeSource: 'occurrence' | 'stated' | 'strike' | 'expected' | 'close';
+    /** Value of the holdings linked by more than a shared topic (Direct, Calculated or Measured), and that over the whole portfolio. */
     linkedValue: number;
     share: number;
+    /** Value of the holdings linked only by an unmeasured topic. They are listed, and never part of linkedValue or share. */
+    topicValue?: number;
     links: HoldingLink[];
     markets: Market[];
     mutuallyExclusive: boolean;
@@ -292,6 +295,19 @@ export interface Summary {
 export interface EventResponse extends Freshness {
     event: ExposureEvent;
     summary: Summary | null;
+}
+/** An answer to a question about one event, written by Snowflake Cortex from retrieved reporting. */
+export interface EventAnswerResponse extends Freshness {
+    /** 'no-answer': the retrieved reporting does not answer the question. 'unavailable': not set up, failed, or rejected by the checks. */
+    status: 'answered' | 'no-answer' | 'unavailable';
+    question: string;
+    text: string | null;
+    /** The retrieved records the answer cites. URLs come from the index, never from generated text. */
+    sources: { title: string; url: string }[];
+    /** What code checked before the answer was shown. */
+    checks: { sourcesRetrieved: number; sourcesCited: number; numbersChecked: number } | null;
+    reason: string | null;
+    generatedAt: string | null;
 }
 export interface CalibrationBucket {
     low: number;
@@ -590,10 +606,21 @@ export interface EarningsResponse extends Freshness {
     /** Average size of the move across past reports, and the same in dollars on the holding. */
     typicalMove: { percent: number; usd: number; reports: number } | null;
 }
+/** One sentence of the briefing. `start` and `end` are seconds into the audio, from the voice service's character timings; null when there is no audio or no usable timing. `source` is the screen that shows the figure the sentence states. */
+export interface BriefingPart {
+    text: string;
+    start: number | null;
+    end: number | null;
+    source?: { label: string; href: string };
+}
 export interface BriefingResponse extends Freshness {
     generatedAt: string | null;
+    /** The New York day the stored briefing was made for, and today's. One is made a day. */
     date: string;
+    today: string;
     text: string | null;
+    /** The same text sentence by sentence, for a transcript that follows the voice. Null for a briefing stored before this existed. */
+    parts: BriefingPart[] | null;
     audioUrl: string | null;
 }
 export interface ErrorResponse extends Freshness {

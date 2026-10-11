@@ -80,7 +80,9 @@ it('batches large portfolio reads into a fixed number of queries and preserves e
 it('filters market reads to portfolio tags and never requires the AI cache for analytics', async () => {
     const result = await exposure('guest');
     assert.equal(result.events[0].title, 'Oil event');
-    assert.equal(result.events[0].linkedValue, 1000);
+    // The holding is linked to this event by a shared topic only, so it is listed and counts for no reach.
+    assert.deepEqual(result.events[0].links.map(l => l.type), ['Related']);
+    assert.deepEqual([result.events[0].linkedValue, result.events[0].topicValue, result.events[0].share], [0, 1000, 0]);
     assert.equal(result.events[0].markets[0].probability, .4);
     const sql = calls.find(sql => sql.includes('SELECT m.*'))!;
     assert.ok(sql.includes('t.reviewed=true') && sql.includes('t.tag=ANY($1::text[])'));

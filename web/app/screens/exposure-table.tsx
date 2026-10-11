@@ -15,6 +15,10 @@ export interface ExposureFilters {
 }
 export const defaultExposureFilters: ExposureFilters = { search: '', holding: '', link: 'All', category: '', days: 0, sort: 'reach-desc' };
 
+// The links an event's reach counts: everything but an unmeasured topic link. The Overview lists
+// an event only when it has one.
+export const countedLinks = (event: ExposureEvent) => event.links.filter(link => link.type !== 'Related');
+
 function matchesLink(link: HoldingLink, filter: ExposureFilters['link']) {
     return link.type !== 'Related' && (filter === 'All' || filter === 'Affected' || link.type === filter);
 }
@@ -32,7 +36,7 @@ export function filterExposure(events: ExposureEvent[], filters: ExposureFilters
         const comparison = filters.sort === 'reach-asc' ? a.share - b.share
             : filters.sort === 'date' ? Date.parse(a.closeTime) - Date.parse(b.closeTime)
             : filters.sort === 'name' ? a.title.localeCompare(b.title)
-            : filters.sort === 'holdings' ? b.links.length - a.links.length : b.share - a.share;
+            : filters.sort === 'holdings' ? countedLinks(b).length - countedLinks(a).length : b.share - a.share;
         return comparison || a.title.localeCompare(b.title) || a.ticker.localeCompare(b.ticker);
     });
 }
@@ -97,7 +101,7 @@ function ExposureRow({ event, holdings, linkFilter, totalValue }: { event: Expos
                 <dt>Category</dt><dd>{event.category}</dd>
                 <dt>Market close</dt><dd><time dateTime={event.closeTime}>{dateText(event.closeTime, true)}</time></dd>
                 <dt>Linked value</dt><dd className="mono">{money(event.linkedValue)}</dd>
-                <dt>Holdings</dt><dd>{event.links.length} linked · {linked.length} shown</dd>
+                <dt>Holdings</dt><dd>{countedLinks(event).length} linked · {linked.length} shown{event.links.length > countedLinks(event).length && ` · ${event.links.length - countedLinks(event).length} more by topic only, not counted`}</dd>
             </dl><a className="open-event" href={href('event', event.ticker)}>Open full event →</a></section>
             <section><h3>Selected outcome</h3><p className="selected-outcome-title">{market?.subtitle || market?.title || 'No outcome available'}</p>
                 {market && <><p className="mono">{market.probability === null ? 'Probability unavailable' : `${percent(market.probability)} yes`}</p><TrustBadge market={market}/>
@@ -137,7 +141,7 @@ export function ExposureTable({ data }: { data: ExposureResponse }) {
             <label>Category<select aria-label="Category" value={filters.category} onChange={e => update('category', e.target.value)}><option value="">All categories</option>{[...new Set(data.events.map(e => e.category))].sort().map(category => <option key={category}>{category}</option>)}</select></label>
             <label>Closes within<select aria-label="Closes within" value={filters.days} onChange={e => update('days', Number(e.target.value))}><option value={0}>Any date</option><option value={14}>14 days</option><option value={30}>30 days</option><option value={90}>90 days</option></select></label>
         </div>
-        <div className="exposure-result-bar"><p className="note" role="status">{events.length} of {data.events.length} events · {holdings.length} of {data.holdings.length} holdings{chosen ? ' · category filter on' : ''}{activeFilters > 0 ? ` · ${activeFilters} active ${activeFilters === 1 ? 'filter' : 'filters'}` : ''}</p>{changed && <button className="reset-filters" onClick={() => setFilters(defaultExposureFilters)}>Reset filters</button>}</div>
+        <div className="exposure-result-bar"><p className="note" role="status">{events.length} of {data.events.filter(event => countedLinks(event).length > 0).length} events · {holdings.length} of {data.holdings.length} holdings{chosen ? ' · category filter on' : ''}{activeFilters > 0 ? ` · ${activeFilters} active ${activeFilters === 1 ? 'filter' : 'filters'}` : ''}</p>{changed && <button className="reset-filters" onClick={() => setFilters(defaultExposureFilters)}>Reset filters</button>}</div>
         {events.length ? view === 'holding' ? <ByHolding events={events} holdings={holdings} linkFilter={filters.link} ranks={data.byHolding} totalValue={data.totalValue}/> : <div className="scroll exposure-scroll" tabIndex={0} role="region" aria-label="Exposure table"><table className="exposure-table"><caption className="sr-only">Events with portfolio reach, selected outcome odds and holdings ordered by connection. Expand an event for values, trust and evidence.</caption><thead><tr><th scope="col" className="event-column">Event / close date</th><th scope="col" className="reach-column">Portfolio share</th><th scope="col" className="outcome-column">Outcome</th><th scope="col" className="holdings-column">Holdings <span className="muted">· all linked, strongest first</span></th></tr></thead><tbody>{events.map(event => <ExposureRow key={event.ticker} event={event} holdings={holdings} linkFilter={filters.link} totalValue={data.totalValue}/>)}</tbody></table></div> : <Empty>{data.events.length ? `No events match these filters. Try another search${chosen ? ', clear the category' : ''} or reset filters.` : 'No reviewed market links available. Holdings need supported company tags, measured driver links or a reviewed sector mapping.'}</Empty>}
     </>;
 }

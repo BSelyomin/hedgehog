@@ -29,8 +29,10 @@ const pending = new Map<string, Promise<CachedAI<unknown>>>();
 /** Producers perform provider I/O only: do not nest caches or acquire DB clients.
  * Failed calls are never cached. The DB lock also coalesces separate server workers.
  * refresh is for explicit source retrieval, never for bypassing completion/audio caches.
+ * A function instead says whether the stored value is out of date and must be made again: the
+ * daily briefing is, once its day has passed. It is asked under the lock, so two callers make one.
  */
-export async function cachedAI<T>(namespace: string, input: unknown, produce: () => Promise<T>, refresh = false): Promise<CachedAI<T>> {
+export async function cachedAI<T>(namespace: string, input: unknown, produce: () => Promise<T>, refresh: boolean | ((stored: T) => boolean) = false): Promise<CachedAI<T>> {
     const hash = contentHash(input), key = `${namespace}:${hash}`;
     const running = pending.get(key);
     if (running) return running as Promise<CachedAI<T>>;
@@ -40,7 +42,7 @@ export async function cachedAI<T>(namespace: string, input: unknown, produce: ()
             await client.query('BEGIN');
             await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [key]);
             const { rows } = await client.query<Row<T>>('SELECT value,created_at FROM ai_cache WHERE namespace=$1 AND input_hash=$2', [namespace, hash]);
-            if (rows[0] && !refresh) {
+            if (rows[0] && !(typeof refresh === 'function' ? refresh(rows[0].value) : refresh)) {
                 await client.query('COMMIT');
                 return entry(rows[0]);
             }

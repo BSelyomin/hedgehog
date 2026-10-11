@@ -246,6 +246,109 @@ export async function backfillHorizons(options: {series?: string[]; maxMarkets?:
     }
 }
 
+// The timeframes other than 24 hours: 1 hour, 7 days and 30 days before close.
+export const OTHER_HORIZONS: number[] = FORECAST_HORIZONS.map(h => h.hours).filter(hours => hours !== 24);
+// The quote standing `hours` before close, by the 24-hour rule: the close of the last hourly
+// candlestick ending at or before that mark, no more than LOOKBACK_DAYS old. An empty book at the
+// mark gives no reading; an older quote is not used in its place.
+export function oddsStandingAt(candles: Candle[], closeTime: string, hours: number) {
+    const mark = Math.floor(Date.parse(closeTime) / 1000) - hours * 3600;
+    const candle = candles.filter(c => c.end_period_ts <= mark && c.end_period_ts >= mark - LOOKBACK_DAYS * DAY).sort((a, b) => b.end_period_ts - a.end_period_ts)[0];
+    if (!candle)
+        return null;
+    const q = quote(candle.yes_bid?.close_dollars, candle.yes_ask?.close_dollars);
+    return q && !emptyBook(q.bid, q.ask) ? { probability: q.mid, bid: q.bid, ask: q.ask, ts: candle.end_period_ts } : null;
+}
+
+// Fills the other timeframes for one series. Only markets already in the 24-hour record are read,
+// so every timeframe scores the same questions. Each market gets a row or a skip for each
+// timeframe, once: a later run asks Kalshi only about what is still unanswered. A market not yet
+// listed at a mark, or with an empty book there, is skipped as having no quote.
+export async function backfillSeriesTimeframes(series: string, releases: Map<string, Date> = new Map()) {
+    const rows = await query<{ ticker: string; category: string; close_time: Date; outcome: number; event_ticker: string | null; title: string | null }>(
+        'SELECT ticker,category,close_time,outcome,event_ticker,title FROM settled_markets WHERE series_ticker=$1', [series]);
+    const answered = new Set((await query<{ ticker: string; horizon_hours: number }>(`SELECT ticker,horizon_hours FROM forecast_observations WHERE series_ticker=$1
+        UNION SELECT ticker,horizon_hours FROM backfill_skips WHERE series_ticker=$1`, [series])).map(r => `${r.ticker}|${r.horizon_hours}`));
+    const wanted = OTHER_HORIZONS.map(hours => ({ hours, markets: rows.filter(r => !answered.has(`${r.ticker}|${hours}`)).map(r => ({ ...r, close_time: new Date(r.close_time).toISOString() })) })).filter(w => w.markets.length);
+    const total = { markets: rows.length, scored: 0, skipped: 0 };
+    if (!wanted.length)
+        return total;
+    // Markets still in Kalshi's live listing are asked for together, and say when they were listed.
+    const live = new Map((await listSettled(series, false)).map(m => [m.ticker, m]));
+    for (const { hours, markets } of wanted) {
+        const mark = (closeTime: string) => Math.floor(Date.parse(closeTime) / 1000) - hours * 3600;
+        const window = (closeTime: string) => ({ start_ts: String(mark(closeTime) - LOOKBACK_DAYS * DAY), end_ts: String(mark(closeTime)), period_interval: '60' });
+        const readings: Record<string, unknown>[] = [], skips: Record<string, unknown>[] = [];
+        type Row = typeof markets[number];
+        const skip = (m: Row, reason: 'no_quote' | 'outcome_known') => { skips.push({ ticker: m.ticker, series_ticker: series, category: m.category, reason, close_time: m.close_time, horizon_hours: hours }); };
+        const read = (m: Row, candles: Candle[]) => {
+            const odds = oddsStandingAt(candles, m.close_time, hours);
+            if (!odds)
+                return false;
+            // A quote published at or after the result was known is not a forecast.
+            if (outcomeAlreadyKnown({ occurrence_datetime: live.get(m.ticker)?.occurrence_datetime }, odds.ts, m.event_ticker ? releases.get(m.event_ticker) : undefined))
+                skip(m, 'outcome_known');
+            else
+                readings.push({ ticker: m.ticker, horizon_hours: hours, series_ticker: series, event_ticker: m.event_ticker, title: m.title, category: m.category, yes_bid: odds.bid, yes_ask: odds.ask, outcome: m.outcome, close_time: m.close_time, odds_time: new Date(odds.ts * 1000).toISOString() });
+            return true;
+        };
+        // Not yet listed at the mark: there was no quote, and Kalshi is not asked.
+        const listed = markets.filter(m => { const open = Date.parse(live.get(m.ticker)?.open_time ?? ''); if (Number.isFinite(open) && open > mark(m.close_time) * 1000) { skip(m, 'no_quote'); return false; } return true; });
+        const fromArchive = async (m: Row) => {
+            try {
+                if (!read(m, normalizeHistoricalCandles((await kalshi<{ candlesticks: HistoricalCandle[] }>(`/historical/markets/${encodeURIComponent(m.ticker)}/candlesticks`, window(m.close_time))).candlesticks ?? [])))
+                    skip(m, 'no_quote');
+            } catch (error) {
+                // No archive for this market is missing data; anything else is an outage to retry.
+                if (!(error instanceof Error) || !/^Kalshi HTTP 404(?:;|$)/.test(error.message)) throw error;
+                skip(m, 'no_quote');
+            }
+        };
+        const unanswered: Row[] = [];
+        for (const group of closeGroups(listed.filter(m => live.has(m.ticker)))) {
+            const page = await kalshi<{ markets: { market_ticker: string; candlesticks: Candle[] }[] }>('/markets/candlesticks', { market_tickers: group.map(m => m.ticker).join(','), ...window(group[0].close_time) });
+            for (const m of group)
+                if (!read(m, page.markets?.find(row => row.market_ticker === m.ticker)?.candlesticks ?? []))
+                    unanswered.push(m);
+        }
+        // A live market the batch has nothing for may already have moved to the archive.
+        await parallel([...unanswered, ...listed.filter(m => !live.has(m.ticker))], fromArchive);
+        for (const batch of batches(readings))
+            await query(`INSERT INTO forecast_observations(ticker,horizon_hours,series_ticker,event_ticker,title,category,yes_bid,yes_ask,outcome,close_time,odds_time)
+                SELECT ticker,horizon_hours,series_ticker,event_ticker,title,category,yes_bid,yes_ask,outcome,close_time,odds_time FROM jsonb_to_recordset($1::jsonb)
+                AS r(ticker text,horizon_hours integer,series_ticker text,event_ticker text,title text,category text,yes_bid double precision,yes_ask double precision,outcome integer,close_time timestamptz,odds_time timestamptz)
+                ON CONFLICT(ticker,horizon_hours) DO NOTHING`, [JSON.stringify(batch)]);
+        for (const batch of batches(skips))
+            await query(`INSERT INTO backfill_skips(ticker,series_ticker,category,reason,close_time,horizon_hours)
+                SELECT ticker,series_ticker,category,reason,close_time,horizon_hours FROM jsonb_to_recordset($1::jsonb)
+                AS r(ticker text,series_ticker text,category text,reason text,close_time timestamptz,horizon_hours integer)
+                ON CONFLICT(ticker,horizon_hours) DO NOTHING`, [JSON.stringify(batch)]);
+        total.scored += readings.length; total.skipped += skips.length;
+    }
+    return total;
+}
+
+// Every series in the 24-hour record, smallest first so that most records fill early. A series
+// that fails keeps what it has stored and is finished on the next run; the rest carry on.
+export async function backfillTimeframes(options: { series?: string[] } = {}) {
+    const releases = new Map((await query<{ event_ticker: string; released_at: Date }>('SELECT event_ticker,released_at FROM event_releases')).map(r => [r.event_ticker, r.released_at]));
+    const universe = (await query<{ series_ticker: string }>('SELECT series_ticker FROM settled_markets WHERE series_ticker IS NOT NULL GROUP BY series_ticker ORDER BY count(*),series_ticker'))
+        .filter(r => !options.series?.length || options.series.includes(r.series_ticker));
+    const total = { series: 0, failed: 0, scored: 0, skipped: 0 };
+    for (const { series_ticker } of universe) {
+        try {
+            const result = await backfillSeriesTimeframes(series_ticker, releases);
+            total.series++; total.scored += result.scored; total.skipped += result.skipped;
+            if (result.scored || result.skipped)
+                console.log('Timeframes read', series_ticker, result.scored, 'scored,', result.skipped, 'without a usable quote, of', result.markets, 'markets');
+        } catch {
+            total.failed++;
+            console.warn('Backfill retry needed', series_ticker);
+        }
+    }
+    console.log('Timeframes complete', JSON.stringify(total));
+}
+
 // Recover identity for existing observations without changing their quotes or outcomes.
 export async function historyMetadata() {
     const rows=await query<{ticker:string}>('SELECT ticker FROM settled_markets WHERE series_ticker IS NULL OR event_ticker IS NULL OR title IS NULL');

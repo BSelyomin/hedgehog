@@ -24,7 +24,9 @@ export async function cachedBriefingResponse(session: string, refresh = false): 
         entry.until = Date.now() + CACHE_MS;
         // A scheduled or explicit generator may fill a missing briefing at any
         // moment. Do not retain that absence or let an older read clear a refresh.
-        if (!data.generatedAt && snapshots.get(key) === entry) snapshots.delete(key);
+        // The same goes for a briefing from an earlier day: the morning run replaces it, and
+        // a retained copy would point at audio that is no longer the stored one.
+        if ((!data.generatedAt || data.date !== data.today) && snapshots.get(key) === entry) snapshots.delete(key);
         return data;
     }) };
     snapshots.delete(key); snapshots.set(key, entry);

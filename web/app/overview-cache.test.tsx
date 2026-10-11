@@ -13,7 +13,7 @@ it('renders cached Overview totals, upcoming events and saved briefing immediate
     const categories = { totalValue: 1000, holdings: [], assetClasses: [], themes: [] };
     const exposure: ExposureResponse = { holdings: [{ symbol: 'AAPL', valueUsd: 1000 }], totalValue: 1000, byHolding: [], categories, events: [], asOf: '2026-10-09T20:00:00Z' };
     const calendar: CalendarResponse = { days: 14, categories, events: [], asOf: exposure.asOf };
-    const briefing: BriefingResponse = { text: 'Saved source-checked briefing.', date: '2026-10-10', generatedAt: '2026-10-10T12:00:00Z', asOf: exposure.asOf, audioUrl: '/api/briefing/audio?v=stored' };
+    const briefing: BriefingResponse = { text: 'Saved source-checked briefing.', date: '2026-10-10', today: '2026-10-10', parts: null, generatedAt: '2026-10-10T12:00:00Z', asOf: exposure.asOf, audioUrl: '/api/briefing/audio?v=stored' };
     globalThis.fetch = async url => {
         const path = String(url); paths.push(path);
         return Response.json(path === '/api/exposure' ? exposure : path.startsWith('/api/calendar') ? calendar : briefing);
@@ -22,7 +22,7 @@ it('renders cached Overview totals, upcoming events and saved briefing immediate
     for (let i = 0; i < 2; i++) {
         const html = renderToStaticMarkup(<Overview/>);
         assert.ok(html.includes('$1,000.00') && html.includes('In the next 14 days'));
-        assert.ok(html.includes('Saved source-checked briefing.') && html.includes('Cached briefing for your current holdings.'));
+        assert.ok(html.includes('Saved source-checked briefing.') && html.includes('Today’s briefing for your current holdings. One is made each day.'));
         assert.ok(html.includes('/api/briefing/audio?v=stored'));
         assert.ok(!html.includes('Loading your data') && !html.includes('Loading upcoming events'));
     }

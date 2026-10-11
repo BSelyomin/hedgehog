@@ -22,6 +22,7 @@ import { validateScenario } from './services/forecast-model.ts';
 import { forecastResult } from './services/ranked-forecasts.ts';
 import { cachedForecasts, cachedForecastMarkets, cachedRankedForecasts, cachedForecastResult,
     cachedForecastAssessment, cachedForecastAssessments, cachedRetryForecastAssessment } from './services/forecasts-cache.ts';
+import { askAllowed, askEvent, validateQuestion } from './services/event-answer.ts';
 import { FORECAST_HORIZONS, TRACK_GRADES, TRACK_SORTS } from '../../shared/types.ts';
 import type { TrackGrade } from '../../shared/types.ts';
 // What a failed request tells the browser. Postgres reports 25006 when a write reaches a
@@ -162,6 +163,16 @@ app.get('/briefing/audio', async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     if (saved.value.asOf) res.set('X-Data-As-Of', saved.value.asOf);
     res.type('audio/mpeg').send(Buffer.from(saved.value.audio, 'base64'));
+});
+// A question about one event, answered from retrieved reporting only (services/event-answer.ts).
+app.post('/event/:ticker/ask', async (req, res) => {
+    let question;
+    try { question = validateQuestion(req.body?.question); }
+    catch (error) { res.status(400).json({ error: (error as Error).message, asOf: null }); return; }
+    if (!askAllowed(res.locals.session)) { res.status(429).json({ error: 'That is a lot of questions. Try again in a few minutes', asOf: null }); return; }
+    const result = await askEvent(res.locals.session, req.params.ticker, question);
+    if (!result) { res.status(404).json({ error: 'No linked event found', asOf: null }); return; }
+    res.json(result);
 });
 app.post('/event/:ticker/reload', async (req, res) => {
     const event = await eventDetail(res.locals.session, req.params.ticker);

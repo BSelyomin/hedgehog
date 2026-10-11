@@ -1,5 +1,73 @@
 # Validation and phase status
 
+## Response-caching merge verification (2026-10-10)
+
+Merge `24582d6` is complete, with no unmerged index entries or remaining source conflict
+markers. The merged daily read-along briefing, supported-link reach, restored history routes
+and response caching are retained.
+
+- The existing suite passed all 745 tests in a disposable Node 24 container with two workers.
+- Both frontend and backend TypeScript checks passed.
+- Vitest's web pattern omitted `forecasts-cache.test.ts`. The pattern now includes both `.ts`
+  and `.tsx` tests; all five formerly omitted cache tests passed separately. Total verified:
+  750 tests across 79 files. No assertions or password-hashing settings were weakened.
+- This verification checked the merged source. It did not rebuild or restart running containers.
+
+## Reach, a daily read-along briefing, the other timeframes and questions about an event (2026-10-10)
+
+All 659 tests and both TypeScript checks pass.
+
+- **Reach.** An event's share now counts only holdings linked by more than a shared topic. With
+  the tour portfolio the widest event reads 83.5% (a mortgage-rate event; the house is linked to
+  it by its adjustable mortgage) where it read 89.4% for shelter inflation, of which 76.5 points
+  were topic links. The Overview's count is 356 events, the number of rows it shows; the ten
+  topic-only events are on the Calendar with "Topic link only" and no share.
+- **Briefing.** Made once a day and replaced the next day. Checked live: one ElevenLabs request
+  of 31 seconds returned audio and timings that matched all ten sentences; the screen marked the
+  sentence being spoken at 0.2, 6 and 20 seconds; five sentences link to Moves or an event page.
+- **Timeframes.** The 1-hour, 7-day and 30-day records are read by the 24-hour rule from the
+  markets already scored. Migration 018 replaces the table's rule that a quote be from the
+  minute before the mark, which had refused every such row. The run was still going when this
+  was written; see the reply for how far it got.
+- **Summaries.** The 49 stopped summaries had all failed the number check by repeating a figure
+  from the reporting. Asked for words only, the model spelled figures out ("thirteen point eight
+  million"), which the digit check cannot read; that is now refused too, and summaries are asked
+  for with no figures at all.
+- **Questions.** "What has been reported about oil prices recently?" on an oil event returned an
+  answer citing 3 of 5 retrieved sources with its one number matched to the market data; "Why
+  might crude supply be tight?" and an unrelated question returned no answer, as intended.
+- **History views.** `#track-record/holdings` and `#track-record/calibration` open the views the
+  event page links to.
+
+## Screens name the person signed in; an audit of every endpoint (2026-10-10)
+
+All 620 tests and both TypeScript checks pass.
+
+- **Names.** Signed in, the headings and figure lines read "Alex’s exposure map", "What moved
+  Alex’s portfolio", "of Alex’s portfolio"; a guest still reads "Your". Checked in a browser as
+  a guest and as a throwaway account (since removed) on Add holdings, Overview, Calendar,
+  Earnings, Moves, Track record and an event page: no browser errors, and a long name wraps
+  inside its heading at phone width with no sideways scroll.
+- **Audit.** A script saved the feature-tour portfolio in a guest session, read every endpoint
+  and checked the figures against each other: sums and shares on the Overview and the category
+  cards, the calendar's window and order, each Moves window (change = end − start, market +
+  beyond = change, totals = the rows, odds moves of 3+ points read at or before each close and
+  under seven days old, settlements inside the window), earnings (typical move = the average of
+  the moves shown, ladders, even odds), track-record accuracy, grades, sorting and filters,
+  forecast arithmetic, and that bad input is refused. All of it held.
+- **Found, not yet changed.**
+  - *Reach counts links the Overview hides.* An event's share counts every linked holding,
+    topic links included, while the Overview's rows show only Direct, Calculated and Related.
+    With the tour portfolio the widest-reaching event reads 89.4% and its row shows holdings
+    worth 12.9%; the rest is a house linked by an unmeasured topic. Ten events sent to the
+    Overview have no link it shows, so the "Linked events" count (366) is ten more than its rows.
+  - *The briefing is made once per portfolio, not once a day.* Its cache key leaves out the
+    date, so an unchanged portfolio keeps its first briefing and "Reload briefing" returns it.
+  - *Slow pages.* `/exposure`, `/calendar`, `/event/:ticker` and `/earnings/:symbol` took 4 to 7
+    seconds each; the calendar and every event page rebuild the whole exposure map.
+  - The event page's "Compare with past events" link names a By holding view the Track record
+    page no longer has.
+
 ## Odds polling restored after the one-attempt rule stopped it (2026-10-11)
 
 All 613 tests and both TypeScript checks pass. The password-hashing test exceeded its

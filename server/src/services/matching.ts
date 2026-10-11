@@ -1,4 +1,4 @@
-import type { DriverRank, Holding, HoldingLink, Sensitivity } from '../../../shared/types.ts';
+import type { DriverRank, Holding, HoldingLink, LinkType, Sensitivity } from '../../../shared/types.ts';
 import { DRIVERS, MATERIAL_SHARE, driverFor } from '../config/drivers.ts';
 // Topic tag -> the series that measures it.
 export const drivers: Record<string, string> = Object.fromEntries(DRIVERS.flatMap(driver => driver.tags.map(tag => [tag, driver.key])));
@@ -73,5 +73,13 @@ export function matchHolding(holding: Holding, eventTags: string[], stockTags: s
         return { ...holding, type: 'Related', lead, sensitivity: null, evidence: `Measured against ${faint.driver}, but small: ${why}. Under the ${Math.round(MATERIAL_SHARE * 100)}% floor for a link, so no move estimate is shown.` };
     }
     return { ...holding, type: 'Related', evidence: `Shared reviewed tags: ${shared.join(', ')}. No reliable sensitivity; no move estimate shown.`, sensitivity: null };
+}
+// How much of the portfolio an event reaches. Only a link that is more than a shared topic
+// counts (Direct, Calculated or Measured); a topic link is listed with no figure and adds nothing,
+// so an event's share is never larger than the holdings a screen shows for it.
+export function reach(links: { type: LinkType; valueUsd: number }[], totalValue: number) {
+    const value = (rows: { valueUsd: number }[]) => rows.reduce((sum, link) => sum + link.valueUsd, 0);
+    const linkedValue = value(links.filter(link => link.type !== 'Related'));
+    return { linkedValue, topicValue: value(links.filter(link => link.type === 'Related')), share: totalValue ? linkedValue / totalValue : 0 };
 }
 export const linkRank = { Direct: 0, Calculated: 1, Measured: 2, Related: 3 };

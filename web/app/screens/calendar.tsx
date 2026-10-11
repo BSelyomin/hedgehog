@@ -5,6 +5,7 @@ import { percent, href, useData, Card, Fresh, Status, Empty, Progress, EventList
 import { defaultCalendarFilters, filterCalendarEvents, type CalendarFilters } from './calendar-filters';
 import { CategoryFilter } from './category-controls';
 import { selectEvents, useCategorySelection } from './category-filter';
+import { useOwner } from '../auth';
 
 export function Calendar() {
     const [days, setDays] = useState(14);
@@ -14,6 +15,7 @@ export function Calendar() {
     const [pageSize, setPageSize] = useState(10);
     const listHeading = useRef<HTMLHeadingElement>(null);
     const filtersId = useId();
+    const owner = useOwner();
     const { data, error, reload } = useData<CalendarResponse | ExposureResponse>(days ? `/calendar?days=${days}` : '/exposure');
     // The category chosen on any screen narrows the calendar before its own filters.
     const selection = useCategorySelection();
@@ -36,7 +38,7 @@ export function Calendar() {
         listHeading.current?.scrollIntoView({ block: 'start' });
     }
     return <>
-        <div className="row"><h1>Event calendar</h1><ReloadButton onReload={() => reload()}/></div><p>Explore the events linked to your holdings by event date and portfolio reach.</p>
+        <div className="row"><h1>Event calendar</h1><ReloadButton onReload={() => reload()}/></div><p>Explore the events linked to {owner.their} holdings by event date and portfolio reach.</p>
         <Card className="calendar-filters">
             <div className="calendar-toolbar">
                 <label>Search events or holdings<input type="search" placeholder="Event, outcome, category or ticker…" value={filters.search} onChange={event => update('search', event.target.value)}/></label>
@@ -65,7 +67,7 @@ export function Calendar() {
                 {changed && <button className="reset-filters" onClick={reset}>Reset filters</button>}
             </div>
         </Card>
-        <p className="note">Events are placed on the date Kalshi expects them to happen; when it gives none, on the market close. Overview counts all future dates. Choose All future dates here to use the same range. Company events have a direct holding link; other events include macro, politics and other categories. Portfolio share always uses your full portfolio.</p>
+        <p className="note">Events are placed on the date Kalshi expects them to happen; when it gives none, on the market close. Overview counts all future dates. Choose All future dates here to use the same range. Company events have a direct holding link; other events include macro, politics and other categories. Portfolio share always uses {owner.their} full portfolio, and counts a holding only when it is linked by more than a shared topic.</p>
         <Status error={error} loading={!data && !error} layout="rows"/>{data && <Fresh asOf={data.asOf}/>}
         {data && <div className="split calendar-content">
             <Card className="calendar-events"><h2 ref={listHeading} tabIndex={-1}>Upcoming events</h2>
@@ -76,9 +78,9 @@ export function Calendar() {
                 {events.length ? <EventList events={pageEvents} showYear/> : data && <Empty>No linked events match these filters. Try resetting the filters or widening the date range.</Empty>}
                 {pageCount > 1 && <CalendarPagination page={currentPage} pageCount={pageCount} onPageChange={changePage} position="bottom"/>}
             </Card>
-            <Card className="calendar-biggest"><h2>Biggest events for you</h2><p className="note">Ranked by share of portfolio linked, using your current filters.</p>
-                {[...events].sort((a, b) => b.share - a.share || Date.parse(a.eventTime) - Date.parse(b.eventTime)).slice(0, 6).map(event => <div className="event-row" key={event.ticker}><a href={href('event', event.ticker)}>{event.title}</a><p className="mono">{percent(event.share)}</p><Progress value={event.share}/></div>)}
-                {data && !events.length && <Empty>No matching events to rank.</Empty>}
+            <Card className="calendar-biggest"><h2>Biggest events for {owner.they}</h2><p className="note">Ranked by share of portfolio linked, using your current filters.</p>
+                {events.filter(event => event.share > 0).sort((a, b) => b.share - a.share || Date.parse(a.eventTime) - Date.parse(b.eventTime)).slice(0, 6).map(event => <div className="event-row" key={event.ticker}><a href={href('event', event.ticker)}>{event.title}</a><p className="mono">{percent(event.share)}</p><Progress value={event.share}/></div>)}
+                {data && !events.some(event => event.share > 0) && <Empty>No matching events to rank.</Empty>}
                 <p className="note">Dates use Kalshi’s own event time where it gives one, otherwise the market close. Each event says which.</p>
             </Card>
         </div>}

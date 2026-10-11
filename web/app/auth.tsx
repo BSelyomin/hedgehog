@@ -13,11 +13,25 @@ interface AccountContext {
     refresh: () => Promise<void>;
 }
 const Context = createContext<AccountContext | null>(null);
+// Exported so that a screen can be drawn for a given session without the session check.
+export { Context as AccountContext };
 export function useAccount() {
     const account = useContext(Context);
     if (!account) throw new Error('AccountProvider required');
     return account;
 }
+// Whose portfolio the screens name. Someone signed in is named as they wrote their name when
+// they created the account ("Alex’s portfolio"); a guest has no name and stays "you" and "your".
+// `does` says what they do, with the verb agreeing: "Alex holds", "you hold".
+export interface Owner { name: string; their: string; Their: string; they: string; does: (verb: string, capital?: boolean) => string }
+export function ownerOf(name?: string | null): Owner {
+    const named = name?.trim() ?? '';
+    return named
+        ? { name: named, their: `${named}’s`, Their: `${named}’s`, they: named, does: verb => `${named} ${verb}s` }
+        : { name: '', their: 'your', Their: 'Your', they: 'you', does: (verb, capital = false) => `${capital ? 'You' : 'you'} ${verb}` };
+}
+// Read without requiring the provider, so a screen drawn on its own speaks to a guest.
+export function useOwner(): Owner { return ownerOf(useContext(Context)?.session?.user?.name); }
 export function AccountProvider({ children }: { children: ReactNode }) {
     const [session, setSession] = useState<SessionResponse | null>(null);
     const [checking, setChecking] = useState(true), [error, setError] = useState(''), [notice, setNotice] = useState('');
