@@ -35,6 +35,17 @@ export function RatingCard({item}:{item:TrackRatingItem}) {
         {item.linkedHoldings.length>0?<HoldingDisclosure name={item.name} holdings={item.linkedHoldings}/>:!item.relatedThemes?.length&&<p className="note">No reviewed connection to your current holdings.</p>}
         </div></Card>;
 }
+export function TrackRecordSkeleton() {
+    return <div className="track-record-skeleton" role="status" aria-label="Loading track record" aria-busy="true">
+        <span className="skeleton-accessible-label">Loading track record…</span>
+        <div className="skeleton-line skeleton-fresh" aria-hidden="true"/>
+        <div className="rating-list" aria-hidden="true">{Array.from({length:4},(_,i)=><div className="card rating-row" key={i}>
+            <div><div className="skeleton-line skeleton-title"/><div className="skeleton-line skeleton-text"/></div>
+            <div><div className="skeleton-line skeleton-score"/><div className="skeleton-line skeleton-label"/></div>
+            <div className="rating-context"><div className="skeleton-line"/><div className="skeleton-line skeleton-text"/><div className="skeleton-line skeleton-label"/></div>
+        </div>)}</div>
+    </div>;
+}
 export function TrackRecord({initialView='assets'}:{initialView?:string}={}) {
     const [view,setView]=useState(['companies','funds'].includes(initialView)?initialView:'assets');
     const [fundPage,setFundPage]=useState(1);
@@ -49,7 +60,7 @@ export function TrackRecord({initialView='assets'}:{initialView?:string}={}) {
             e.preventDefault();const tabs=['assets','companies','funds'],index=tabs.indexOf(view);const next=e.key==='Home'?'assets':e.key==='End'?'funds':tabs[(index+(e.key==='ArrowRight'?1:2))%3];setView(next);document.getElementById(`rating-${next}`)?.focus();
         }}>{['assets','companies','funds'].map(id=><button key={id} id={`rating-${id}`} role="tab" tabIndex={view===id?0:-1} aria-selected={view===id} aria-controls="rating-panel" className={view===id?'active':''} onClick={()=>setView(id)}>{id==='assets'?'Asset holdings':id==='companies'?'Companies':'ETFs & index funds'}</button>)}</div>
         {view==='companies'&&<form className="toolbar" onSubmit={e=>{e.preventDefault();setSearch(draft.trim());setPage(1);}}><label>Look up a company<input value={draft} maxLength={80} onChange={e=>setDraft(e.target.value)} placeholder="Company name or ticker"/></label><button type="submit">Search</button>{search&&<button type="button" onClick={()=>{setSearch('');setDraft('');setPage(1);}}>My linked companies</button>}</form>}
-        <Status error={error} loading={!data&&!error}/><Fresh asOf={data?.asOf??null}/>
+        <Status error={error} loading={false}/>{!data&&!error?<TrackRecordSkeleton/>:<Fresh asOf={data?.asOf??null}/>}
         {data&&<div id="rating-panel" role="tabpanel" aria-labelledby={`rating-${view}`}>
             <p>{view==='funds'?'Evaluate funds and benchmarks as single records. S&P 500 predictions are used for SPY’s benchmark; constituent companies are not expanded.':view==='assets'?'Compare the record of each market theme. Expand a row to see its reviewed connection to your holdings.':search?`Company search results for “${search}”.`:'Your company holdings and companies with reviewed portfolio links. Linked themes provide context; percentages score company-specific questions.'}</p>
             <div className="rating-list">{(view==='assets'?data.themes:view==='companies'?data.companies:data.funds).map(item=><RatingCard key={item.id} item={item}/>)}</div>

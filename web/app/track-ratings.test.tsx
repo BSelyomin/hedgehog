@@ -16,3 +16,9 @@ it('searches linked holdings by name or ticker and displays entered amounts and 
  expect(filterLinkedHoldings(links,' apple ')).toEqual([links[1]]);expect(filterLinkedHoldings(links,'spy')).toEqual([links[0]]);expect(filterLinkedHoldings(links,'absent')).toEqual([]);
  const html=renderToStaticMarkup(<HoldingDisclosure name="Index" holdings={links}/>);expect(html).toContain('$4,000.00');expect(html).toContain('40.0% of portfolio');expect(html).toContain('Search holdings for Index');expect(html).toContain('Scroll within this list');expect(html).toContain('values you entered');
 });
+
+import {TrackRecordSkeleton} from './screens/track-record';
+it('shows an accessible row skeleton while loading instead of claiming source data is missing',()=>{
+ const html=renderToStaticMarkup(<TrackRecord/>);expect(html).toContain('aria-label="Loading track record"');expect(html).toContain('aria-busy="true"');expect(html).not.toContain('No source data available yet');
+ const skeleton=renderToStaticMarkup(<TrackRecordSkeleton/>);expect(skeleton.match(/class="card rating-row"/g)).toHaveLength(4);expect(skeleton).toContain('aria-hidden="true"');
+});

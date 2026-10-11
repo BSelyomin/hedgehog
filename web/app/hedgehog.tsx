@@ -11,6 +11,7 @@ import { AccountProvider, useAccount } from './auth';
 import { AccountScreen } from './screens/account';
 import { Brokerages } from './screens/brokerages';
 import { useData } from './common';
+import { LoadingSkeleton } from './loading-skeleton';
 import type { HealthResponse } from '../../shared/types';
 
 export default function Hedgehog() {
@@ -64,7 +65,7 @@ function Shell() {
         <main>
             {health.data?.readOnly && <p className="account-notice" role="status">The database is read-only right now. You are seeing saved data: odds are not updating and changes cannot be saved.</p>}
             {notice && <p className="account-notice" role="status">{notice}</p>}
-            {checking ? <p role="status">Loading your session…</p> : error ?
+            {checking ? <LoadingSkeleton layout="summary" label="Loading your session"/> : error ?
                 <div><p role="alert" className="error">{error}</p><button onClick={() => void refresh()}>Retry connection</button></div> :
                 <div key={session?.sessionKey}>{screen}</div>
             }

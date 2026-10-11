@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, FormEvent } from 'react';
 import type { AssetType, ExposureEvent, LinkType, Market } from '../../shared/types';
 import { Explain } from './explain';
+import { LoadingSkeleton, type SkeletonLayout } from './loading-skeleton';
 export const money = (n: number | null) => n === null ? 'Unavailable' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
 
 export const percent = (n: number | null) => n === null ? 'Unavailable' : `${(n * 100).toFixed(1)}%`;
@@ -83,6 +84,7 @@ export function useData<T>(path: string) {
         const request = new AbortController();
         controller.current = request;
         setError('');
+        setData(null);
         try {
             const result = await api<T>(reloadPath ?? path, { signal: request.signal, method: reloadPath ? 'POST' : 'GET', body: reloadPath ? '{}' : undefined });
             if (!request.signal.aborted) setData(result);
@@ -126,10 +128,12 @@ export function Fresh({ asOf }: {
     asOf: string | null;
 }) { return <p className="note">{asOf ? <>Data updated <time dateTime={asOf}>{dateText(asOf)}</time></> : 'No source data available yet'}</p>; }
 
-export function Status({ error, loading }: {
+export function Status({ error, loading, layout = 'rows', label }: {
     error: string;
     loading: boolean;
-}) { return error ? <p role="alert" className="error">{error}. Check the backend connection and try again.</p> : loading ? <p role="status" className="empty">Loading your data…</p> : null; }
+    layout?: SkeletonLayout;
+    label?: string;
+}) { return error ? <p role="alert" className="error">{error}. Check the backend connection and try again.</p> : loading ? <LoadingSkeleton layout={layout} label={label}/> : null; }
 
 export function Empty({ children }: {
     children: ReactNode;
