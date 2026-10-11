@@ -51,7 +51,7 @@ it('stops transport failures too and lets other rows finish without automatic re
     const [failed, other] = await Promise.all([loadForecastResultAssessment('FAILED', () => {}), loadForecastResultAssessment('OTHER', () => {})]);
     assert.equal(failed.status, 'unavailable'); assert.equal(failed.reason, 'Connection lost'); assert.equal(other.status, 'ready');
     await loadForecastResultAssessment('FAILED', () => {}); assert.equal(calls, 2);
-    Date.now = () => originalNow() + 900_001;
+    Date.now = () => originalNow() + 3_600_001;
     await loadForecastResultAssessment('FAILED', () => {}); assert.equal(calls, 2, 'Page expiry must not retry a failed request');
 });
 

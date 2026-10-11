@@ -141,8 +141,8 @@ it('explicit Reload refreshes the shared snapshot but preserves successful persi
     assert.equal(count('GROUP BY e.ticker,r.tags'), 2);
     assert.match(String(fresh.headers['server-timing']), /forecasts_build;dur=/);
     now += 300_000; await rankedForecasts(owner); assert.equal(count('GROUP BY e.ticker,r.tags'), 2);
-    now += 599_999; await rankedForecasts(owner); assert.equal(count('GROUP BY e.ticker,r.tags'), 2);
-    now++; await rankedForecasts(owner); assert.equal(count('GROUP BY e.ticker,r.tags'), 3);
+    now += 899_999; await rankedForecasts(owner); assert.equal(count('GROUP BY e.ticker,r.tags'), 2);
+    now += 2_400_001; await rankedForecasts(owner); assert.equal(count('GROUP BY e.ticker,r.tags'), 3);
 });
 
 it('never freezes pending AI results, and polling reuses the model/rank snapshot', async () => {
@@ -158,7 +158,7 @@ it('keeps stopped failures stopped on Reload/expiry and invalidates terminal sta
     await forecastAssessments(owner); await finish();
     assert.equal((await forecastAssessments(owner)).assessments[0].assessment.status, 'unavailable');
     assert.equal((await forecastAssessment(owner, 'FED-0'))!.status, 'unavailable');
-    await forecastAssessments(owner, true); now += 900_000;
+    await forecastAssessments(owner, true); now += 3_600_000;
     assert.equal((await forecastAssessments(owner)).assessments[0].assessment.status, 'unavailable'); assert.equal(fetches, 1);
     confidence = 55;
     const retry = await request(createApp(), '/forecasts/assessment/FED-0', { method: 'POST', body: {},

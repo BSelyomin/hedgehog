@@ -232,7 +232,7 @@ Open Add holdings at http://localhost:3000 and import `examples/fake-portfolio.c
 ## Page cache lifetime and database timeouts
 
 Private browser page responses and the backend snapshots for Overview/exposure, Calendar,
-Earnings, Moves, Forecasts and briefing metadata have a maximum lifetime of **15 minutes**,
+Earnings, Moves, Forecasts and briefing metadata have a maximum lifetime of **1 hour**,
 defined once in `shared/cache.ts`. Browser F5 clears browser memory but can reuse a warm
 backend instance's snapshot. Navigation reuses browser responses. Backend snapshots remain
 local to each process/Vercel instance; a restart, cold start or another instance can require
@@ -279,10 +279,10 @@ per backend instance, so deployments running concurrently can multiply database 
 Vercel's `attachDatabasePool` lifecycle integration is already present. Do not raise timeout
 or pool limits without identifying the failed query and checking database capacity first.
 
-To test the longer cache, load a page, wait more than five but less than fifteen minutes,
+To test the longer cache, load a page, wait more than fifteen minutes but less than one hour,
 then F5. A reused backend snapshot shows `exposure_cache_hit`, `earnings_cache_hit`,
 `moves_cache_hit`, `forecasts_cache_hit` or `briefing_cache_hit` in `Server-Timing` and keeps
-its original source times. At fifteen minutes, or on Reload, the relevant build/read runs
+its original source times. At one hour, or on Reload, the relevant build/read runs
 again. Saving changed holdings must update the next response immediately. A forecast may
 expire earlier when a contract closes or its quote exceeds the existing freshness limit.
 

@@ -91,7 +91,7 @@ it('keeps prices/odds/asOf unchanged until expiry or the page Reload header', as
     assert.match(String(fresh.headers['server-timing']), /moves_build;dur=/);
     stockClose = 130; now += 300_000;
     assert.equal((await cachedMoves(owner)).total, 166.67); assert.equal(count(PRICE_SQL), 2);
-    now += 599_999;
+    now += 3_299_999;
     assert.equal((await cachedMoves(owner)).total, 166.67); assert.equal(count(PRICE_SQL), 2);
     now++;
     assert.equal((await cachedMoves(owner)).total, 230.77); assert.equal(count(PRICE_SQL), 3);

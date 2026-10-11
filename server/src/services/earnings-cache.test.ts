@@ -72,7 +72,7 @@ it('preserves original quote timestamps until expiry and explicitly refreshes bo
     assert.equal(fresh.body.events[0].markets[0].probability, .8); assert.equal(fresh.body.asOf, timestamp.toISOString());
     assert.equal(count('SELECT m.*'), 2);
     now += 300_000; await request(app, '/earnings', { headers }); assert.equal(count('SELECT m.*'), 2);
-    now += 599_999; await request(app, '/earnings/AAPL', { headers }); assert.equal(count('SELECT m.*'), 2);
+    now += 3_299_999; await request(app, '/earnings/AAPL', { headers }); assert.equal(count('SELECT m.*'), 2);
     now++; await request(app, '/earnings', { headers }); assert.equal(count('SELECT m.*'), 3);
 });
 
