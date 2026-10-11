@@ -15,6 +15,7 @@ import { oddsCandles } from './odds-candles.ts';
 import { profiles } from './profiles.ts';
 const reportDates = earningsDates;
 const stoppedJobs = new Set<string>();
+const persistedStops = new Set<string>();
 export const scheduledJobNames = ['poll', 'nightly', 'briefings', 'enrich', 'session-cleanup', 'brokerages', 'price-history', 'earnings-dates', 'bootstrap', 'odds-candles'] as const;
 // The lock belongs to a database session. Keep it alive during healthy work, but
 // let the database expire an abandoned session so a dead backend cannot hold it.
@@ -28,12 +29,15 @@ export const HEARTBEAT_MS = 30000;
 export const RETRYING_JOBS: ReadonlySet<string> = new Set(['poll', 'odds-candles', 'track-record']);
 export async function runJob(name: string, job: () => Promise<void>) {
     const retries = RETRYING_JOBS.has(name);
-    if (!retries && stoppedJobs.has(name)) return;
+    if (!retries && stoppedJobs.has(name) && (process.env.VERCEL !== '1' || !persistedStops.has(name))) return;
     let client: PoolClient | null = null, held = false;
     let beat: ReturnType<typeof setInterval> | undefined;
     try {
         // A stop marker left for a retrying job, by a backend on older code, is not obeyed.
-        if (!retries && (await query('SELECT name FROM job_state WHERE name=$1', [`stopped-job:${name}`])).length) { stoppedJobs.add(name); return; }
+        if (!retries && (await query('SELECT name FROM job_state WHERE name=$1', [`stopped-job:${name}`])).length) { stoppedJobs.add(name); persistedStops.add(name); return; }
+        // A protected resume can arrive at another warm Vercel instance. The
+        // database is authoritative when a stop was successfully persisted.
+        if (process.env.VERCEL === '1') { stoppedJobs.delete(name); persistedStops.delete(name); }
         client = await pool.connect();
         await client.query(`SET idle_session_timeout = '${LOCK_SECONDS}s'`);
         held = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) locked', [`hedgehog:${name}`])).rows[0].locked;
@@ -47,7 +51,7 @@ export async function runJob(name: string, job: () => Promise<void>) {
             console.warn('Job failed; it runs again at its next schedule:', name);
         else {
             stoppedJobs.add(name);
-            try { await query("INSERT INTO job_state(name,cursor) VALUES($1,'failed') ON CONFLICT(name) DO UPDATE SET cursor='failed',updated_at=now()", [`stopped-job:${name}`]); }
+            try { await query("INSERT INTO job_state(name,cursor) VALUES($1,'failed') ON CONFLICT(name) DO UPDATE SET cursor='failed',updated_at=now()", [`stopped-job:${name}`]); persistedStops.add(name); }
             catch { /* Keep stopped in memory when storage is unavailable. */ }
             console.warn('Job stopped after failure; automatic retries disabled:', name);
         }
@@ -72,16 +76,39 @@ export async function runJob(name: string, job: () => Promise<void>) {
 // backend for over an hour. A late run is wanted as long as the next one is not yet due, which
 // the library checks for itself.
 export const LATE_TICK_MS = 15 * 60 * 1000;
+// Both the persistent Node scheduler and Vercel Cron use these exact actions.
+export const jobActions = {
+    poll,
+    nightly: async () => { await stockTags(); await tagSeries(); await summaries(); await briefings(); },
+    'track-record': async () => { await backfill(); await backfillTimeframes(); },
+    briefings,
+    enrich: async () => { await stockTags(); await tagSeries(); await summaries(); await briefings(); },
+    'session-cleanup': async () => {
+        await query('DELETE FROM auth_sessions WHERE expires_at<=now()');
+        await query('DELETE FROM auth_rate_limits WHERE resets_at<=now()');
+    },
+    brokerages: syncBrokerages,
+    'price-history': async () => { await prices(); await measure(); await profiles(); await trackEntities(); },
+    'earnings-dates': reportDates,
+    bootstrap: async () => { await stockTags(); await tagSeries(); },
+    'odds-candles-hourly': () => oddsCandles(60),
+    'odds-candles-daily': () => oddsCandles(1440),
+};
+export type JobAction = keyof typeof jobActions;
+export const jobLockName = (name: JobAction): string => name.startsWith('odds-candles-') ? 'odds-candles' : name;
+export async function resumeScheduledJob(name: JobAction) {
+    const lock = jobLockName(name);
+    await query('DELETE FROM job_state WHERE name=$1', [`stopped-job:${lock}`]);
+    stoppedJobs.delete(lock);
+    persistedStops.delete(lock);
+}
 const every = (expression: string, task: () => unknown, options: { timezone?: string } = {}) => cron.schedule(expression, task, { missedExecutionTolerance: LATE_TICK_MS, ...options });
 export function scheduler() {
     // The track record is Kalshi's data and retries; the nightly job is AI work and stops on a
     // failure. They are separate jobs so that neither rule reaches the other.
-    const tasks = [every('*/5 * * * *', () => runJob('poll', poll)), every('30 22 * * *', () => runJob('nightly', async () => { await stockTags(); await tagSeries(); await summaries(); await briefings(); }), { timezone: 'America/New_York' }),
-        every('45 22 * * *', () => runJob('track-record', async () => { await backfill(); await backfillTimeframes(); }), { timezone: 'America/New_York' }), every('0 8 * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), every('0 * * * *', () => runJob('enrich', async () => { await stockTags(); await tagSeries(); await summaries(); await briefings(); }))];
-    tasks.push(every('15 * * * *', () => runJob('session-cleanup', async () => {
-        await query('DELETE FROM auth_sessions WHERE expires_at<=now()');
-        await query('DELETE FROM auth_rate_limits WHERE resets_at<=now()');
-    })));
+    const tasks = [every('*/5 * * * *', () => runJob('poll', jobActions.poll)), every('30 22 * * *', () => runJob('nightly', jobActions.nightly), { timezone: 'America/New_York' }),
+        every('45 22 * * *', () => runJob('track-record', jobActions['track-record']), { timezone: 'America/New_York' }), every('0 8 * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }), every('0 * * * *', () => runJob('enrich', jobActions.enrich))];
+    tasks.push(every('15 * * * *', () => runJob('session-cleanup', jobActions['session-cleanup'])));
     tasks.push(every('20 * * * *', () => runJob('brokerages', syncBrokerages)));
     tasks.push(every('15 * * * *', () => runJob('briefings', briefings), { timezone: 'America/New_York' }));
     // Kalshi's hourly closes each hour; its daily closes just after its day ends at midnight in New York.
@@ -91,13 +118,13 @@ export function scheduler() {
     void runJob('poll', poll).then(() => runJob('odds-candles', () => oddsCandles()));
     // Price/measurement availability must not wait for optional AI tagging.
     const priceHistory = async () => {
-        await runJob('price-history', async () => { await prices(); await measure(); await profiles(); await trackEntities(); });
+        await runJob('price-history', jobActions['price-history']);
         void runJob('briefings', briefings);
     };
     tasks.push(every('10 * * * *', priceHistory));
     void priceHistory();
     tasks.push(every('30 22 * * *', () => runJob('earnings-dates', reportDates), { timezone: 'America/New_York' }));
     void runJob('earnings-dates', reportDates);
-    void runJob('bootstrap', async () => { await stockTags(); await tagSeries(); });
+    void runJob('bootstrap', jobActions.bootstrap);
     return tasks;
 }

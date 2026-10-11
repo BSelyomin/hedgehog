@@ -3,8 +3,60 @@ import assert from 'node:assert/strict';
 import { api, readApiResponse, setSessionKey } from '../lib/api-client';
 import { proxyApi } from '../lib/api-proxy';
 const originalFetch = globalThis.fetch, originalUrl = process.env.API_INTERNAL_URL;
-beforeEach(() => { process.env.API_INTERNAL_URL = 'http://backend:4000'; });
-afterEach(() => { globalThis.fetch = originalFetch; if (originalUrl === undefined) delete process.env.API_INTERNAL_URL; else process.env.API_INTERNAL_URL = originalUrl; });
+const originalBinding = process.env.HEDGEHOG_SERVER_URL, originalVercel = process.env.VERCEL;
+beforeEach(() => { process.env.API_INTERNAL_URL = 'http://backend:4000'; delete process.env.HEDGEHOG_SERVER_URL; delete process.env.VERCEL; });
+afterEach(() => {
+    globalThis.fetch = originalFetch;
+    for (const [name, value] of [['API_INTERNAL_URL', originalUrl], ['HEDGEHOG_SERVER_URL', originalBinding], ['VERCEL', originalVercel]]) {
+        if (value === undefined) delete process.env[name!]; else process.env[name!] = value;
+    }
+});
+
+it('prefers the injected binding and preserves its base path, query, cookies and refresh', async () => {
+    process.env.VERCEL = '1';
+    process.env.HEDGEHOG_SERVER_URL = 'https://server.internal/deployment/service/';
+    globalThis.fetch = async (url, init) => {
+        assert.equal(String(url), 'https://server.internal/deployment/service/exposure?days=14');
+        const headers = new Headers(init?.headers);
+        assert.equal(headers.get('cookie'), 'hedgehog_auth=fixture');
+        assert.equal(headers.get('x-hedgehog-refresh'), '1');
+        assert.equal(headers.get('authorization'), null);
+        return Response.json({ asOf: null });
+    };
+    const result = await proxyApi(new Request('https://hedgehog.example/api/exposure?days=14', {
+        headers: { Cookie: 'hedgehog_auth=fixture', 'X-Hedgehog-Refresh': '1', Authorization: 'Bearer unrelated' },
+    }));
+    assert.equal(result.status, 200);
+});
+it('reads changed bindings at request time and never sends traffic to an obsolete override', async () => {
+    const seen: string[] = [];
+    globalThis.fetch = async url => { seen.push(String(url)); return Response.json({ asOf: null }); };
+    process.env.HEDGEHOG_SERVER_URL = 'http://first.internal';
+    await proxyApi(new Request('https://hedgehog.example/api/holdings'));
+    process.env.HEDGEHOG_SERVER_URL = 'http://second.internal/';
+    await proxyApi(new Request('https://hedgehog.example/api/holdings'));
+    assert.deepEqual(seen, ['http://first.internal/holdings', 'http://second.internal/holdings']);
+});
+it('returns JSON without fetching when a Vercel runtime has no binding', async () => {
+    process.env.VERCEL = '1';
+    globalThis.fetch = async () => { throw new Error('Must not fall back to localhost or Docker'); };
+    const response = await proxyApi(new Request('https://hedgehog.example/api/exposure'));
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /binding/);
+});
+it('forwards cron authorization only to protected operational endpoints', async () => {
+    process.env.HEDGEHOG_SERVER_URL = 'https://server.internal/';
+    globalThis.fetch = async (url, init) => {
+        assert.equal(String(url), 'https://server.internal/internal/jobs/poll');
+        assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer fixture-secret');
+        return Response.json({ status: 'accepted', asOf: null }, { status: 202 });
+    };
+    const response = await proxyApi(new Request('https://hedgehog.example/api/internal/jobs/poll', {
+        headers: { Authorization: 'Bearer fixture-secret' },
+    }));
+    assert.equal(response.status, 202);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+});
 
 it('replaces the reported plain-text Internal Server Error with an actionable message', async () => {
     await assert.rejects(readApiResponse(new Response('Internal Server Error', { status: 500 }), '/brokerages'),

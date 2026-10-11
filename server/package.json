@@ -16,7 +16,8 @@
     "node-cron": "^4.2.1",
     "yahoo-finance2": "^3.0.0",
     "ml-matrix": "^6.12.1",
-    "@elevenlabs/elevenlabs-js": "^2.20.0"
+    "@elevenlabs/elevenlabs-js": "^2.20.0",
+    "@vercel/functions": "3.4.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "server": {
+      "root": "server",
+      "framework": "express",
+      "entrypoint": "src/server.ts",
+      "installCommand": "npm ci --prefix .. --include=dev",
+      "buildCommand": "npm run build",
+      "functions": {
+        "src/server.ts": {
+          "maxDuration": 800,
+          "includeFiles": "{seed,migrations}/**"
+        }
+      }
+    },
+    "web": {
+      "root": "web",
+      "framework": "nextjs",
+      "installCommand": "npm ci --prefix .. --include=dev",
+      "buildCommand": "npm run build",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "server",
+          "format": "url",
+          "env": "HEDGEHOG_SERVER_URL"
+        }
+      ]
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": { "service": "web" } }
+  ],
+  "crons": [
+    { "path": "/api/internal/jobs/poll", "schedule": "*/5 * * * *" },
+    { "path": "/api/internal/jobs/nightly", "schedule": "30 2,3 * * *" },
+    { "path": "/api/internal/jobs/track-record", "schedule": "45 2,3 * * *" },
+    { "path": "/api/internal/jobs/briefings-morning", "schedule": "0 12,13 * * *" },
+    { "path": "/api/internal/jobs/enrich", "schedule": "0 * * * *" },
+    { "path": "/api/internal/jobs/session-cleanup", "schedule": "15 * * * *" },
+    { "path": "/api/internal/jobs/brokerages", "schedule": "20 * * * *" },
+    { "path": "/api/internal/jobs/briefings", "schedule": "15 * * * *" },
+    { "path": "/api/internal/jobs/odds-candles-hourly", "schedule": "5 * * * *" },
+    { "path": "/api/internal/jobs/odds-candles-daily", "schedule": "20 4,5 * * *" },
+    { "path": "/api/internal/jobs/price-history", "schedule": "10 * * * *" },
+    { "path": "/api/internal/jobs/earnings-dates", "schedule": "30 2,3 * * *" }
+  ]
+}

@@ -15,7 +15,7 @@ vi.mock('./earnings-dates.ts', () => ({ earningsDates: vi.fn() }));
 vi.mock('./odds-candles.ts', () => ({ oddsCandles: vi.fn() }));
 vi.mock('./profiles.ts', () => ({ profiles: vi.fn() }));
 vi.mock('../brokerages/service.ts', () => ({ syncBrokerages: vi.fn() }));
-import { HEARTBEAT_MS, LATE_TICK_MS, LOCK_SECONDS, RETRYING_JOBS, runJob, scheduler } from './scheduler.ts';
+import { HEARTBEAT_MS, LATE_TICK_MS, LOCK_SECONDS, RETRYING_JOBS, runJob, scheduler, resumeScheduledJob } from './scheduler.ts';
 import cron from 'node-cron';
 import { backfill, backfillTimeframes } from './backfill.ts';
 import { summaries } from './summaries.ts';
@@ -72,6 +72,39 @@ it('discards the connection, without throwing, when the server has already ended
     });
     await expect(runJob('poll', async () => {})).resolves.toBeUndefined();
     expect(mocks.client.release).toHaveBeenCalledExactlyOnceWith(true);
+});
+
+it('observes a persisted stop and its explicit removal on a different warm Vercel instance', async () => {
+    const original = process.env.VERCEL;
+    process.env.VERCEL = '1';
+    try {
+        database(true);
+        await runJob('vercel-resume-fixture', async () => { throw new Error('fixture failure'); });
+        const next = vi.fn();
+        mocks.query.mockResolvedValue([{ name: 'stopped-job:vercel-resume-fixture' }]);
+        await runJob('vercel-resume-fixture', next);
+        expect(next).not.toHaveBeenCalled();
+        // The authenticated resume elsewhere deleted the durable marker.
+        mocks.query.mockResolvedValue([]);
+        await runJob('vercel-resume-fixture', next);
+        expect(next).toHaveBeenCalledTimes(1);
+    } finally { if (original === undefined) delete process.env.VERCEL; else process.env.VERCEL = original; }
+});
+
+it('keeps a stop in memory when storage fails, and clears a schedule only on explicit resume', async () => {
+    const original = process.env.VERCEL;
+    process.env.VERCEL = '1';
+    try {
+        database(true);
+        mocks.query.mockImplementation(async (sql: string) => { if (sql.startsWith('INSERT')) throw new Error('fixture database failure'); return []; });
+        await runJob('vercel-storage-fixture', async () => { throw new Error('fixture provider failure'); });
+        const next = vi.fn();
+        await runJob('vercel-storage-fixture', next);
+        expect(next).not.toHaveBeenCalled();
+        mocks.query.mockResolvedValue([]);
+        await resumeScheduledJob('nightly');
+        expect(mocks.query).toHaveBeenCalledWith('DELETE FROM job_state WHERE name=$1', ['stopped-job:nightly']);
+    } finally { if (original === undefined) delete process.env.VERCEL; else process.env.VERCEL = original; }
 });
 
 it('runs a Kalshi data job again after it fails, and does not obey a stop marker left for it', async () => {

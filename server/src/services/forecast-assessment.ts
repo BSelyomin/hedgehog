@@ -9,6 +9,7 @@ import { validateScenario } from './forecast-model.ts';
 import { aiPool, query } from '../db.ts';
 import { jointForecastScope, representativeOutcomes } from './forecast-context.ts';
 import { numbersSupported } from './ai-guard.ts';
+import { keepAlive } from './background.ts';
 
 // The user explicitly authorized best-effort AI assumptions and self-rated confidence.
 // Only these structured fields may be invented. Stock sensitivities and odds stay measured.
@@ -308,7 +309,7 @@ async function assessEvent(session: string, event: RankedForecastEvent, data: Fo
     const available = aiPool.totalCount - aiPool.idleCount < (aiPool.options.max ?? MAX_RUNNING) && aiPool.waitingCount === 0;
     if (!running.has(key) && running.size < MAX_RUNNING && available) {
         running.add(key);
-        void cortexResult(FORECAST_INSTRUCTIONS, input, FORECAST_SCHEMA, identity, result => {
+        const task = cortexResult(FORECAST_INSTRUCTIONS, input, FORECAST_SCHEMA, identity, result => {
             const checked = checkedForecastEstimate(result, input, sources);
             const rejectionReasons = checked ? [] : assessmentRejectionReasons(result, input, sources);
             // Only accepted structured numeric assumptions: no prose, holding values,
@@ -331,6 +332,7 @@ async function assessEvent(session: string, event: RankedForecastEvent, data: Fo
                 catch { console.warn('[Forecast AI] failure_status_not_saved', { reason: 'database_unavailable' }); }
             })
             .finally(() => { running.delete(key); });
+        keepAlive(task);
     }
     // At capacity, queue implicitly: the next poll starts this group after a slot opens.
     return { status: 'pending', selectedMarketTicker: null, summary: null, generatedAt: null, reason: null, asOf };

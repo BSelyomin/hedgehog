@@ -849,3 +849,11 @@ export interface HoldingsHistoryResponse extends Freshness {
     currentHoldings: true;
     events: HoldingEventHistory[];
 }
+/** Authenticated deployment maintenance responses; never shown as portfolio data. */
+export interface OperationalResponse {
+    status: 'accepted' | 'skipped' | 'ready' | 'pending' | 'resumed';
+    job?: string;
+    pendingMigrations?: string[];
+    readOnly?: boolean;
+    asOf: string;
+}

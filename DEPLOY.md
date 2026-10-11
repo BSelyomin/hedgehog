@@ -15,51 +15,108 @@ The local Docker stack provides Node 24 frontend/backend images, a TimescaleDB s
 
 The web app proxies `/api` to the private backend. The browser never calls Kalshi. The backend migrates before it listens and runs the poller every five minutes. AI and voice features stay absent when their credentials or supported source data are unavailable. Price-loading errors do not fabricate histories.
 
-## Vercel frontend
+## Vercel services
 
-Vercel hosts the Next.js frontend and its existing `/api` proxy. Keep Express running on
-your home server or another persistent Node/Docker host: it runs migrations, maintains
-database connections and schedules the data jobs inside its process.
+The root `vercel.json` deploys **web** (Next.js) and **server** (Express) as services in
+one Vercel project. The web service owns all public paths, including `/api/*`. Its
+Node route handler calls the internal server using the `HEDGEHOG_SERVER_URL` binding,
+stripping only the public `/api/` prefix. Express still sees `/exposure`, `/auth/session`,
+etc. The server has no public rewrite. There is no third root/container application:
+the root Dockerfile builds these same applications for local Compose.
 
-1. Import this Git repository into Vercel. Set **Root Directory** to `web` and enable
-   **Include source files outside of the Root Directory in the Build Step**. The frontend
-   needs the root npm workspace lockfile, root TypeScript configuration and `shared/`.
-2. Select the **Next.js** framework and **Node.js 24.x**. Vercel reads `web/vercel.json`:
-   it installs the root workspace with `npm ci --prefix .. --include=dev` and builds only the frontend
-   with `npm run build`. Leave **Output Directory** at the Next.js default. Fluid compute
-   is enabled, and the API route allows 120 seconds so the proxy's existing 25-second
-   read and 85-second write deadlines can return their JSON responses.
-3. In Vercel's Environment Variables, set `API_INTERNAL_URL` for every environment you
-   deploy. Use your backend's publicly reachable HTTPS origin, for example
-   `https://api.example.com`, without `/api`. Express serves `/exposure`, `/holdings`, etc.;
-   the frontend proxy maps `/api/exposure` to `/exposure` and forwards authentication
-   cookies, refresh headers, JSON errors and audio. This variable stays server-side;
-   do not add a `NEXT_PUBLIC_` prefix.
-4. On the backend, set `APP_URL` to the final frontend origin, such as
-   `https://hedgehog.example.com`, and `COOKIE_SECURE=true`. Keep `DATABASE_URL`,
-   SnapTrade credentials and encryption key, Snowflake credentials and other provider
-   keys on that backend. Recreate the backend after changing its environment. The
-   existing encryption key must remain the same to read previously linked accounts.
-5. Deploy, then check `/api/auth/session` on your Vercel origin, sign in, read your portfolio
-   and try a page's Reload button. A signed-out `/api/auth/session` returns JSON with
-   `user: null`; a successful sign-in should set the session cookie through the proxy.
-   Redeploy after changing Vercel environment variables.
+### Project setup
 
-`API_INTERNAL_URL` cannot be `localhost`, `http://backend:4000`, or a tailnet-only address
-when the frontend runs on Vercel. In particular, the existing Tailscale Serve port 8443
-marked **tailnet only** is not reachable by Vercel. Provide a public HTTPS route to the
-backend without replacing Immich's existing Funnel mapping. The backend's host/tunnel
-must forward to Express on port 4000; Docker Compose currently keeps that port private,
-so its reverse proxy must reach the backend container or a deliberately configured host
-binding. Test that origin's `/auth/session` from outside your tailnet before deploying.
+1. Import this repository with **Root Directory .**, **Node.js 24.x** and **Fluid compute**
+   enabled. Keep the repository workspace/shared files available. Build, install and framework
+   settings are defined separately on each service. Remove the previous frontend-only Root
+   Directory `web` setting and any manually configured `API_INTERNAL_URL` in Vercel.
+2. These cron intervals and the server's 800-second duration require **Pro or Enterprise**.
+   Hobby accepts only daily cron schedules and cannot deploy this configuration unchanged.
+   The web proxy retains its 120-second function limit and existing request deadlines.
+3. Set the root `.env.example` variables in Vercel's project environments: a reachable Tiger
+   Data/TimescaleDB `DATABASE_URL`, provider credentials as needed, `APP_URL` equal to the
+   production frontend origin, and `COOKIE_SECURE=true`. Preserve the SnapTrade encryption
+   key for existing accounts. Shared project variables remain server-side; never use
+   `NEXT_PUBLIC_` for credentials. Preview deployments should use their own database and
+   callback origin if they are intended to save/import data.
+4. Set `CRON_SECRET` to a random secret of at least 16 characters. Vercel sends it as
+   `Authorization: Bearer <secret>` on Cron requests. Both manual and scheduled operational
+   calls require it. Cookies and the fact that a service is internal do not authorize these
+   calls. The web proxy forwards Authorization only under `/api/internal/`.
+5. **Do not set `HEDGEHOG_SERVER_URL` yourself.** Vercel generates the URL for the calling
+   web service at function runtime. It is not used during builds or in middleware.
 
-For local frontend development, copy `web/.env.example` to `web/.env.local` if you need
-to override the default backend at `http://127.0.0.1:4000`. The root `.env` continues to
-configure the backend and Docker stack.
+### Migrations and first import
 
-See Vercel's [monorepo shared-file settings](https://vercel.com/docs/monorepos/monorepo-faq),
-[configuration reference](https://vercel.com/docs/project-configuration/vercel-json) and
-[function duration settings](https://vercel.com/docs/functions/configuring-functions/duration).
+The Vercel entry point is `server/src/server.ts`. It exports Express without listening on
+an application port, starting node-cron or running migrations during every cold start.
+Database pools attach to Vercel's function lifecycle. After a deployment with schema changes,
+send an authenticated **POST /api/internal/migrate**, then poll authenticated
+**GET /api/internal/status** until `pendingMigrations` is empty and `readOnly` is false.
+Migrations run on Vercel, use the existing database advisory lock, and include seed data.
+A 202 response acknowledges background work; it does not report that the operation succeeded.
+Check function logs if status does not become ready. No migration runs during the build.
+
+For a fresh database, explicitly request **GET /api/internal/jobs/poll**,
+**GET /api/internal/jobs/price-history**, **GET /api/internal/jobs/earnings-dates** and
+**GET /api/internal/jobs/bootstrap** with that same bearer token after migrations finish.
+Run these initial imports separately and inspect their logs before requesting large optional
+backfills. The poller saves completed page cursors and yields after five minutes; a later cron
+continues the import. Other jobs retain their existing per-series, per-item or candle progress
+where implemented. Large initial tagging/backfills remain subject to the 800-second function
+limit and must be monitored; completion of a 202 invocation is not guaranteed by HTTP status.
+
+### Scheduled work and recovery
+
+Twelve Vercel Cron rules replace the persistent process's schedules, including the five-minute
+poller, hourly prices/enrichment/brokerage/briefing work, nightly history and daily report-date
+work. UTC rules for New York daily jobs cover both possible UTC hours; the handler skips the
+one outside the intended Eastern hour. Cron runs on the production deployment, not previews.
+An authenticated manual request can add `?force=1` to bypass this time-of-day check.
+
+The existing `runJob` database lock and heartbeat protect concurrent requests and preserve
+failure policies: Kalshi data jobs resume on their next schedule; other failed schedules stay
+stopped. **POST /api/internal/resume/<job>** acknowledges a stopped schedule, then its next
+invocation can run. This does not clear individual provider-task stop markers. For those, use
+an explicit CLI job from a configured local checkout (`npm run job -- <job>`), as before.
+Forecast AI and operational work register with `waitUntil` so sending a response does not
+immediately freeze them. Durable AI caches, validation, user authentication and portfolio
+response caches are preserved. In-memory caches are per warm function instance and can be
+lost on scaling or cold starts; they are not a shared distributed response cache.
+
+Do not leave the home-server backend scheduling against the same production database if
+Vercel owns the schedules. Existing database locks prevent overlapping runs, but do not
+prevent a second scheduler from starting another run after the first has finished. Local
+Docker deployment remains supported: it still starts `server/src/index.ts` with its original
+scheduler, uses Compose's `API_INTERNAL_URL=http://backend:4000` and a local database when
+`DATABASE_URL` is empty. No Tailscale/public backend URL is needed for Vercel service calls.
+
+### Local and deployment checks
+
+Use a recent Vercel CLI with Services support. From the repository root run:
+
+```bash
+vercel dev
+```
+
+The CLI runs both services and injects the binding. `vercel dev -L` selects local-only
+operation. Configure database/provider variables and `CRON_SECRET` for the local environment
+as well. Cron timers do not run automatically locally: call the authenticated endpoints
+manually. With no secret, maintenance fails closed. With no runtime binding on Vercel, the
+proxy returns JSON 503 instead of trying localhost.
+
+After migration, check `/api/auth/session`, sign in, read your portfolio, use Reload, and
+play an existing briefing. Unauthenticated `/api/internal/jobs/poll` must return 401; an
+unauthenticated request when CRON_SECRET is not configured returns 503. Root paths like
+`/auth/session` do not expose the Express service. Check Vercel's Cron/function logs for
+accepted, skipped, stopped and completed work. Secrets are never included in logs.
+
+See [Services](https://vercel.com/docs/services),
+[bindings](https://vercel.com/docs/services/bindings),
+[routing](https://vercel.com/docs/services/routing),
+[Cron authentication and execution](https://vercel.com/docs/cron-jobs/manage-cron-jobs),
+[Cron plan limits](https://vercel.com/docs/cron-jobs/usage-and-pricing) and
+[function duration limits](https://vercel.com/docs/functions/configuring-functions/duration).
 
 ## Tiger Data database
 

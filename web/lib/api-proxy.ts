@@ -10,7 +10,11 @@ export async function proxyApi(request: Request): Promise<Response> {
     if (!incoming.pathname.startsWith('/api/')) return failure(404, 'API endpoint not found.');
     let backend: URL;
     try {
-        backend = new URL(process.env.API_INTERNAL_URL || 'http://127.0.0.1:4000');
+        // Service bindings exist only at request time. Local Node/Docker keeps
+        // its existing override; Vercel must never fall back to a localhost API.
+        const bound = process.env.HEDGEHOG_SERVER_URL;
+        if (process.env.VERCEL === '1' && !bound) return failure(503, 'The internal backend binding is unavailable. Check the web service binding or run vercel dev.');
+        backend = new URL(bound || process.env.API_INTERNAL_URL || 'http://127.0.0.1:4000');
         if (!['http:', 'https:'].includes(backend.protocol) || backend.username || backend.password) throw new Error();
         backend.pathname = `${backend.pathname.replace(/\/$/, '')}/${incoming.pathname.slice(5)}`;
         backend.search = incoming.search;
@@ -20,6 +24,12 @@ export async function proxyApi(request: Request): Promise<Response> {
     for (const name of ['Content-Type', 'Cookie', 'X-Hedgehog-Request', 'X-Hedgehog-Session', 'X-Hedgehog-Refresh', 'Sec-Fetch-Site']) {
         const value = request.headers.get(name);
         if (value !== null) headers.set(name, value);
+    }
+    // Vercel Cron supplies this bearer token. Forward it only to the protected
+    // operational routes, never to provider APIs or ordinary portfolio routes.
+    if (incoming.pathname.startsWith('/api/internal/')) {
+        const authorization = request.headers.get('Authorization');
+        if (authorization !== null) headers.set('Authorization', authorization);
     }
     let upstream: Response;
     let body: Uint8Array | undefined;
