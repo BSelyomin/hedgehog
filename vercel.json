@@ -5,7 +5,7 @@
       "root": "server",
       "framework": "express",
       "entrypoint": "src/server.ts",
-      "installCommand": "cd .. && npm ci --include=dev",
+      "installCommand": "npm ci --include=dev",
       "buildCommand": "npm run build",
       "functions": {
         "src/server.ts": {
