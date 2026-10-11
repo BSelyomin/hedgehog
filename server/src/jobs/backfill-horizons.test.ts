@@ -41,8 +41,8 @@ it('does not advance a failed page or record an API outage as a missing quote',a
   if(path.endsWith('/candlesticks')) throw new Error('Kalshi retry limit');
   return {markets:[market],cursor:'NEXT'};
  });
- await expect(backfill({series:['S'],maxMarkets:1})).rejects.toThrow('Backfill horizons stopped after failure');
- expect(mocks.query.mock.calls.some(([sql,values])=>sql.includes('INSERT INTO job_state') && String(values[0]).startsWith('backfill:horizons-v1:'))).toBe(false);
- expect(mocks.query.mock.calls.some(([sql,values])=>sql.includes('INSERT INTO job_state') && String(values[0]).startsWith('stopped-task:backfill-horizons:'))).toBe(true);
+ // The run ends without an error and records nothing: neither progress past the page nor a stop marker.
+ await backfill({series:['S'],maxMarkets:1});
+ expect(mocks.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO job_state'))).toBe(false);
  expect(mocks.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO backfill_skips'))).toBe(false);
 });

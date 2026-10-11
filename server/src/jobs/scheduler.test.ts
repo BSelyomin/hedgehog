@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), client: { query: vi.fn(), release: vi.fn() } }));
 vi.mock('../db.ts', () => ({ pool: { connect: async () => mocks.client }, query: mocks.query }));
 // The scheduler imports every job; none of them runs here.
+vi.mock('node-cron', () => ({ default: { schedule: vi.fn(() => ({ stop: vi.fn() })) } }));
 vi.mock('./poll.ts', () => ({ poll: vi.fn() }));
 vi.mock('./prices.ts', () => ({ prices: vi.fn() }));
 vi.mock('./tagging.ts', () => ({ stockTags: vi.fn(), tagSeries: vi.fn() }));
@@ -14,7 +15,10 @@ vi.mock('./earnings-dates.ts', () => ({ earningsDates: vi.fn() }));
 vi.mock('./odds-candles.ts', () => ({ oddsCandles: vi.fn() }));
 vi.mock('./profiles.ts', () => ({ profiles: vi.fn() }));
 vi.mock('../brokerages/service.ts', () => ({ syncBrokerages: vi.fn() }));
-import { HEARTBEAT_MS, LOCK_SECONDS, runJob } from './scheduler.ts';
+import { HEARTBEAT_MS, HORIZON_MARKETS, LATE_TICK_MS, LOCK_SECONDS, RETRYING_JOBS, runJob, scheduler } from './scheduler.ts';
+import cron from 'node-cron';
+import { backfill, backfillHorizons } from './backfill.ts';
+import { summaries } from './summaries.ts';
 
 const statements = () => mocks.client.query.mock.calls.map(([sql]) => String(sql));
 const database = (locked: boolean) => mocks.client.query.mockImplementation(async (sql: string) => ({ rows: sql.includes('pg_try_advisory_lock') ? [{ locked }] : [] }));
@@ -68,4 +72,61 @@ it('discards the connection, without throwing, when the server has already ended
     });
     await expect(runJob('poll', async () => {})).resolves.toBeUndefined();
     expect(mocks.client.release).toHaveBeenCalledExactlyOnceWith(true);
+});
+
+it('runs a Kalshi data job again after it fails, and does not obey a stop marker left for it', async () => {
+    expect([...RETRYING_JOBS].sort()).toEqual(['odds-candles', 'poll', 'track-record']);
+    database(true);
+    for (const name of RETRYING_JOBS) {
+        let attempts = 0;
+        const failing = async () => { attempts++; throw new Error('Kalshi retry limit'); };
+        await runJob(name, failing);
+        await runJob(name, failing);
+        expect([name, attempts]).toEqual([name, 2]);
+        expect(console.warn).toHaveBeenCalledWith('Job failed; it runs again at its next schedule:', name);
+    }
+    // Nothing was stored to stop them, and the marker was never asked for.
+    expect(mocks.query.mock.calls.some(([sql]) => String(sql).includes('job_state'))).toBe(false);
+    // A marker written by a backend on older code changes nothing.
+    mocks.query.mockResolvedValue([{ name: 'stopped-job:poll' }]);
+    const job = vi.fn();
+    await runJob('poll', job);
+    expect(job).toHaveBeenCalledTimes(1);
+});
+it('still stops a job that calls AI, voice or a brokerage after one failure', async () => {
+    database(true);
+    // The nightly AI work is one of them; it is left running here for the test of the schedules below.
+    expect(['nightly', 'enrich', 'briefings', 'brokerages', 'price-history', 'bootstrap'].some(name => RETRYING_JOBS.has(name))).toBe(false);
+    for (const name of ['enrich', 'briefings', 'brokerages']) {
+        let attempts = 0;
+        const failing = async () => { attempts++; throw new Error('provider'); };
+        await runJob(name, failing);
+        await runJob(name, failing);
+        expect([name, attempts]).toEqual([name, 1]);
+        expect(mocks.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO job_state'), [`stopped-job:${name}`]);
+    }
+});
+it('runs a tick that fires late, and keeps the track record apart from the nightly AI work', async () => {
+    database(true);
+    const schedule = vi.mocked(cron.schedule);
+    schedule.mockClear();
+    scheduler();
+    await vi.advanceTimersByTimeAsync(0);
+    // Every schedule tolerates a late timer; the library's own limit is one second.
+    expect(schedule.mock.calls.length).toBeGreaterThanOrEqual(10);
+    for (const [expression, , options] of schedule.mock.calls)
+        expect([expression, options?.missedExecutionTolerance]).toEqual([expression, LATE_TICK_MS]);
+    expect(LATE_TICK_MS).toBeGreaterThanOrEqual(5 * 60 * 1000);
+    expect(schedule.mock.calls.filter(([, , options]) => options?.timezone === 'America/New_York').map(([expression]) => expression).sort()).toEqual(['0 8 * * *', '15 * * * *', '20 0 * * *', '30 22 * * *', '30 22 * * *', '45 22 * * *']);
+    // 10:45 pm runs the backfill, bounded, under the retrying job; 10:30 pm runs the AI work without it.
+    vi.mocked(backfill).mockClear(); vi.mocked(backfillHorizons).mockClear(); vi.mocked(summaries).mockClear();
+    const at = (expression: string) => schedule.mock.calls.filter(([e]) => e === expression).map(([, task]) => task as () => Promise<void>);
+    await at('45 22 * * *')[0]();
+    expect(backfill).toHaveBeenCalledTimes(1);
+    expect(backfillHorizons).toHaveBeenCalledWith({ maxMarkets: HORIZON_MARKETS });
+    expect(summaries).not.toHaveBeenCalled();
+    vi.mocked(backfill).mockClear();
+    for (const task of at('30 22 * * *')) await task();
+    expect(summaries).toHaveBeenCalledTimes(1);
+    expect(backfill).not.toHaveBeenCalled();
 });

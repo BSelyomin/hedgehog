@@ -356,8 +356,12 @@ embedded-database benchmarks did not include your network or pool contention.
 
 ## Request failures and manual recovery
 
-Kalshi and SnapTrade perform one HTTP attempt per request. Cortex has no provider retry
-loop, and ElevenLabs uses `maxRetries: 0`. Failed forecasts persist a stopped status in
+SnapTrade performs one HTTP attempt per request. Cortex has no provider retry loop, and
+ElevenLabs uses `maxRetries: 0`. Kalshi is the exception: its market-data requests wait and try
+again when Kalshi answers 429 or 5xx (up to five attempts, waiting 1, 2, 4 and 8 seconds or
+as long as Kalshi asks, never over 30), and the jobs that read Kalshi (`poll`, `odds-candles`
+and `track-record`) run again at their next schedule after a failure. They are never stopped,
+and a stop marker left for one of them by a backend on older code is ignored. Failed forecasts persist a stopped status in
 PostgreSQL; ordinary reloads, quote changes and backend restarts do not retry them. Pending
 forecast polling only checks work already started. Click **Retry estimate** for one explicit
 attempt after correcting the problem. Rebuild both services to apply these changes:
@@ -384,8 +388,10 @@ docker compose exec backend npm run job -- resume-job price-history
 docker compose restart backend
 ```
 
-Other schedule names include `poll`, `nightly`, `enrich`, `bootstrap`, `briefings`,
-`brokerages`, `earnings-dates` and `session-cleanup`. A manual brokerage Sync is one attempt;
+Other schedule names that can stop include `nightly`, `enrich`, `bootstrap`, `briefings`,
+`brokerages`, `earnings-dates` and `session-cleanup`. The track-record backfill runs as its own
+job, `track-record`, at 10:45 pm New York, apart from the AI work in `nightly` at 10:30 pm, so
+that a failed summary cannot stop the backfill and a Kalshi outage cannot stop the summaries. A manual brokerage Sync is one attempt;
 the automatic account sync remains stopped until its job is explicitly acknowledged.
 Read-only database mode no longer polls for recovery: restore database writes, then restart
 the backend. Compose uses `restart: "no"`; restart stopped containers explicitly.

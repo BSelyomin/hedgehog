@@ -96,6 +96,18 @@ Ship a `.env.example` with these names and no values. Never print keys in logs.
   call Kalshi from the browser.
 - Poll every 5 minutes. Back off on 429 and 5xx responses. Log and skip a bad market rather than
   failing the whole run.
+- **Two rules for failures, by what is being called.**
+  - *Kalshi's data jobs retry.* A Kalshi request waits and is tried again on 429 and 5xx
+    (`kalshi` in `server/src/services/kalshi.ts`), and the poller, the candlestick job and the
+    track-record backfill run again at their next schedule after a failure (`RETRYING_JOBS` in
+    `server/src/jobs/scheduler.ts`). A series or page that fails keeps its place for the next run.
+  - *Everything else gets one attempt.* Calls to AI, voice and brokerages are single attempts,
+    and a job made of them stops after one failure until `npm run job -- resume-job <name>`
+    (`runWithoutRetry`, and the stop marker in `runJob`).
+  Do not put a Kalshi data job under the one-attempt rule: when the poller was, a single refusal
+  from Kalshi stopped odds for every backend sharing the database within hours.
+- A scheduled tick that fires late still runs (`LATE_TICK_MS`). The scheduling library drops one
+  that is over a second late, which in a virtual machine with a stepped clock was every one.
 - Every scheduled job runs under a database lock (`runJob` in `server/src/jobs/scheduler.ts`), so
   that only one of the backends sharing the database runs it. The lock's session ends itself
   after two minutes without a statement and the job sends a heartbeat while it runs, so a

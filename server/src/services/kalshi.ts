@@ -51,12 +51,27 @@ export interface HistoricalCandle {
 }
 export const numberField = (value: unknown): number | null => { if ((typeof value !== 'string' && typeof value !== 'number') || (typeof value === 'string' && value.trim() === ''))
     return null; const n = Number(value); return Number.isFinite(n) ? n : null; };
+// Kalshi's market data is read by the poller, the candlestick job and the backfill, and nothing
+// else. When Kalshi answers "too many requests" or has a fault of its own, the request waits and
+// is tried again, so that one refusal does not cost a whole poll (AGENTS.md, "Kalshi"). Any other
+// refusal is final at once. Calls to AI, voice and brokerages are different: one attempt each.
+export const KALSHI_ATTEMPTS = 5;
 export async function kalshi<T>(path: string, params: Record<string, string> = {}): Promise<T> {
     const url = new URL(`${KALSHI_BASE}${path}`);
     url.search = new URLSearchParams(params).toString();
-    const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
-    if (!response.ok) throw new Error(`Kalshi HTTP ${response.status}; automatic retries are disabled`);
-    return await response.json() as T;
+    for (let attempt = 0; attempt < KALSHI_ATTEMPTS; attempt++) {
+        const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+        if (response.ok)
+            return await response.json() as T;
+        if (response.status !== 429 && response.status < 500)
+            throw new Error(`Kalshi HTTP ${response.status}`);
+        if (attempt === KALSHI_ATTEMPTS - 1)
+            throw new Error('Kalshi retry limit');
+        // Kalshi's own wait when it gives one, otherwise 1, 2, 4 and 8 seconds; never over 30.
+        const retry = Number(response.headers.get('retry-after'));
+        await new Promise(resolve => setTimeout(resolve, Math.min(30000, Math.max(1000 * 2 ** attempt, Number.isFinite(retry) ? retry * 1000 : 0))));
+    }
+    throw new Error('Kalshi request failed');
 }
 // Strike types observed in stored Kalshi markets. A range ladder is an exclusive event of
 // 'between' buckets plus optional open-ended end caps ("86° or below", "95° or above").

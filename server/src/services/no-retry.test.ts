@@ -3,10 +3,9 @@ import assert from 'node:assert/strict';
 import { pool } from '../db.ts';
 import { runWithoutRetry } from './no-retry.ts';
 import { runJob } from '../jobs/scheduler.ts';
-import { kalshi } from './kalshi.ts';
 import { snaptrade } from '../brokerages/client.ts';
 
-it('Kalshi and SnapTrade make exactly one HTTP attempt for rate limits and provider failures', async () => {
+it('SnapTrade makes exactly one HTTP attempt for rate limits and provider failures', async () => {
     const fetch = globalThis.fetch;
     const names = ['SNAPTRADE_CLIENT_ID', 'SNAPTRADE_CONSUMER_KEY', 'SNAPTRADE_ENCRYPTION_KEY', 'SNAPTRADE_MODE', 'APP_URL'];
     const previous = names.map(name => process.env[name]);
@@ -16,8 +15,7 @@ it('Kalshi and SnapTrade make exactly one HTTP attempt for rate limits and provi
         for (const status of [429, 503]) {
             let calls = 0;
             globalThis.fetch = async () => { calls++; return new Response('untrusted error', { status }); };
-            await assert.rejects(kalshi('/events'), /automatic retries are disabled/); assert.equal(calls, 1);
-            calls = 0; await assert.rejects(snaptrade('GET', '/accounts')); assert.equal(calls, 1);
+            await assert.rejects(snaptrade('GET', '/accounts')); assert.equal(calls, 1);
         }
     } finally {
         globalThis.fetch = fetch;

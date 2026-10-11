@@ -122,8 +122,9 @@ describe('scoring a series', () => {
         });
         await backfill();
         const states = mocks.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO job_state')).map(([, values]) => values[0]);
-        expect(states).toEqual(['stopped-task:backfill:series:BROKEN', 'settled:FINE']);
+        // The series that failed has recorded nothing, so the next run starts it again.
+        expect(states).toEqual(['settled:FINE']);
         expect(mocks.kalshi.mock.calls.some(([, params]) => params.series_ticker === 'NOCAT')).toBe(false);
-        expect(console.warn).toHaveBeenCalledWith('Backfill stopped after failure; automatic retries disabled', 'BROKEN');
+        expect(console.warn).toHaveBeenCalledWith('Backfill retry needed', 'BROKEN');
     });
 });

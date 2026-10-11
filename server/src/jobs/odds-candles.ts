@@ -88,15 +88,14 @@ export async function oddsCandles(only?: CandleMinutes) {
                 await storeCandles(readings, request.tickers, minutes, new Date((request.end - period) * 1000));
                 stored += readings.length;
             } catch {
-                // Keep progress for manual recovery, while independent batches finish.
+                // Progress is unchanged, so the next run asks for these markets again.
                 failed++;
-                console.warn('Candlestick request stopped; automatic retries disabled', request.tickers[0], request.tickers.length);
+                console.warn('Candlestick request failed; will retry', request.tickers[0], request.tickers.length);
             }
         }
         if (keepDays !== null)
             await query('DELETE FROM odds_candles WHERE minutes=$1 AND ts<now()-make_interval(days => $2)', [minutes, keepDays]);
         console.log('Odds candlesticks stored', minutes, stored, failed ? `${failed} requests failed` : '');
-        if (failed) throw new Error('Candlestick job stopped after failure; rerun explicitly');
     }
     // A market no longer listed, or no longer linkable, is not charted; drop what was kept for it.
     const listed = `SELECT 1 FROM markets m JOIN snapshot_series s USING(series_ticker) WHERE m.ticker=c.ticker AND m.close_time>now()-interval '1 day'`;

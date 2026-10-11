@@ -1,5 +1,27 @@
 # Validation and phase status
 
+## Odds polling restored after the one-attempt rule stopped it (2026-10-11)
+
+All 613 tests and both TypeScript checks pass. The password-hashing test exceeded its
+five-second limit in one of four runs while the machine was busy.
+
+- **What happened.** A merge from origin made every Kalshi request a single attempt and stopped
+  a scheduled job for good after one failure. The poller on another backend failed once at
+  00:40 UTC and wrote `stopped-job:poll` to the shared database, so no backend on that code
+  would poll again until someone resumed it by hand. Kalshi had been answering 429 to plain
+  requests from this address earlier in the day.
+- **Decision (richie):** Kalshi's data jobs retry; AI, voice and brokerage calls keep the
+  one-attempt rule.
+- **Now.** A Kalshi request waits and tries again on 429 and 5xx, up to five attempts. `poll`,
+  `odds-candles` and the new `track-record` job (the backfill, moved out of the nightly AI job)
+  run again at their next schedule and never obey a stop marker. A failed series, page or
+  candlestick request keeps its place for the next run and leaves nothing in `job_state`.
+- **A second fault on this machine.** This backend had not polled either: the scheduling
+  library drops a tick more than a second late, and every five-minute timer here fired 16 to 30
+  seconds late (the hourly ones about four minutes), 20 times in 65 minutes, in a Docker
+  Desktop virtual machine whose clock is corrected in steps. A tick up to 15 minutes late now
+  runs.
+
 ## Overview cells show value and share; a letter is not a search for a holding (2026-10-11)
 
 All 497 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390
