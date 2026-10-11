@@ -15,6 +15,10 @@ Open http://localhost:3000, create an account or continue as a guest, enter tick
 
 For local development, use Node 24 and `npm ci`, then configure DATABASE_URL. Start `npm run dev -w server` and `npm run dev -w web` in separate terminals (the combined launcher is not Windows-compatible). The server applies migrations on startup; `npm run migrate` also applies them explicitly on Linux. `npm run check:core` runs dependency-free core accuracy checks. `npm test` runs Vitest known-answer and accuracy tests. `npm run lint` runs strict TypeScript checks; `npm run build` checks the backend and builds Next.js.
 
+For a Vercel frontend, use Root Directory **web** and the included `web/vercel.json`.
+Set `API_INTERNAL_URL` to your publicly reachable backend origin. See
+[Vercel deployment](DEPLOY.md#vercel-frontend) for the required project and backend settings.
+
 ## Data and accuracy
 
 Kalshi's public events and market candlesticks supply dollar bid/ask quotes; midpoint probabilities never use last trades. Yahoo Finance supplies daily closes for stocks, SPY and crude oil futures. FRED supplies the two-year Treasury yield DGS2. The seeded ticker list follows the designs; the demo portfolio and human-authored sector mapping still require review. No synthetic prices, moves or sensitivities are shipped to the UI.

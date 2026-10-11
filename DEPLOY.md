@@ -15,6 +15,52 @@ The local Docker stack provides Node 24 frontend/backend images, a TimescaleDB s
 
 The web app proxies `/api` to the private backend. The browser never calls Kalshi. The backend migrates before it listens and runs the poller every five minutes. AI and voice features stay absent when their credentials or supported source data are unavailable. Price-loading errors do not fabricate histories.
 
+## Vercel frontend
+
+Vercel hosts the Next.js frontend and its existing `/api` proxy. Keep Express running on
+your home server or another persistent Node/Docker host: it runs migrations, maintains
+database connections and schedules the data jobs inside its process.
+
+1. Import this Git repository into Vercel. Set **Root Directory** to `web` and enable
+   **Include source files outside of the Root Directory in the Build Step**. The frontend
+   needs the root npm workspace lockfile, root TypeScript configuration and `shared/`.
+2. Select the **Next.js** framework and **Node.js 24.x**. Vercel reads `web/vercel.json`:
+   it installs the root workspace with `npm ci --prefix .. --include=dev` and builds only the frontend
+   with `npm run build`. Leave **Output Directory** at the Next.js default. Fluid compute
+   is enabled, and the API route allows 120 seconds so the proxy's existing 25-second
+   read and 85-second write deadlines can return their JSON responses.
+3. In Vercel's Environment Variables, set `API_INTERNAL_URL` for every environment you
+   deploy. Use your backend's publicly reachable HTTPS origin, for example
+   `https://api.example.com`, without `/api`. Express serves `/exposure`, `/holdings`, etc.;
+   the frontend proxy maps `/api/exposure` to `/exposure` and forwards authentication
+   cookies, refresh headers, JSON errors and audio. This variable stays server-side;
+   do not add a `NEXT_PUBLIC_` prefix.
+4. On the backend, set `APP_URL` to the final frontend origin, such as
+   `https://hedgehog.example.com`, and `COOKIE_SECURE=true`. Keep `DATABASE_URL`,
+   SnapTrade credentials and encryption key, Snowflake credentials and other provider
+   keys on that backend. Recreate the backend after changing its environment. The
+   existing encryption key must remain the same to read previously linked accounts.
+5. Deploy, then check `/api/auth/session` on your Vercel origin, sign in, read your portfolio
+   and try a page's Reload button. A signed-out `/api/auth/session` returns JSON with
+   `user: null`; a successful sign-in should set the session cookie through the proxy.
+   Redeploy after changing Vercel environment variables.
+
+`API_INTERNAL_URL` cannot be `localhost`, `http://backend:4000`, or a tailnet-only address
+when the frontend runs on Vercel. In particular, the existing Tailscale Serve port 8443
+marked **tailnet only** is not reachable by Vercel. Provide a public HTTPS route to the
+backend without replacing Immich's existing Funnel mapping. The backend's host/tunnel
+must forward to Express on port 4000; Docker Compose currently keeps that port private,
+so its reverse proxy must reach the backend container or a deliberately configured host
+binding. Test that origin's `/auth/session` from outside your tailnet before deploying.
+
+For local frontend development, copy `web/.env.example` to `web/.env.local` if you need
+to override the default backend at `http://127.0.0.1:4000`. The root `.env` continues to
+configure the backend and Docker stack.
+
+See Vercel's [monorepo shared-file settings](https://vercel.com/docs/monorepos/monorepo-faq),
+[configuration reference](https://vercel.com/docs/project-configuration/vercel-json) and
+[function duration settings](https://vercel.com/docs/functions/configuring-functions/duration).
+
 ## Tiger Data database
 
 Create a Tiger Cloud service with TimescaleDB enabled and copy its PostgreSQL connection URI to `DATABASE_URL` in the root `.env`, including the TLS options supplied by Tiger Data. The backend uses `pg` for queries and applies migrations automatically. A Tiger Cloud management API key is not needed for database access. See [Tiger Data service setup](https://www.tigerdata.com/docs/get-started/quickstart/create-service).
