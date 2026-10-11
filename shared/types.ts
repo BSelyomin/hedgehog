@@ -794,6 +794,11 @@ export interface ForecastAssessmentResponse extends Freshness {
     /** One AI driver assumption informed by the whole family, not a sum of scenarios. */
     jointPrediction?: ForecastGroupPrediction;
 }
+/** One contract's cached conditional estimate, independent of the family forecast. */
+export interface ForecastResultAssessmentResponse extends Omit<ForecastAssessmentResponse, 'status' | 'jointPrediction'> {
+    marketTicker: string;
+    status: 'not-requested' | 'pending' | 'ready' | 'unavailable';
+}
 export interface AIForecastGroupAssumption extends ScenarioRequest {
     horizonMarketTicker: string;
     evidenceMarketTickers: string[];

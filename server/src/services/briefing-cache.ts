@@ -1,11 +1,12 @@
 import type { BriefingResponse } from '../../../shared/types.ts';
+import { PAGE_CACHE_MS } from '../../../shared/cache.ts';
 import { briefingIdentity, briefingResponse } from '../jobs/briefing.ts';
 import { contentHash } from './ai-cache.ts';
 import { briefingDay } from './briefing-content.ts';
 import { getHoldings } from './holdings.ts';
 import { timed } from './request-timing.ts';
 
-const CACHE_MS = 5 * 60_000, MAX_SNAPSHOTS = 32;
+const MAX_SNAPSHOTS = 32;
 interface Snapshot { promise: Promise<BriefingResponse>; until: number }
 const snapshots = new Map<string, Snapshot>();
 
@@ -21,7 +22,7 @@ export async function cachedBriefingResponse(session: string, refresh = false): 
     }
     const entry: Snapshot = { until: Infinity, promise: timed('briefing_read', async () => {
         const data = await briefingResponse(session, portfolio);
-        entry.until = Date.now() + CACHE_MS;
+        entry.until = Date.now() + PAGE_CACHE_MS;
         // A scheduled or explicit generator may fill a missing briefing at any
         // moment. Do not retain that absence or let an older read clear a refresh.
         // The same goes for a briefing from an earlier day: the morning run replaces it, and

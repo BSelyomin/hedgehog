@@ -1,6 +1,6 @@
 import { it, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { api, getCachedResponse, invalidateCachedResponses, setSessionKey } from '../lib/api-client';
+import { api, cacheResponse, getCachedResponse, invalidateCachedResponses, setSessionKey } from '../lib/api-client';
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; setSessionKey('reset-after-cache-test'); });
@@ -69,4 +69,25 @@ it('refreshes ranked data once, then reads assessments/results normally without 
     assert.equal(getCachedResponse<{ version: number }>('/moves')?.version, 1);
     for (const path of paths) await api(path);
     assert.equal(calls.length, 3);
+});
+
+it('invalidates only a selected result status when requesting AI, preserving other page caches and excluding older reads', async () => {
+    setSessionKey('individual-result-cache');
+    const path = '/forecasts/result/M11/assessment';
+    let release!: (response: Response) => void;
+    globalThis.fetch = async (_url, options) => options?.method === 'POST'
+        ? Response.json({ marketTicker: 'M11', status: 'ready', predictions: [], asOf: null })
+        : new Promise(resolve => { release = resolve; });
+    cacheResponse('/moves', { holdings: ['stored'], asOf: null });
+    cacheResponse('/forecasts/ranked-events', { events: ['stored'], asOf: null });
+    const previousRead = api(path);
+    const result = await api(path, { method: 'POST', body: '{}' });
+    cacheResponse(path, result);
+    release(Response.json({ marketTicker: 'M11', status: 'not-requested', asOf: null })); await previousRead;
+    assert.equal(getCachedResponse<{ status: string }>(path)?.status, 'ready');
+    assert.deepEqual(getCachedResponse('/moves'), { holdings: ['stored'], asOf: null });
+    assert.deepEqual(getCachedResponse('/forecasts/ranked-events'), { events: ['stored'], asOf: null });
+    await api(`${path}/retry`, { method: 'POST', body: '{}' });
+    assert.equal(getCachedResponse(path), null);
+    assert.deepEqual(getCachedResponse('/moves'), { holdings: ['stored'], asOf: null });
 });

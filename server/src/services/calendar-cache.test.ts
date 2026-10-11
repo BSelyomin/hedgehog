@@ -74,7 +74,9 @@ it('keeps quotes and source timestamps until expiry, and Reload refreshes both e
     await request(app, '/exposure', { headers: { ...headers, 'x-hedgehog-refresh': '1' } });
     assert.equal((await calendar(owner, 14)).events[0].markets[0].probability, .6);
     assert.equal(count('SELECT m.*'), 3);
-    now += 300_000; await calendar(owner, 14); assert.equal(count('SELECT m.*'), 4);
+    now += 300_000; await calendar(owner, 14); assert.equal(count('SELECT m.*'), 3);
+    now += 599_999; await calendar(owner, 14); assert.equal(count('SELECT m.*'), 3);
+    now++; await calendar(owner, 14); assert.equal(count('SELECT m.*'), 4);
 });
 
 it('coalesces simultaneous windows and clones snapshots for each consumer', async () => {
@@ -130,7 +132,7 @@ it('bounds retained portfolio snapshots and evicts the oldest', async () => {
     const builds = count('SELECT m.*'); await calendar(owner, 14); assert.equal(count('SELECT m.*'), builds + 1);
 });
 
-it('rebuilds across the New York date boundary even before the five-minute expiry', async () => {
+it('rebuilds across the New York date boundary even before the fifteen-minute expiry', async () => {
     now = Date.parse('2026-10-11T03:59:00Z'); timestamp = new Date(now);
     await calendar(owner, 14);
     now += 60_000; await calendar(owner, 14);

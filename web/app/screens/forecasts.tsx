@@ -1,13 +1,14 @@
 'use client';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { EventForecastResponse, ForecastDriver, ForecastExclusion, ForecastMarket, ForecastMarketsResponse,
-    ForecastsResponse, ScenarioForecast, RankedForecastsResponse, RankedForecastEvent, ForecastResultResponse, ForecastAssessmentResponse, ForecastResultSummary, ForecastAssessmentsResponse, ForecastGroupPrediction } from '../../../shared/types';
+    ForecastsResponse, ScenarioForecast, RankedForecastsResponse, RankedForecastEvent, ForecastResultResponse, ForecastAssessmentResponse, ForecastResultSummary, ForecastAssessmentsResponse, ForecastGroupPrediction, ForecastResultAssessmentResponse } from '../../../shared/types';
 import { api, Card, dateText, Empty, Fresh, href, money, percent, ReloadButton, Status, useData } from '../common';
 import { driverName } from './sensitivity';
 import { ForecastColumnHeading } from './forecast-column-heading';
 import { useOwner } from '../auth';
-import { getCachedResponse, invalidateCachedResponses } from '../../lib/api-client';
+import { getCachedResponse, getCacheOwner, getCacheRevision, invalidateCachedResponses } from '../../lib/api-client';
+import { loadForecastResultAssessment } from '../../lib/forecast-result-loader';
 
 const FORECAST_PAGE_SIZE = 10;
 const FORECAST_COLUMNS = [
@@ -212,8 +213,39 @@ export function ResultChange({ result, compact = false }: { result?: ForecastRes
 
 function EventResults({ event, onAssumption, assessment }: { event: RankedForecastEvent; onAssumption: (value: ForecastResultResponse | null) => void; assessment?: ForecastAssessmentResponse }) {
     const [ticker, setTicker] = useState(event.preferredMarketTicker ?? '');
+    const [requestToken, setRequestToken] = useState(0);
+    const [stockEffectsOpen, setStockEffectsOpen] = useState(true);
+    const selectedPanel = useRef<HTMLDetailsElement>(null);
+    const [individual, setIndividual] = useState<Record<string, ForecastResultAssessmentResponse>>(() => Object.fromEntries(event.outcomes.flatMap(m => {
+        const cached = getCachedResponse<ForecastResultAssessmentResponse>(`/forecasts/result/${encodeURIComponent(m.ticker)}/assessment`);
+        return cached ? [[m.ticker, cached]] : [];
+    })));
+    const onIndividual = useCallback((value: ForecastResultAssessmentResponse) => {
+        setIndividual(previous => previous[value.marketTicker] === value ? previous : { ...previous, [value.marketTicker]: value });
+    }, []);
+    const targets = JSON.stringify(event.outcomes.filter(m => m.result.changeUsd === null && m.result.unavailableReason !== 'no-measurement')
+        .map(m => m.ticker).sort((a, b) => Number(b === event.preferredMarketTicker) - Number(a === event.preferredMarketTicker)));
+    useEffect(() => {
+        let mounted = true;
+        const owner = getCacheOwner(), revision = getCacheRevision();
+        const update = (value: ForecastResultAssessmentResponse) => { if (mounted && owner === getCacheOwner() && revision === getCacheRevision()) onIndividual(value); };
+        for (const marketTicker of JSON.parse(targets) as string[]) {
+            const cached = getCachedResponse<ForecastResultAssessmentResponse>(`/forecasts/result/${encodeURIComponent(marketTicker)}/assessment`);
+            const pending: ForecastResultAssessmentResponse = { marketTicker, status: 'pending', selectedMarketTicker: null,
+                summary: null, generatedAt: null, asOf: null, reason: 'Queued for a stock-effects estimate…' };
+            update(cached?.status === 'ready' || cached?.status === 'unavailable' ? cached : pending);
+            void loadForecastResultAssessment(marketTicker, () => update({ ...pending, reason: null })).then(update).catch(() => {});
+        }
+        // Closing results does not abort shared work: completed estimates populate
+        // the private cache and are immediately available when results reopen.
+        return () => { mounted = false; };
+    }, [targets, onIndividual]);
+    function selectResult(value: string) { setTicker(value); setStockEffectsOpen(true); setRequestToken(token => token + 1); }
+    useEffect(() => { if (requestToken) selectedPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [ticker, requestToken]);
     const selected = event.outcomes.find(m => m.ticker === ticker) ?? event.outcomes[0];
-    const prediction = assessment?.predictions?.find(p => p.market.ticker === selected?.ticker);
+    const prediction = individual[selected?.ticker]?.status === 'ready'
+        ? individual[selected.ticker].predictions?.find(p => p.market.ticker === selected.ticker)
+        : assessment?.predictions?.find(p => p.market.ticker === selected?.ticker);
     const measuredSymbols = prediction?.stocks.map(stock => stock.symbol) ?? event.measuredSymbols;
     const unmeasuredSymbols = [...event.measuredSymbols, ...event.unmeasuredSymbols].filter(symbol => !measuredSymbols.includes(symbol));
     return <div className="forecast-results-content">
@@ -223,27 +255,81 @@ function EventResults({ event, onAssumption, assessment }: { event: RankedForeca
             {unmeasuredSymbols.length > 0 && <p className="note">Not modeled for the selected result: {unmeasuredSymbols.join(', ')}. Their actual future moves are unknown.</p>}
             {!!event.prices?.length && <div className="forecast-outcomes">{event.prices.map(price => <p className="note" key={price.symbol}><strong className="mono">{price.symbol}: {price.value.toFixed(3)}</strong> · {price.date} · <a href={price.url} target="_blank" rel="noreferrer">Price source</a></p>)}</div>}
             {!!event.sourceEvents?.length && <details><summary>Combined market sources</summary><ul>{event.sourceEvents.map(source => <li key={source.ticker}><a href={source.url} target="_blank" rel="noreferrer">{source.title}</a> <span className="mono">{source.ticker}</span></li>)}</ul></details>}
-            <OutcomeTable event={event} selected={selected?.ticker ?? ''} onSelect={setTicker}/>
+            <p className="note">Stock directions load when results open. Cached estimates appear immediately; missing estimates load in a queue. View stock effects opens the selected result’s calculation.</p>
+            <OutcomeTable event={event} selected={selected?.ticker ?? ''} onSelect={selectResult} individual={individual}/>
             {!event.outcomes.length && <Empty>The last open market closed while loading. Reload to see current events.</Empty>}
         </Card>
+        {selected && <details ref={selectedPanel} className="forecast-selected-effects forecast-stock-effects" open={stockEffectsOpen}
+            onToggle={event => setStockEffectsOpen(event.currentTarget.open)}>
+        <summary><span>Selected result stock effects</span><span className="forecast-stock-effects-action">{stockEffectsOpen ? 'Minimize ↑' : 'Expand ↓'}</span></summary>
+        {selected && selected.result.changeUsd === null && selected.result.unavailableReason !== 'no-measurement' &&
+            <IndividualResultAssessment key={selected.ticker} ticker={selected.ticker} assessment={individual[selected.ticker]} onUpdate={onIndividual}/>}
         {selected && <ResultDetails key={selected.ticker} ticker={selected.ticker} onAssumption={onAssumption} aiPrediction={prediction}/>}
+        </details>}
         <details className="forecast-extra-details"><summary>Combined assessment and sources{assessment?.status === 'pending' ? ' · In progress' : ''}</summary>
-            {assessment ? <AssessmentContent data={assessment} event={event} onSelect={setTicker}/> : <ForecastAssessment event={event} onSelect={setTicker}/>}
+            {assessment ? <AssessmentContent data={assessment} event={event} onSelect={selectResult}/> : <ForecastAssessment event={event} onSelect={selectResult}/>}
         </details>
     </div>;
 }
 
-export function OutcomeTable({ event, selected, onSelect }: { event: RankedForecastEvent; selected: string; onSelect: (ticker: string) => void }) {
+export function OutcomeTable({ event, selected, onSelect, individual = {} }: { event: RankedForecastEvent; selected: string; onSelect: (ticker: string) => void;
+    individual?: Record<string, ForecastResultAssessmentResponse> }) {
     return <div className="scroll forecast-outcome-scroll"><table className="forecast-outcome-table"><caption className="sr-only">Dated results with individual probabilities and measured scenario changes</caption>
         <thead><tr><th scope="col">Market close</th><th scope="col">Specific result</th><th scope="col">Yes odds</th><th scope="col">Portfolio change</th><th scope="col">Stocks up / down</th><th scope="col">Evidence</th></tr></thead>
-        <tbody>{event.outcomes.map(outcome => <tr key={outcome.ticker} className={selected === outcome.ticker ? 'forecast-row-open' : ''}>
+        <tbody>{event.outcomes.map(source => {
+            const state = individual[source.ticker];
+            const prediction = state?.status === 'ready' ? state.predictions?.find(p => p.market.ticker === source.ticker) : undefined;
+            const outcome = source.result.changeUsd === null && prediction ? { ...source, result: prediction.result } : source;
+            return <tr key={outcome.ticker} className={selected === outcome.ticker ? 'forecast-row-open' : ''}>
             <td><time dateTime={outcome.closeTime}>{dateText(outcome.closeTime, true)}</time></td>
             <th scope="row">{outcome.title}</th>
             <td className="amount">{percent(outcome.probability)}<span className="note">bid–ask midpoint</span></td>
-            <td><ResultChange result={outcome.result} compact/></td>
-            <td>{outcome.result.changeUsd === null ? <span className="note">Unmeasured</span> : <><span className="blue">↑ {outcome.result.gainingStocks.join(', ') || 'None'}</span><br/><span className="orange">↓ {outcome.result.losingStocks.join(', ') || 'None'}</span></>}</td>
+            <td><OutcomeEstimateStatus result={outcome.result} assessment={state}/></td>
+            <td>{outcome.result.changeUsd === null ? <span className="note" role={state?.status === 'pending' || !state ? 'status' : undefined}>
+                {outcome.result.unavailableReason === 'no-measurement' ? 'No reliable price-history measurement'
+                    : state?.status === 'pending' ? state.reason ?? 'Estimating stock directions…'
+                        : state ? 'Stock directions unavailable'
+                            : 'Loading stock directions…'}</span> : <><span className="blue">↑ {outcome.result.gainingStocks.join(', ') || 'None'}</span><br/><span className="orange">↓ {outcome.result.losingStocks.join(', ') || 'None'}</span></>}</td>
             <td><button type="button" aria-pressed={selected === outcome.ticker} onClick={() => onSelect(outcome.ticker)}>View stock effects</button></td>
-        </tr>)}</tbody></table></div>;
+        </tr>; })}</tbody></table></div>;
+}
+
+export function OutcomeEstimateStatus({ result, assessment }: { result: ForecastResultSummary; assessment?: ForecastResultAssessmentResponse }) {
+    if (result.changeUsd !== null || result.unavailableReason === 'no-measurement') return <ResultChange result={result} compact/>;
+    if (assessment?.status === 'pending') return <span role="status">{assessment.reason ?? 'Snowflake estimating this result…'}</span>;
+    if (assessment?.status === 'unavailable') return <><strong>AI result unavailable</strong><span className="note">{assessment.reason}</span></>;
+    if (assessment?.status === 'ready') return <><strong>Result estimate unavailable</strong><span className="note">{assessment.reason ?? 'The saved estimate has no supported stock-effects calculation.'}</span></>;
+    if (assessment?.status === 'not-requested') return <><strong>Estimate waiting</strong><span className="note">{assessment.reason}</span></>;
+    return <span role="status">Loading result estimate…</span>;
+}
+
+function IndividualResultAssessment({ ticker, assessment: data, onUpdate }: { ticker: string; assessment?: ForecastResultAssessmentResponse; onUpdate: (value: ForecastResultAssessmentResponse) => void }) {
+    const path = `/forecasts/result/${encodeURIComponent(ticker)}/assessment`;
+    const [busy, setBusy] = useState(false);
+    const generation = useRef(0);
+    const run = useCallback(async (retry = false) => {
+        const current = ++generation.current;
+        setBusy(true);
+        onUpdate({ marketTicker: ticker, status: 'pending', selectedMarketTicker: null, summary: null, generatedAt: null, reason: null, asOf: null });
+        try {
+            const value = await loadForecastResultAssessment(ticker, () => {}, retry);
+            if (value && generation.current === current) onUpdate(value);
+        } catch (error) {
+            if (generation.current === current) onUpdate({ marketTicker: ticker, status: 'unavailable', selectedMarketTicker: null,
+                summary: null, generatedAt: null, reason: error instanceof Error ? error.message : 'Result request failed.', asOf: null });
+        } finally { if (generation.current === current) setBusy(false); }
+    }, [ticker, onUpdate]);
+    useEffect(() => () => { generation.current++; }, []);
+    return <div className="forecast-individual-status" aria-live="polite">
+        {busy || data?.status === 'pending' ? <p className="note" role="status">{data?.reason ?? 'Snowflake is estimating this selected result. Stock effects will use reliable measured sensitivities.'}</p>
+            : data?.status === 'ready' ? <p className="note">Individual estimate cached{data.generatedAt ? ` · ${new Date(data.generatedAt).toLocaleString()}` : ''}. AI confidence is self-rated; event odds remain separate.</p>
+            : <p className="note">{data?.reason ?? 'Checking for a cached individual estimate…'}</p>}
+        {!busy && data?.status === 'not-requested' && <button type="button" onClick={() => void run()}>Estimate this result</button>}
+        {!busy && data?.status === 'unavailable' && <button type="button" onClick={() => void run(true)}>Retry result estimate</button>}
+        {!busy && data?.status === 'pending' && <ReloadButton label="Check result status" onReload={async () => {
+            const value = await api<ForecastResultAssessmentResponse>(path, { cache: 'no-store' }); onUpdate(value);
+        }}/>}
+    </div>;
 }
 
 function ForecastAssessment({ event, onSelect }: { event: RankedForecastEvent; onSelect: (ticker: string) => void }) {
@@ -296,7 +382,7 @@ function ResultDetails({ ticker, onAssumption, aiPrediction }: { ticker: string;
     const { data, error, reload } = useData<ForecastResultResponse>(`/forecasts/result/${encodeURIComponent(ticker)}`);
     const [revision, setRevision] = useState(0);
     async function refresh() { onAssumption(null); setRevision(value => value + 1); await reload(); }
-    return <><div className="row forecast-selected-result"><h3>Selected result stock effects</h3><ReloadButton onReload={refresh} label="Reload result"/></div><Status error={error} loading={!data && !aiPrediction && !error}/>
+    return <><div className="row forecast-selected-result"><ReloadButton onReload={refresh} label="Reload result"/></div><Status error={error} loading={!data && !aiPrediction && !error}/>
         {(aiPrediction || data) && <><ResultEstimate data={data ?? aiPrediction!} aiPrediction={aiPrediction}/><details className="forecast-extra-details"><summary>Calculate with your own driver assumption</summary><ResultAssumption key={`${ticker}|${(aiPrediction ?? data)!.asOf}|${revision}`} data={aiPrediction ?? data!} onResult={onAssumption}/></details></>}</>;
 }
 

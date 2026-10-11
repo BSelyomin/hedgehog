@@ -5,7 +5,7 @@ import { Forecasts, ForecastsContent, ScenarioResult, EventForecastResult, Portf
 import { buildForecasts } from '../../server/src/services/forecast-model';
 import { rankForecastEvents, predictEventResult, assumedEventResult } from '../../server/src/services/event-predictions';
 import { jointForecastPrediction } from '../../server/src/services/forecast-assessment';
-import type { ForecastsResponse, ScenarioForecast, EventForecastResponse, RankedForecastEvent, ForecastAssessmentResponse } from '../../shared/types';
+import type { ForecastsResponse, ScenarioForecast, EventForecastResponse, RankedForecastEvent, ForecastAssessmentResponse, ForecastResultAssessmentResponse } from '../../shared/types';
 
 const data: ForecastsResponse = {
     asOf: '2026-10-10T02:00:00Z', totalValue: 1500,
@@ -278,4 +278,33 @@ it('shows the combined family prediction in the main row and keeps each time/tar
     for (const label of ['Combined family forecast', '↑ Up', '$1,015.00', 'self-rated, uncalibrated', 'not a cumulative forecast', 'Current contract odds are displayed separately']) assert.ok(detail.includes(label), label);
     const individual = renderToStaticMarkup(<OutcomeTable event={event} selected="M-0" onSelect={() => {}}/>);
     for (const label of ['Above 7000', 'Above 7500', '2026-10-12T14:00:00.000Z', '2026-10-12T15:00:00.000Z', '70.0%', '30.0%', '$600.00', '$750.00']) assert.ok(individual.includes(label), label);
+});
+
+it('shows individual estimate coverage and statuses instead of asking for manual assumptions on unrequested results', () => {
+    const cutoff = '2026-10-09', prices = new Map([['SPY', [{ date: cutoff, close: 100 }]]]);
+    const models = buildForecasts({ holdings: [{ symbol: 'AAA', valueUsd: 1000 }], prices, cutoff, asOf: data.asOf,
+        measurements: [{ symbol: 'AAA', driver: 'SPY', b: 1.5, se: .1, low: 1.304, high: 1.696, days: 250,
+            reliable: true, effect: .015, computed_at: new Date(data.asOf!), price_through: cutoff }] });
+    const row = { ticker: 'M11', event_ticker: 'E', series_ticker: 'TESTPOLICY', title: 'Policy result', event_title: 'Policy decision',
+        close_time: new Date('2026-11-01'), tags: ['fed-rates'], ts: new Date(), yes_bid: .6, yes_ask: .8,
+        strike_type: null, floor_strike: null, cap_strike: null, linked_symbols: ['AAA'] };
+    const source = predictEventResult(row, models, prices, cutoff);
+    const predicted = assumedEventResult(row, models, { driver: 'SPY', change: 2 });
+    predicted.result.basis = 'ai-assumption'; predicted.result.confidence = 62;
+    const event: RankedForecastEvent = { ticker: 'E', title: 'Policy decision', category: 'Economics', eventTime: '2026-11-01', eventTimeSource: 'close',
+        closeTime: '2026-11-01', linkedValue: 1000, share: 1, dailySensitivityUsd: 15, driver: 'SPY', driverLabel: 'Stock market',
+        measuredSymbols: ['AAA'], unmeasuredSymbols: [], preferredMarketTicker: 'M0',
+        outcomes: Array.from({ length: 12 }, (_, i) => ({ ...source.market, ticker: `M${i}`, title: `Policy result ${i}`, result: source.result, linkedSymbols: ['AAA'] })) };
+    const state = (marketTicker: string, status: ForecastResultAssessmentResponse['status'], reason: string | null = null): ForecastResultAssessmentResponse => ({
+        marketTicker, status, selectedMarketTicker: marketTicker, summary: null, generatedAt: data.asOf, reason, asOf: data.asOf });
+    const individual = { M11: { ...state('M11', 'ready'), predictions: [predicted] }, M10: state('M10', 'pending'),
+        M9: state('M9', 'unavailable', 'The result estimate failed validation. Automatic retries are stopped.') };
+    const html = renderToStaticMarkup(<OutcomeTable event={event} selected="M11" onSelect={() => {}} individual={individual}/>);
+    assert.equal((html.match(/Loading result estimate/g) ?? []).length, 9);
+    assert.equal((html.match(/Loading stock directions/g) ?? []).length, 9);
+    for (const label of ['$30.00', '↑ AAA', 'AI confidence: 62%', '70.0%', 'Snowflake estimating this result', 'AI result unavailable', 'Automatic retries are stopped']) assert.ok(html.includes(label), label);
+    assert.ok(!html.includes('Needs a driver assumption') && !html.includes('Enter a driver-change assumption') && !html.includes('Unmeasured'));
+    event.outcomes[0].result = { ...source.result, unavailableReason: 'no-measurement', reason: 'Insufficient aligned price history.' };
+    const missing = renderToStaticMarkup(<OutcomeTable event={event} selected="M0" onSelect={() => {}}/>);
+    assert.ok(missing.includes('No reliable measurement') && !missing.includes('$30.00'));
 });

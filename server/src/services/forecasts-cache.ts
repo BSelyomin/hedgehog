@@ -1,4 +1,5 @@
 import type { ForecastAssessmentResponse, ForecastAssessmentsResponse, ForecastMarket } from '../../../shared/types.ts';
+import { PAGE_CACHE_MS } from '../../../shared/cache.ts';
 import { getHoldings, portfolioRevision } from './holdings.ts';
 import { forecastMarkets, loadForecasts, MAX_QUOTE_AGE_MS } from './forecasts.ts';
 import { forecastResult, rankedForecasts } from './ranked-forecasts.ts';
@@ -6,6 +7,7 @@ import { forecastAssessment, forecastAssessments, retryForecastAssessment } from
 import { completedPriceDate } from './price-date.ts';
 import { timed } from './request-timing.ts';
 import { snowflakeConfigured } from './snowflake.ts';
+import { forecastResultAssessment } from './forecast-result-assessment.ts';
 
 interface Snapshot {
     portfolio: Awaited<ReturnType<typeof getHoldings>>;
@@ -13,7 +15,7 @@ interface Snapshot {
     refreshing: boolean;
     reads: Map<string, { promise: Promise<unknown> }>;
 }
-const CACHE_MS = 5 * 60_000, MAX_PORTFOLIOS = 32, MAX_READS = 128;
+const MAX_PORTFOLIOS = 32, MAX_READS = 128;
 const snapshots = new Map<string, Snapshot>();
 
 async function withSnapshot<T>(session: string, refresh: boolean, run: (snapshot: Snapshot) => Promise<T>): Promise<T> {
@@ -22,7 +24,7 @@ async function withSnapshot<T>(session: string, refresh: boolean, run: (snapshot
         snowflakeConfigured(), process.env.SNOWFLAKE_ACCOUNT_URL?.trim(), process.env.SNOWFLAKE_CORTEX_MODEL?.trim()]);
     let snapshot = snapshots.get(key);
     if (!snapshot || snapshot.until <= Date.now() || refresh && !snapshot.refreshing) {
-        snapshot = { portfolio, until: Date.now() + CACHE_MS, refreshing: refresh, reads: new Map() };
+        snapshot = { portfolio, until: Date.now() + PAGE_CACHE_MS, refreshing: refresh, reads: new Map() };
     }
     snapshots.delete(key); snapshots.set(key, snapshot);
     if (snapshots.size > MAX_PORTFOLIOS) snapshots.delete(snapshots.keys().next().value!);
@@ -57,7 +59,7 @@ function model(session: string, snapshot: Snapshot, history: 2 | 321 = 2) {
 }
 function limitLifetime(snapshot: Snapshot, markets: Pick<ForecastMarket, 'closeTime' | 'probability' | 'asOf'>[]) {
     // Never retain an open contract past close or a quoted probability past its
-    // existing freshness limit, even if the five-minute cache has time left.
+    // existing freshness limit, even if the page cache has time left.
     for (const market of markets) {
         snapshot.until = Math.min(snapshot.until, Date.parse(market.closeTime));
         if (market.probability !== null && market.asOf) snapshot.until = Math.min(snapshot.until, Date.parse(market.asOf) + MAX_QUOTE_AGE_MS);
@@ -113,4 +115,10 @@ export function cachedRetryForecastAssessment(session: string, ticker: string) {
         try { return await retryForecastAssessment(session, ticker, await assessmentContext(session, snapshot)); }
         finally { clear(); }
     });
+}
+
+export function cachedForecastResultAssessment(session: string, ticker: string,
+    action: 'read' | 'start' | 'retry' = 'read', refresh = false) {
+    return withSnapshot(session, refresh, async snapshot =>
+        forecastResultAssessment(session, ticker, action, await assessmentContext(session, snapshot)));
 }

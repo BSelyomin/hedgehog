@@ -62,7 +62,8 @@ export async function savedBriefing(session: string, portfolio?: Awaited<ReturnT
 
 export async function briefingResponse(session: string, portfolio?: Awaited<ReturnType<typeof getHoldings>>): Promise<BriefingResponse> {
     const saved = await savedBriefing(session, portfolio), row = saved?.value;
-    return { date: row?.date ?? briefingDay(), today: briefingDay(), text: row?.text ?? null, parts: row?.parts ?? null,
+    const today = briefingDay(new Date(Date.now()));
+    return { date: row?.date ?? today, today, text: row?.text ?? null, parts: row?.parts ?? null,
         audioUrl: row?.audio ? `/api/briefing/audio?v=${encodeURIComponent(saved!.createdAt)}` : null,
         asOf: row?.asOf ?? null, generatedAt: saved?.createdAt ?? null };
 }

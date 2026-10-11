@@ -34,6 +34,15 @@
 .holding-value{display:block;font-size:13px;margin-top:6px;white-space:nowrap}
 .overview-stats{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
 .portfolio-editor{min-width:0}
+.forecast-selected-effects{scroll-margin-top:24px}
+.forecast-stock-effects>summary{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;min-height:44px;cursor:pointer;font-size:16px;font-weight:600}
+.forecast-stock-effects>summary::-webkit-details-marker{display:none}
+.forecast-stock-effects>summary:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:4px}
+.forecast-stock-effects-action{color:var(--accent);font-size:14px}
+.forecast-stock-effects .forecast-selected-result{justify-content:flex-end}
+.forecast-individual-status{padding:14px 18px;margin:0 0 16px;border:1px solid #24476E;border-radius:12px;background:#101720}
+.forecast-individual-status p{margin:0}
+.forecast-individual-status button{margin-top:12px}
 .portfolio-editor .note{font-size:14px;line-height:1.6}
 .portfolio-list{max-height:280px;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable;margin-bottom:20px;padding-right:8px}
 .portfolio-list .holding{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px}

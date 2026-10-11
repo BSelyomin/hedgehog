@@ -83,9 +83,10 @@ it('reloads metadata on the refresh header without regenerating or writing AI/au
     assert.ok(calls.every(sql => !sql.includes('INSERT') && !sql.includes('DELETE')));
 });
 
-it('expires metadata after five minutes and across the New York date or voice configuration boundary', async () => {
+it('expires metadata after fifteen minutes and across the New York date or voice configuration boundary', async () => {
     await cachedBriefingResponse(owner);
-    now += 299_999; await cachedBriefingResponse(owner); assert.equal(reads(), 1);
+    now += 300_000; await cachedBriefingResponse(owner); assert.equal(reads(), 1);
+    now += 599_999; await cachedBriefingResponse(owner); assert.equal(reads(), 1);
     now++; await cachedBriefingResponse(owner); assert.equal(reads(), 2);
     process.env.ELEVENLABS_VOICE_ID = 'other-fixture-voice'; await cachedBriefingResponse(owner); assert.equal(reads(), 3);
     process.env.ELEVENLABS_API_KEY = 'fixture-enabled'; await cachedBriefingResponse(owner); assert.equal(reads(), 4);

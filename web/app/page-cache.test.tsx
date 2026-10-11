@@ -38,10 +38,11 @@ it('shares equivalent query strings while keeping different filters, dates and p
     assert.equal(calls, 5);
 });
 
-it('expires page reads after five minutes without extending their lifetime on navigation', async () => {
+it('expires page reads after fifteen minutes without extending their lifetime on navigation', async () => {
     setSessionKey('expiry-owner'); let now = 1000, calls = 0; Date.now = () => now;
     globalThis.fetch = async () => Response.json({ value: ++calls });
-    await api('/exposure'); now += 299_999; await api('/exposure'); assert.equal(calls, 1);
+    await api('/exposure'); now += 300_000; await api('/exposure'); assert.equal(calls, 1);
+    now += 599_999; await api('/exposure'); assert.equal(calls, 1);
     now++; assert.equal(getCachedResponse('/exposure'), null); await api('/exposure'); assert.equal(calls, 2);
     await api('/health'); now += 30_000; assert.equal(getCachedResponse('/health'), null);
 });

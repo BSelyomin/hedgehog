@@ -1,10 +1,11 @@
 import type { MoveRange, MovesResponse } from '../../../shared/types.ts';
+import { PAGE_CACHE_MS } from '../../../shared/cache.ts';
 import { getHoldings, portfolioRevision } from './holdings.ts';
 import { moves } from './moves.ts';
 import { completedPriceDate } from './price-date.ts';
 import { timed } from './request-timing.ts';
 
-const CACHE_MS = 5 * 60_000, MAX_SNAPSHOTS = 32;
+const MAX_SNAPSHOTS = 32;
 const snapshots = new Map<string, { promise: Promise<MovesResponse>; until: number }>();
 
 // Cache page reads, while the uncached builder remains available to jobs. Different
@@ -21,7 +22,7 @@ export async function cachedMoves(session: string, date?: string, range: MoveRan
         until: Infinity,
         promise: timed('moves_build', async () => {
             const data = await moves(session, date, portfolio, range);
-            entry.until = Date.now() + CACHE_MS;
+            entry.until = Date.now() + PAGE_CACHE_MS;
             return data;
         })
     };

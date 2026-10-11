@@ -71,7 +71,9 @@ it('preserves original quote timestamps until expiry and explicitly refreshes bo
     const fresh = await request(app, '/earnings/AAPL', { headers });
     assert.equal(fresh.body.events[0].markets[0].probability, .8); assert.equal(fresh.body.asOf, timestamp.toISOString());
     assert.equal(count('SELECT m.*'), 2);
-    now += 300_000; await request(app, '/earnings', { headers }); assert.equal(count('SELECT m.*'), 3);
+    now += 300_000; await request(app, '/earnings', { headers }); assert.equal(count('SELECT m.*'), 2);
+    now += 599_999; await request(app, '/earnings/AAPL', { headers }); assert.equal(count('SELECT m.*'), 2);
+    now++; await request(app, '/earnings', { headers }); assert.equal(count('SELECT m.*'), 3);
 });
 
 it('coalesces simultaneous list/company builds and clones cached payloads for each consumer', async () => {

@@ -21,7 +21,7 @@ import { scenarioForecast, eventForecast, validateEventForecast } from './servic
 import { validateScenario } from './services/forecast-model.ts';
 import { forecastResult } from './services/ranked-forecasts.ts';
 import { cachedForecasts, cachedForecastMarkets, cachedRankedForecasts, cachedForecastResult,
-    cachedForecastAssessment, cachedForecastAssessments, cachedRetryForecastAssessment } from './services/forecasts-cache.ts';
+    cachedForecastAssessment, cachedForecastAssessments, cachedRetryForecastAssessment, cachedForecastResultAssessment } from './services/forecasts-cache.ts';
 import { askAllowed, askEvent, validateQuestion } from './services/event-answer.ts';
 import { FORECAST_HORIZONS, TRACK_GRADES, TRACK_SORTS } from '../../shared/types.ts';
 import type { TrackGrade } from '../../shared/types.ts';
@@ -72,6 +72,21 @@ app.get('/forecasts/assessment/:ticker', async (req, res) => {
 app.post('/forecasts/assessment/:ticker', async (req, res) => {
     const result = await cachedRetryForecastAssessment(res.locals.session, req.params.ticker);
     if (!result) { res.status(404).json({ error: 'No linked forecast group found', asOf: null }); return; }
+    res.json(result);
+});
+app.get('/forecasts/result/:ticker/assessment', async (req, res) => {
+    const result = await cachedForecastResultAssessment(res.locals.session, req.params.ticker, 'read', req.get('X-Hedgehog-Refresh') === '1');
+    if (!result) { res.status(404).json({ error: 'No linked open result found', asOf: null }); return; }
+    res.json(result);
+});
+app.post('/forecasts/result/:ticker/assessment', async (req, res) => {
+    const result = await cachedForecastResultAssessment(res.locals.session, req.params.ticker, 'start');
+    if (!result) { res.status(404).json({ error: 'No linked open result found', asOf: null }); return; }
+    res.json(result);
+});
+app.post('/forecasts/result/:ticker/assessment/retry', async (req, res) => {
+    const result = await cachedForecastResultAssessment(res.locals.session, req.params.ticker, 'retry');
+    if (!result) { res.status(404).json({ error: 'No linked open result found', asOf: null }); return; }
     res.json(result);
 });
 app.get('/forecasts/result/:ticker', async (req, res) => {

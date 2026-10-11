@@ -22,7 +22,7 @@ export async function loadForecasts(session: string, historyLimit: 2 | 321 = 321
         query<{ symbol: string; ts: Date; close: number; loaded_at: Date }>(`
             SELECT s.symbol,p.ts,p.close,p.loaded_at FROM unnest($1::text[])s(symbol)
             CROSS JOIN LATERAL(SELECT ts,close,loaded_at FROM prices WHERE symbol=s.symbol
-                AND ts < (($2::date+1)::timestamp AT TIME ZONE 'UTC') ORDER BY ts DESC LIMIT ${historyLimit})p`, [symbols, cutoff]),
+                AND ts < (($2::date+1)::timestamp AT TIME ZONE 'UTC') ORDER BY ts DESC LIMIT ${historyLimit})p`, [symbols, cutoff], 'prices'),
         query<MeasuredRow & { price_through: string | null }>(`
             SELECT symbol,driver,b,se,low,high,days,reliable,effect,computed_at,price_through::text
             FROM measured_links WHERE symbol=ANY($1::text[])`, [portfolio.holdings.filter(isSecurity).map(h => h.symbol)])
@@ -77,7 +77,7 @@ async function marketsForHoldings(holdings: Holding[], marketTicker?: string): P
             ORDER BY m.close_time,m.ticker LIMIT 200
         ) SELECT m.*,q.ts,q.yes_bid,q.yes_ask FROM linked m
         LEFT JOIN LATERAL(SELECT ts,yes_bid,yes_ask FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)q ON true
-        ORDER BY m.close_time,m.ticker`, [symbols, marketTicker ?? null]);
+        ORDER BY m.close_time,m.ticker`, [symbols, marketTicker ?? null], 'forecast_quotes');
     const markets = rows.map(row => forecastMarket(row));
     const times = markets.flatMap(m => m.asOf ? [Date.parse(m.asOf)] : []);
     return { markets, asOf: times.length ? new Date(Math.max(...times)).toISOString() : null };

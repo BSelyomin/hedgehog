@@ -48,10 +48,10 @@ export async function getHoldings(session: string) {
     const config = configuration();
     const [rows, imported] = await Promise.all([
         query<{ symbol: string; value_usd: string; updated_at: Date; asset_type?: AssetType; details?: HoldingDetails }>(
-            'SELECT * FROM holdings WHERE session_id=$1 ORDER BY symbol', [session]),
+            'SELECT * FROM holdings WHERE session_id=$1 ORDER BY symbol', [session], 'holdings'),
         session.startsWith('user:') && config.configured ? query<{ symbol: string; value_usd: string; updated_at: Date }>(
             `SELECT h.* FROM brokerage_holdings h JOIN snaptrade_users u ON h.session_id='user:' || u.user_id::text AND h.mode=u.mode
-             WHERE h.session_id=$1 AND h.mode=$2 AND u.client_hash=$3 ORDER BY h.symbol`, [session, mode(), config.clientHash]) : Promise.resolve([])
+             WHERE h.session_id=$1 AND h.mode=$2 AND u.client_hash=$3 ORDER BY h.symbol`, [session, mode(), config.clientHash], 'brokerage_holdings') : Promise.resolve([])
     ]);
     const manualHoldings = rows.map((r): Holding => ({ symbol: r.symbol, valueUsd: Number(r.value_usd), ...(r.asset_type && r.asset_type !== 'security' ? { assetType: r.asset_type, details: r.details ?? {} } : {}) }));
     const brokerageHoldings = imported.map(r => ({ symbol: r.symbol, valueUsd: Number(r.value_usd) }));

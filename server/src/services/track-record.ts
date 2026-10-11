@@ -14,7 +14,7 @@ export async function trackRecord(session?: string, horizonHours = 24): Promise<
         yes_bid?: number; yes_ask?: number;
     }>(horizonHours === 24
         ? `SELECT s.*,COALESCE(s.title,m.title) title,COALESCE(s.series_ticker,m.series_ticker) series_ticker,COALESCE(s.event_ticker,m.event_ticker) event_ticker,r.released_at,r.source_url FROM settled_markets s LEFT JOIN markets m ON m.ticker=s.ticker LEFT JOIN event_releases r ON r.event_ticker=COALESCE(s.event_ticker,m.event_ticker) ORDER BY s.close_time DESC,s.ticker`
-        : `SELECT s.*,(s.yes_bid+s.yes_ask)/2 AS prob_24h_before,r.released_at,r.source_url FROM forecast_observations s LEFT JOIN event_releases r ON r.event_ticker=s.event_ticker WHERE horizon_hours=$1 ORDER BY close_time DESC,ticker`, horizonHours === 24 ? [] : [horizonHours]);
+        : `SELECT s.*,(s.yes_bid+s.yes_ask)/2 AS prob_24h_before,r.released_at,r.source_url FROM forecast_observations s LEFT JOIN event_releases r ON r.event_ticker=s.event_ticker WHERE horizon_hours=$1 ORDER BY close_time DESC,ticker`, horizonHours === 24 ? [] : [horizonHours], 'track_record');
     const reviewed = await query<{count: string}>('SELECT count(DISTINCT series_ticker) count FROM series_tags WHERE reviewed=true');
     // Category relevance means a reviewed series shares a tag with a saved holding.
     // It is not a claim that every historical market in that category concerns that holding.

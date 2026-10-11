@@ -50,9 +50,10 @@ export async function proxyApi(request: Request): Promise<Response> {
         for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
     }
     try {
+        const resultEstimate = request.method === 'POST' && /^\/api\/forecasts\/result\/[^/]+\/assessment(?:\/retry)?$/.test(incoming.pathname);
         upstream = await fetch(backend, { method: request.method, headers,
             body: body as BodyInit | undefined,
-            cache: 'no-store', redirect: 'manual', signal: AbortSignal.any([request.signal, AbortSignal.timeout(request.method === 'GET' ? 25000 : 85000)]) });
+            cache: 'no-store', redirect: 'manual', signal: AbortSignal.any([request.signal, AbortSignal.timeout(resultEstimate ? 145000 : request.method === 'GET' ? 25000 : 85000)]) });
     } catch {
         return failure(502, 'Cannot reach the Hedgehog backend. Check that the backend is running and its database is reachable.');
     }

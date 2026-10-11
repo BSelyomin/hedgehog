@@ -28,10 +28,11 @@ export const FORECAST_SCHEMA = { type: 'object', properties: {
     }, required: ['horizonMarketTicker', 'driver', 'change', 'confidence', 'evidenceMarketTickers'], additionalProperties: false } }
 }, required: ['selectedMarketTicker', 'text', 'sourceIds', 'assumptions', 'jointForecasts'], additionalProperties: false };
 
-export function assessmentRequest(event: RankedForecastEvent, data: ForecastsResponse, holdings: Holding[]) {
+export function assessmentRequest(event: RankedForecastEvent, data: ForecastsResponse, holdings: Holding[], marketTicker?: string) {
     // Bound generated per-contract output below Cortex's completion limit. The
     // complete family still informs the joint forecast through contracts below.
-    const outcomes = representativeOutcomes(event, event.outcomes.some(m => m.result.changeUsd === null) ? 8 : 48);
+    const outcomes = marketTicker ? event.outcomes.filter(m => m.ticker === marketTicker)
+        : representativeOutcomes(event, event.outcomes.some(m => m.result.changeUsd === null) ? 8 : 48);
     const linked = [...event.measuredSymbols, ...event.unmeasuredSymbols];
     const drivers = data.drivers.flatMap(d => {
         const measurements = d.holdings.filter(h => linked.includes(h.symbol)).sort((a, b) => a.symbol.localeCompare(b.symbol));
@@ -62,7 +63,7 @@ export function assessmentRequest(event: RankedForecastEvent, data: ForecastsRes
     const jointSymbols = jointForecastScope(event);
     const jointDrivers = drivers.filter(d => d.holdings.some(h => jointSymbols.includes(h.symbol))).map(d => d.key);
     const quoted = contracts.filter(m => m.probabilityPoints !== null);
-    const jointContext = { required: quoted.length >= 2 && jointDrivers.length > 0,
+    const jointContext = { required: !marketTicker && quoted.length >= 2 && jointDrivers.length > 0,
         horizonMarketTicker: quoted[0]?.marketTicker ?? null, linkedSymbols: jointSymbols, allowedDrivers: jointDrivers };
     const sources: SourcePassage[] = [
         ...(event.sourceEvents ?? []).map((e, i) => ({ id: `event-${i}`, title: e.title, url: e.url,
@@ -81,7 +82,8 @@ export function assessmentRequest(event: RankedForecastEvent, data: ForecastsRes
             high: h.sensitivity.high, days: h.sensitivity.days, effect: h.sensitivity.typicalEffect })),
         outcomes: event.outcomes.map(m => ({ ticker: m.ticker, title: m.title, closeTime: m.closeTime, seriesTicker: m.seriesTicker, strike: m.strike,
             linkedSymbols: [...(m.linkedSymbols ?? linked)].sort() })).sort((a, b) => a.ticker.localeCompare(b.ticker)) });
-    return { input, identity, sources };
+    // A targeted completion must never hit a combined-only family cache entry.
+    return { input, identity: marketTicker ? { ...identity, marketTicker } : identity, sources };
 }
 
 export function checkedAssessment(result: unknown, input: unknown, sources: SourcePassage[]) {

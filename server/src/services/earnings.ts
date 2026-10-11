@@ -1,4 +1,5 @@
 import type { EarningsListResponse, EarningsReportMove, EarningsResponse, ExposureEvent, ExposureResponse } from '../../../shared/types.ts';
+import { PAGE_CACHE_MS } from '../../../shared/cache.ts';
 import { query } from '../db.ts';
 import { exposure } from './exposure.ts';
 import { briefingDay } from './briefing-content.ts';
@@ -49,7 +50,6 @@ interface EarningsContext {
     details: Map<string, Promise<EarningsResponse>>;
     list: EarningsListResponse;
 }
-const CACHE_MS = 5 * 60_000;
 const MAX_PORTFOLIOS = 32;
 const contexts = new Map<string, { promise: Promise<EarningsContext>; until: number }>();
 
@@ -69,7 +69,7 @@ async function earningsContext(session: string, refresh: boolean): Promise<Earni
         ]);
         // Earnings needs company results only; don't retain the full exposure map.
         const data = { holdings: exposed.holdings, totalValue: exposed.totalValue, events: exposed.events.filter(isResultsEvent), asOf: exposed.asOf };
-        entry.until = Date.now() + CACHE_MS;
+        entry.until = Date.now() + PAGE_CACHE_MS;
         return { data, names, details: new Map(), list: buildEarningsList(data, names) };
     }) };
     contexts.delete(key); contexts.set(key, entry);

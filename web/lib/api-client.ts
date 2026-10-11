@@ -1,7 +1,8 @@
+import { PAGE_CACHE_MS } from '../../shared/cache.ts';
+
 let sessionKey: string | null = null;
 const responses = new Map<string, { value: unknown; until: number }>();
 const requests = new Map<string, { promise: Promise<unknown>; refresh: boolean }>();
-const PAGE_CACHE_MS = 5 * 60_000;
 const MAX_CACHED_RESPONSES = 200;
 let revision = 0;
 
@@ -18,6 +19,7 @@ function cacheLifetime(path: string) {
 function clearResponses() { revision++; responses.clear(); requests.clear(); }
 export function setSessionKey(value: string) { if (sessionKey !== value) clearResponses(); sessionKey = value; }
 export function getCacheOwner() { return sessionKey; }
+export function getCacheRevision() { return revision; }
 export function invalidateCachedResponses(prefix: string) {
     for (const key of responses.keys()) if (key.startsWith(prefix)) responses.delete(key);
     for (const key of requests.keys()) if (key.startsWith(prefix)) requests.delete(key);
@@ -83,6 +85,13 @@ export async function api<T>(path: string, options?: RequestInit, timeoutMs = op
     const method = (options?.method ?? 'GET').toUpperCase();
     options?.signal?.throwIfAborted();
     if (method !== 'GET') {
+        if (method === 'POST' && /^\/forecasts\/result\/[^/]+\/assessment(?:\/retry)?$/.test(path)) {
+            // An explicit estimate changes only this result's AI status, not the portfolio.
+            const resultPath = path.replace(/\/retry$/, '');
+            invalidateCachedResponses(resultPath);
+            try { return await requestAPI<T>(path, options, timeoutMs); }
+            finally { invalidateCachedResponses(resultPath); }
+        }
         // These POSTs only calculate a user-entered scenario; they do not save it
         // or change the portfolio, so existing page reads remain valid.
         if (method === 'POST' && (path === '/forecasts/scenario' || path === '/forecasts/event' || /^\/forecasts\/result\/[^/]+$/.test(path)))

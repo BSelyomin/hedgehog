@@ -1,4 +1,5 @@
 import type { ExposureResponse, ExposureEvent, Market, EventResponse, CalendarResponse } from '../../../shared/types.ts';
+import { PAGE_CACHE_MS } from '../../../shared/cache.ts';
 import { query, iso } from '../db.ts';
 import { getHoldings, portfolioRevision } from './holdings.ts';
 import { briefingDay } from './briefing-content.ts';
@@ -53,7 +54,7 @@ export async function exposure(session: string, portfolio?: Awaited<ReturnType<t
             FROM markets m JOIN events e ON e.ticker=m.event_ticker
             WHERE m.series_ticker IN(${linkedSeries}) AND m.status='active' AND m.close_time>now())
             SELECT m.*,s.ts,s.yes_bid,s.yes_ask,s.mid,s.volume_24h,s.open_interest FROM linked m
-            LEFT JOIN LATERAL(SELECT * FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON true`, [symbols, assetTags]),
+            LEFT JOIN LATERAL(SELECT * FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)s ON true`, [symbols, assetTags], 'exposure_quotes'),
         query<{ series_ticker: string; tag: string }>(`SELECT series_ticker,tag FROM series_tags
             WHERE reviewed=true AND series_ticker IN(${linkedSeries})`, [symbols, assetTags]),
         query<{ symbol: string; tag: string }>('SELECT symbol,tag FROM stock_tags WHERE symbol=ANY($1)', [symbols]),
@@ -96,7 +97,7 @@ export async function exposure(session: string, portfolio?: Awaited<ReturnType<t
     const byHolding = holdings.map(h => ({ symbol: h.symbol, events: result.flatMap(e => { const l = e.links.find(l => l.symbol === h.symbol); return l ? [{ ticker: e.ticker, title: e.title, type: l.type }] : []; }).sort((a, b) => linkRank[a.type] - linkRank[b.type]), drivers: isSecurity(h) ? rankDrivers(h.symbol, measurements) : [] }));
     return { holdings, totalValue, byHolding, categories: categorize(holdings, result, profiles, measurements, await fundClasses()), events: result.sort((a, b) => b.share - a.share || (b.topicValue ?? 0) - (a.topicValue ?? 0)), asOf };
 }
-const EXPOSURE_CACHE_MS = 5 * 60_000, MAX_PORTFOLIOS = 32;
+const MAX_PORTFOLIOS = 32;
 const snapshots = new Map<string, { promise: Promise<ExposureResponse>; until: number }>();
 
 // Calendar windows and its "All future dates" exposure read share one private snapshot.
@@ -113,7 +114,7 @@ export async function cachedExposure(session: string, refresh = false): Promise<
         until: Infinity,
         promise: timed('exposure_build', async () => {
             const data = await exposure(session, portfolio);
-            entry.until = Date.now() + EXPOSURE_CACHE_MS;
+            entry.until = Date.now() + PAGE_CACHE_MS;
             return data;
         })
     };

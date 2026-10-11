@@ -36,7 +36,7 @@ export async function rankedForecasts(session: string, snapshot?: Awaited<Return
             min(m.expected_expiration_time) FILTER(WHERE m.expected_expiration_time>now()) AS expected_expiration_time
         FROM relevant r JOIN events e ON e.series_ticker=r.series_ticker JOIN markets m ON m.event_ticker=e.ticker
         WHERE m.status='active' AND m.close_time>now()
-        GROUP BY e.ticker,r.tags`, [symbols]);
+        GROUP BY e.ticker,r.tags`, [symbols], 'forecast_candidates');
     const candidates: EventCandidate[] = rows.map(r => {
         const timing = eventTime(Date.now(), r.close_time, r.occurrence_time, r.strike_date, r.expected_expiration_time, statedDate(r.description));
         return { ticker: r.ticker, seriesTicker: r.series_ticker, title: r.title, category: r.category, tags: r.tags,
@@ -52,7 +52,7 @@ export async function rankedForecasts(session: string, snapshot?: Awaited<Return
         FROM markets m JOIN events e ON e.ticker=m.event_ticker
         LEFT JOIN LATERAL(SELECT ts,yes_bid,yes_ask FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)q ON true
         WHERE m.event_ticker=ANY($1::text[]) AND m.status='active' AND m.close_time>now()
-        ORDER BY m.event_ticker,m.floor_strike NULLS LAST,m.cap_strike NULLS LAST,m.ticker`, [events.flatMap(e => byTicker.get(e.ticker)!.members.map(m => m.ticker))]);
+        ORDER BY m.event_ticker,m.floor_strike NULLS LAST,m.cap_strike NULLS LAST,m.ticker`, [events.flatMap(e => byTicker.get(e.ticker)!.members.map(m => m.ticker))], 'forecast_quotes');
     for (const event of events) {
         const candidate = byTicker.get(event.ticker)!;
         event.groupKey = candidate.groupKey;
@@ -94,6 +94,6 @@ export async function forecastResult(session: string, ticker: string, assumption
             m.strike_type,m.floor_strike,m.cap_strike,r.tags,${linkedSymbols} AS linked_symbols,q.ts,q.yes_bid,q.yes_ask
         FROM relevant r JOIN markets m ON m.series_ticker=r.series_ticker JOIN events e ON e.ticker=m.event_ticker
         LEFT JOIN LATERAL(SELECT ts,yes_bid,yes_ask FROM odds_snapshots WHERE ticker=m.ticker ORDER BY ts DESC LIMIT 1)q ON true
-        WHERE m.ticker=$2 AND m.status='active' AND m.close_time>now()`, [symbols, ticker]);
+        WHERE m.ticker=$2 AND m.status='active' AND m.close_time>now()`, [symbols, ticker], 'forecast_quotes');
     return rows[0] ? request ? assumedEventResult(rows[0], data, request) : predictEventResult(rows[0], data, prices, cutoff) : null;
 }

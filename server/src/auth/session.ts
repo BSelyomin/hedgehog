@@ -56,7 +56,7 @@ export async function loadSession(req: Request, res: Response, next: NextFunctio
         if (/^[a-f0-9]{64}$/.test(rawToken)) {
             const rows = await timed('session', () => query<{ id: string; email: string; name: string; created_at: Date; expires_at: Date }>(
                 `SELECT u.id,u.email,u.name,u.created_at,s.expires_at FROM auth_sessions s
-                 JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()`, [digest(rawToken)]));
+                 JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()`, [digest(rawToken)], 'session'));
             if (rows[0]) {
                 const row = rows[0];
                 auth.user = { id: row.id, email: row.email, name: row.name, createdAt: row.created_at.toISOString() };

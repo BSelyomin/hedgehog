@@ -12,6 +12,21 @@ afterEach(() => {
     }
 });
 
+it('allows queued result estimates enough time while keeping ordinary read/write deadlines', async () => {
+    const timeout = AbortSignal.timeout, deadlines: number[] = [];
+    AbortSignal.timeout = milliseconds => { deadlines.push(milliseconds); return new AbortController().signal; };
+    globalThis.fetch = async () => Response.json({ asOf: null });
+    try {
+        for (const [path, method] of [
+            ['/api/forecasts/result/M/assessment', 'POST'], ['/api/forecasts/result/M/assessment/retry', 'POST'],
+            ['/api/forecasts/result/M/assessment', 'GET'], ['/api/holdings', 'POST']
+        ]) assert.equal((await proxyApi(new Request(`http://localhost:3000${path}`, {
+            method, ...(method === 'POST' ? { body: '{}', headers: { 'Content-Type': 'application/json' } } : {})
+        }))).status, 200);
+        assert.deepEqual(deadlines, [145000, 145000, 25000, 85000]);
+    } finally { AbortSignal.timeout = timeout; }
+});
+
 it('prefers the injected binding and preserves its base path, query, cookies and refresh', async () => {
     process.env.VERCEL = '1';
     process.env.HEDGEHOG_SERVER_URL = 'https://server.internal/deployment/service/';

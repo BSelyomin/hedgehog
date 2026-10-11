@@ -229,6 +229,63 @@ Open Add holdings at http://localhost:3000 and import `examples/fake-portfolio.c
 
 `FRED_API_KEY`, `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` retain their existing roles. Without Snowflake configuration, AI jobs skip generation while the rest of the application can run. No credentials belong in Git or browser environment variables.
 
+## Page cache lifetime and database timeouts
+
+Private browser page responses and the backend snapshots for Overview/exposure, Calendar,
+Earnings, Moves, Forecasts and briefing metadata have a maximum lifetime of **15 minutes**,
+defined once in `shared/cache.ts`. Browser F5 clears browser memory but can reuse a warm
+backend instance's snapshot. Navigation reuses browser responses. Backend snapshots remain
+local to each process/Vercel instance; a restart, cold start or another instance can require
+a new build. Reload bypasses page snapshots. Successful AI estimates keep their existing
+input-based durable cache; page expiry does not rerun unchanged AI or clear stopped failures.
+
+Backend reads still authenticate and check current manual/imported holdings before reusing a
+snapshot. Holdings changes, completed-price/date boundaries, and Forecasts' contract-close
+and quote-freshness limits can expire data sooner. Increasing the lifetime reduces repeated
+expensive reads, but cannot serve authenticated data during a database connection failure.
+The original `asOf` is preserved, so a cache hit does not make an old quote look new.
+
+“Database request timed out” is returned for PostgreSQL code `57014` (query cancelled).
+The backend sets a 20-second statement limit and a 25-second client query limit. It is a
+query failure, not proof of a database outage or read-only storage. Heavy quote/history
+queries and lock waits are possible causes; production logs are needed to identify which.
+The 20-second limit remains in place so slow work does not tie up the database indefinitely.
+
+Failed page queries now log `[Database] query_failed` with a static operation label, error
+code, elapsed milliseconds, and pool connection/waiter counts. They omit SQL, parameters,
+credentials and portfolio data. For example, `exposure_quotes` identifies the linked-market
+quote lookup, while `forecast_candidates`, `forecast_quotes`, `track_record`, `prices`,
+`session`, `holdings` and `brokerage_holdings` identify other reads. Pair this with the existing
+`API request failed` route and the response's `Server-Timing` header. No automatic retry is added.
+
+For a timeout, run these read-only checks in your database SQL console while it is happening:
+
+```sql
+SELECT current_setting('transaction_read_only') AS read_only,
+       current_setting('max_connections')::int AS connection_limit,
+       (SELECT count(*) FROM pg_stat_activity) AS connections,
+       pg_size_pretty(pg_database_size(current_database())) AS database_size;
+
+SELECT pid, state, now() - query_start AS query_age,
+       wait_event_type, wait_event, pg_blocking_pids(pid) AS blocking_pids
+FROM pg_stat_activity
+WHERE datname = current_database() AND pid <> pg_backend_pid()
+ORDER BY query_start;
+```
+
+`wait_event_type = 'Lock'` points to blocking work; long active queries without blockers point
+to query execution/resource pressure. The page pool allows 10 connections and the AI pool 2
+per backend instance, so deployments running concurrently can multiply database demand.
+Vercel's `attachDatabasePool` lifecycle integration is already present. Do not raise timeout
+or pool limits without identifying the failed query and checking database capacity first.
+
+To test the longer cache, load a page, wait more than five but less than fifteen minutes,
+then F5. A reused backend snapshot shows `exposure_cache_hit`, `earnings_cache_hit`,
+`moves_cache_hit`, `forecasts_cache_hit` or `briefing_cache_hit` in `Server-Timing` and keeps
+its original source times. At fifteen minutes, or on Reload, the relevant build/read runs
+again. Saving changed holdings must update the next response immediately. A forecast may
+expire earlier when a contract closes or its quote exceeds the existing freshness limit.
+
 ## Database storage and read-only mode
 
 Kalshi lists about 145,000 open markets. Storing a five-minute odds row for each wrote roughly
@@ -521,6 +578,39 @@ from the supplied facts and accepted assumptions. Rounded figures or unit conver
 also cause this strict check to fail. The explanation stays hidden, but independently
 validated driver estimates and effects calculated from reliable measurements remain available.
 This does not make AI assumptions measured facts or confidence a calibrated probability.
+
+Individual forecast results have their own cache, independent of a combined family forecast.
+The family completion still bounds its individual outputs to eight representative contracts;
+click **View results** to load stock effects for all of that family's missing result estimates.
+Cached results appear immediately, and a browser queue runs at most two requests at a time.
+Each row shows queued/loading status followed by measured dollar effects, stock directions
+and self-rated AI confidence. **View stock effects** selects a row and opens its existing
+calculation; it does not start inference. Selected effects can be minimized and expanded
+without discarding their data or manual inputs. Closing/reopening a family reuses saved work.
+
+`GET /forecasts/result/:ticker/assessment` reads saved status without starting AI work.
+`POST` to the same path authorizes one attempt, and `POST` to its `/retry` path explicitly
+clears that result's stopped failure. These routes use the same session ownership and CSRF
+checks as the existing forecast routes. Completed estimates use the existing PostgreSQL
+`ai_cache` table; no migration or new environment variable is required. Updated holdings,
+usable measured coefficients or contract definitions change the cache identity; changes to
+live odds and sibling contracts do not. Current stock effects are calculated from the cached
+assumption and the current model snapshot. Requesting one estimate preserves other page caches.
+
+An unavailable measurement remains without a dollar estimate. Rejected explanation text is
+hidden independently of a validated numeric assumption, and unsuccessful requests do not
+automatically retry. Browser transport failures also stay stopped across page-cache expiry
+until an explicit retry or portfolio/session change. If other AI work occupies the available
+slots, a first attempt waits up to 45 seconds without holding a database connection; if
+capacity stays busy, the selected result offers **Estimate this result** for a later explicit
+attempt. Result estimate POSTs have a 145-second proxy deadline and a 150-second browser
+deadline, within the API route's 180-second function limit; ordinary read/write proxy
+deadlines remain unchanged. Unknown directions are shown as loading while work is queued,
+not as “Unmeasured”; missing reliable history still produces an explicit reason with no
+invented direction or value. Backend logs use
+`[Forecast result AI] response_validated`, `assessment_failed` and `cache_hit`; they do not print
+credentials, portfolio values or rejected provider text. Deploy both updated services; existing
+Vercel install/build commands are unchanged.
 
 Background failures are retained in `job_state`; later cron runs skip them. Successful
 scheduled refreshes still run. After fixing a failed source, explicitly run its data job;
