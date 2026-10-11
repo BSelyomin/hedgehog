@@ -1,6 +1,8 @@
 import type { ExposureResponse, ExposureEvent, Market, EventResponse, CalendarResponse } from '../../../shared/types.ts';
 import { query, iso } from '../db.ts';
-import { getHoldings } from './holdings.ts';
+import { getHoldings, portfolioRevision } from './holdings.ts';
+import { briefingDay } from './briefing-content.ts';
+import { timed } from './request-timing.ts';
 import { matchHolding, linkRank, rankDrivers } from './matching.ts';
 import type { MeasuredRow } from './matching.ts';
 import { ASSET_TAGS, assetLink, assetType, isSecurity } from './asset-links.ts';
@@ -33,8 +35,8 @@ interface MarketRow {
     volume_24h: number | null;
     open_interest: number | null;
 }
-export async function exposure(session: string): Promise<ExposureResponse> {
-    const { holdings } = await getHoldings(session);
+export async function exposure(session: string, portfolio?: Awaited<ReturnType<typeof getHoldings>>): Promise<ExposureResponse> {
+    const { holdings } = portfolio ?? await getHoldings(session);
     const totalValue = holdings.reduce((s, h) => s + h.valueUsd, 0);
     if (!holdings.length) return { holdings, totalValue, categories: noCategories, events: [], byHolding: [], asOf: null };
     // Tickers, sector tags and measurements belong to listed securities only; a property that
@@ -95,7 +97,40 @@ export async function exposure(session: string): Promise<ExposureResponse> {
     const byHolding = holdings.map(h => ({ symbol: h.symbol, events: result.flatMap(e => { const l = e.links.find(l => l.symbol === h.symbol); return l ? [{ ticker: e.ticker, title: e.title, type: l.type }] : []; }).sort((a, b) => linkRank[a.type] - linkRank[b.type]), drivers: isSecurity(h) ? rankDrivers(h.symbol, measurements) : [] }));
     return { holdings, totalValue, byHolding, categories: categorize(holdings, result, profiles, measurements, await fundClasses()), events: result.sort((a, b) => b.share - a.share), asOf };
 }
-export async function calendar(session: string, days: number): Promise<CalendarResponse> { const data = await exposure(session); const end = Date.now() + days * 86400000; return { days, asOf: data.asOf, categories: data.categories, events: data.events.filter(e => Date.parse(e.eventTime) <= end).sort((a, b) => Date.parse(a.eventTime) - Date.parse(b.eventTime)) }; }
+const EXPOSURE_CACHE_MS = 5 * 60_000, MAX_PORTFOLIOS = 32;
+const snapshots = new Map<string, { promise: Promise<ExposureResponse>; until: number }>();
+
+// Calendar windows and its "All future dates" exposure read share one private snapshot.
+// Keep the underlying builder fresh for jobs and other services that need current data.
+export async function cachedExposure(session: string, refresh = false): Promise<ExposureResponse> {
+    const portfolio = await timed('holdings', () => getHoldings(session));
+    const key = JSON.stringify([session, portfolioRevision(portfolio), briefingDay(new Date(Date.now()))]);
+    const saved = snapshots.get(key);
+    if (!refresh && saved && saved.until > Date.now()) {
+        snapshots.delete(key); snapshots.set(key, saved);
+        return structuredClone(await timed('exposure_cache_hit', () => saved.promise));
+    }
+    const entry: { promise: Promise<ExposureResponse>; until: number } = {
+        until: Infinity,
+        promise: timed('exposure_build', async () => {
+            const data = await exposure(session, portfolio);
+            entry.until = Date.now() + EXPOSURE_CACHE_MS;
+            return data;
+        })
+    };
+    snapshots.delete(key); snapshots.set(key, entry);
+    if (snapshots.size > MAX_PORTFOLIOS) snapshots.delete(snapshots.keys().next().value!);
+    // A failed or superseded producer cannot remove a newer refresh's snapshot.
+    void entry.promise.catch(() => { if (snapshots.get(key) === entry) snapshots.delete(key); });
+    return structuredClone(await entry.promise);
+}
+
+export async function calendar(session: string, days: number, refresh = false): Promise<CalendarResponse> {
+    const data = await cachedExposure(session, refresh);
+    const end = Date.now() + days * 86400000;
+    return { days, asOf: data.asOf, categories: data.categories,
+        events: data.events.filter(e => Date.parse(e.eventTime) <= end).sort((a, b) => Date.parse(a.eventTime) - Date.parse(b.eventTime)) };
+}
 export async function eventDetail(session: string, ticker: string): Promise<EventResponse | null> {
     const data = await exposure(session);
     const event = data.events.find(e => e.ticker === ticker || e.markets.some(m => m.ticker === ticker));

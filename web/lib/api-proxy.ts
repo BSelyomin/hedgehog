@@ -17,7 +17,7 @@ export async function proxyApi(request: Request): Promise<Response> {
         backend.hash = '';
     } catch { return failure(503, 'The backend address is not configured correctly.'); }
     const headers = new Headers();
-    for (const name of ['Content-Type', 'Cookie', 'X-Hedgehog-Request', 'X-Hedgehog-Session', 'Sec-Fetch-Site']) {
+    for (const name of ['Content-Type', 'Cookie', 'X-Hedgehog-Request', 'X-Hedgehog-Session', 'X-Hedgehog-Refresh', 'Sec-Fetch-Site']) {
         const value = request.headers.get(name);
         if (value !== null) headers.set(name, value);
     }

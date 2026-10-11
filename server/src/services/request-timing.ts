@@ -5,8 +5,9 @@ interface Timing { started: number; stages: Map<string, number>; queries: number
 const context = new AsyncLocalStorage<Timing>();
 
 // Only timings and counts are exposed: never SQL, symbols, credentials or user IDs.
-export const movesTiming: RequestHandler = (req, res, next) => {
-    if (req.path !== '/moves') { next(); return; }
+export const dataTiming: RequestHandler = (req, res, next) => {
+    if (!['/moves', '/calendar', '/exposure', '/earnings', '/forecasts', '/briefing', '/briefing/reload', '/briefing/refresh'].includes(req.path)
+        && !req.path.startsWith('/earnings/') && !req.path.startsWith('/forecasts/')) { next(); return; }
     const timing: Timing = { started: performance.now(), stages: new Map(), queries: 0, sqlMs: 0 };
     const json = res.json;
     res.json = function (body) {

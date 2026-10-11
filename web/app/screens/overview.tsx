@@ -1,16 +1,25 @@
 'use client';
-import { useState } from 'react';
 import { ExposureTable } from './exposure-table';
 import { CategoryCards, CategoryFilter } from './category-controls';
 import type { ExposureResponse, CalendarResponse, BriefingResponse } from '../../../shared/types';
-import { money, percent, dateText, href, api, useData, Card, Fresh, Status, LinkChip, EventDate, ReloadButton } from '../common';
+import { money, percent, dateText, href, useData, Card, Fresh, Status, LinkChip, EventDate, ReloadButton } from '../common';
+import { invalidateCachedResponses } from '../../lib/api-client';
+
+export async function reloadOverview(exposure: () => Promise<unknown>, upcoming: () => Promise<unknown>, briefing: () => Promise<unknown>) {
+    for (const path of ['/exposure', '/calendar', '/briefing']) invalidateCachedResponses(path);
+    if (!await exposure()) return;
+    // Upcoming events reuse the freshly built exposure snapshot. Refreshing the
+    // briefing metadata does not generate AI/audio; that remains an explicit action.
+    await Promise.all([upcoming(), briefing()]);
+}
 
 export function Overview() {
     const { data, error, reload } = useData<ExposureResponse>('/exposure');
-    const [revision, setRevision] = useState(0);
+    const upcoming = useData<CalendarResponse>('/calendar?days=14');
+    const briefing = useData<BriefingResponse>('/briefing');
     const widest = data?.events[0];
     return <>
-        <div className="row"><div><h1>Your exposure map</h1><p>Your holdings and the events linked to them</p></div><div className="toolbar"><ReloadButton onReload={async () => { setRevision(v => v + 1); await reload(); }}/><a href="#holdings">Edit holdings →</a></div></div>
+        <div className="row"><div><h1>Your exposure map</h1><p>Your holdings and the events linked to them</p></div><div className="toolbar"><ReloadButton onReload={() => reloadOverview(() => reload(), () => upcoming.reload(undefined, false), () => briefing.reload())}/><a href="#holdings">Edit holdings →</a></div></div>
         <Status error={error} loading={!data && !error} layout="summary"/>
         {data && <>
             <Fresh asOf={data.asOf}/>
@@ -20,7 +29,7 @@ export function Overview() {
                     <p>{widest ? `${percent(widest.share)} of your value linked` : 'Add holdings and review market tags.'}</p>
                     {widest && <p className="note">Ends <time dateTime={widest.closeTime}>{dateText(widest.closeTime, true)}</time> · Kalshi market close</p>}
                 </Card>
-                <EndingSoon key={revision}/>
+                <EndingSoon data={upcoming.data} error={upcoming.error}/>
                 <Card><span className="muted">Linked events (all future dates)</span><strong className="number">{data.events.length}</strong><p className="note">Calendar defaults to the next 14 days.</p><a href="#calendar">Open calendar →</a></Card>
                 <Card><span className="muted">Daily price changes</span><h3>Understand your move</h3><a href="#moves">Open move explainer →</a></Card>
             </div>
@@ -34,12 +43,11 @@ export function Overview() {
                 <details className="exposure-help"><summary>How to read this table</summary><p className="note">Red = Direct; green = Calculated from a holding’s own terms (cash, bonds, a mortgage); blue = Related, backed by historical measurements. Only connected holdings appear, strongest links first. Color describes the link, not the direction of a price move. Share and linked-holding counts use all source links, including those hidden by filters, and your full portfolio value. They show portfolio reach, not how much holdings would move.</p></details>
             </Card>
         </>}
-        <Briefing key={revision}/>
+        <BriefingContent {...briefing}/>
     </>;
 }
 
-function EndingSoon() {
-    const { data, error } = useData<CalendarResponse>('/calendar?days=14');
+function EndingSoon({ data, error }: { data: CalendarResponse | null; error: string }) {
     const next = data?.events[0];
     return <Card className="ending-soon"><span className="muted">Events coming up</span>
         {error ? <p className="note">Upcoming events unavailable.</p> : !data ? <Status error="" loading layout="compact" label="Loading upcoming events"/> : <>
@@ -50,8 +58,12 @@ function EndingSoon() {
     </Card>;
 }
 
-export function Briefing() {
-    const { data, error, reload } = useData<BriefingResponse>('/briefing');
+export function Briefing({ refreshOnMount = false }: { refreshOnMount?: boolean } = {}) {
+    const state = useData<BriefingResponse>('/briefing', refreshOnMount);
+    return <BriefingContent {...state}/>;
+}
+
+function BriefingContent({ data, error, reload }: ReturnType<typeof useData<BriefingResponse>>) {
     return <Card>
         <div className="row"><h2>Your saved briefing</h2><ReloadButton label="Reload briefing" onReload={() => reload('/briefing/reload')}/></div>
         <Status error={error} loading={!data && !error} layout="compact"/>

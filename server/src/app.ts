@@ -1,25 +1,27 @@
 import { trackRatings } from './services/track-ratings.ts';
-import { briefing, briefingResponse, savedBriefing } from './jobs/briefing.ts';
+import { briefing, savedBriefing } from './jobs/briefing.ts';
+import { cachedBriefingResponse } from './services/briefing-cache.ts';
 import { summaries } from './jobs/summaries.ts';
 import express from 'express';
-import { movesTiming } from './services/request-timing.ts';
+import { dataTiming } from './services/request-timing.ts';
 import { authRouter } from './auth/routes.ts';
 import { brokerageRouter } from './brokerages/routes.ts';
 import { loadSession, protectWrites } from './auth/session.ts';
 import { query } from './db.ts';
 import { getHoldings, saveHoldings, validateHoldings } from './services/holdings.ts';
-import { exposure, calendar, eventDetail } from './services/exposure.ts';
+import { cachedExposure, calendar, eventDetail } from './services/exposure.ts';
 import { isOddsRange, oddsHistory } from './services/odds-history.ts';
-import { moves } from './services/moves.ts';
+import { cachedMoves } from './services/moves-cache.ts';
 import { isMoveRange } from './services/move-data.ts';
 import { earnings, earningsList } from './services/earnings.ts';
 import { holdingsHistory } from './services/holdings-history.ts';
 import { HISTORY_SUBJECTS } from './services/history-subjects.ts';
 import { trackRecord } from './services/track-record.ts';
-import { forecasts, forecastMarkets, scenarioForecast, eventForecast, validateEventForecast } from './services/forecasts.ts';
+import { scenarioForecast, eventForecast, validateEventForecast } from './services/forecasts.ts';
 import { validateScenario } from './services/forecast-model.ts';
-import { rankedForecasts, forecastResult } from './services/ranked-forecasts.ts';
-import { forecastAssessment, forecastAssessments, retryForecastAssessment } from './services/forecast-assessment.ts';
+import { forecastResult } from './services/ranked-forecasts.ts';
+import { cachedForecasts, cachedForecastMarkets, cachedRankedForecasts, cachedForecastResult,
+    cachedForecastAssessment, cachedForecastAssessments, cachedRetryForecastAssessment } from './services/forecasts-cache.ts';
 import { FORECAST_HORIZONS, TRACK_GRADES, TRACK_SORTS } from '../../shared/types.ts';
 import type { TrackGrade } from '../../shared/types.ts';
 // What a failed request tells the browser. Postgres reports 25006 when a write reaches a
@@ -43,7 +45,7 @@ app.get('/health', async (_req, res) => { try {
 catch {
     res.status(503).json({ error: 'Database unavailable', asOf: null });
 } });
-app.use(movesTiming);
+app.use(dataTiming);
 app.use(loadSession);
 app.use(protectWrites);
 app.use('/auth', authRouter);
@@ -56,23 +58,23 @@ catch (error) {
     res.status(400).json({ error: (error as Error).message, asOf: null });
     return;
 } res.json(await saveHoldings(res.locals.session, holdings)); });
-app.get('/exposure', async (_req, res) => { res.json(await exposure(res.locals.session)); });
-app.get('/forecasts', async (_req, res) => { res.json(await forecasts(res.locals.session)); });
-app.get('/forecasts/events', async (_req, res) => { res.json(await forecastMarkets(res.locals.session)); });
-app.get('/forecasts/ranked-events', async (_req, res) => { res.json(await rankedForecasts(res.locals.session)); });
-app.get('/forecasts/assessments', async (_req, res) => { res.json(await forecastAssessments(res.locals.session)); });
+app.get('/exposure', async (req, res) => { res.json(await cachedExposure(res.locals.session, req.get('X-Hedgehog-Refresh') === '1')); });
+app.get('/forecasts', async (req, res) => { res.json(await cachedForecasts(res.locals.session, req.get('X-Hedgehog-Refresh') === '1')); });
+app.get('/forecasts/events', async (req, res) => { res.json(await cachedForecastMarkets(res.locals.session, req.get('X-Hedgehog-Refresh') === '1')); });
+app.get('/forecasts/ranked-events', async (req, res) => { res.json(await cachedRankedForecasts(res.locals.session, req.get('X-Hedgehog-Refresh') === '1')); });
+app.get('/forecasts/assessments', async (req, res) => { res.json(await cachedForecastAssessments(res.locals.session, req.get('X-Hedgehog-Refresh') === '1')); });
 app.get('/forecasts/assessment/:ticker', async (req, res) => {
-    const result = await forecastAssessment(res.locals.session, req.params.ticker);
+    const result = await cachedForecastAssessment(res.locals.session, req.params.ticker, req.get('X-Hedgehog-Refresh') === '1');
     if (!result) { res.status(404).json({ error: 'No linked forecast group found', asOf: null }); return; }
     res.json(result);
 });
 app.post('/forecasts/assessment/:ticker', async (req, res) => {
-    const result = await retryForecastAssessment(res.locals.session, req.params.ticker);
+    const result = await cachedRetryForecastAssessment(res.locals.session, req.params.ticker);
     if (!result) { res.status(404).json({ error: 'No linked forecast group found', asOf: null }); return; }
     res.json(result);
 });
 app.get('/forecasts/result/:ticker', async (req, res) => {
-    const result = await forecastResult(res.locals.session, req.params.ticker);
+    const result = await cachedForecastResult(res.locals.session, req.params.ticker, req.get('X-Hedgehog-Refresh') === '1');
     if (!result) { res.status(404).json({ error: 'No linked open market found', asOf: null }); return; }
     res.json(result);
 });
@@ -101,7 +103,7 @@ app.post('/forecasts/event', async (req, res) => {
 app.get('/calendar', async (req, res) => { const days = Number(req.query.days ?? 14); if (!Number.isInteger(days) || days < 1 || days > 90) {
     res.status(400).json({ error: 'days must be 1–90', asOf: null });
     return;
-} res.json(await calendar(res.locals.session, days)); });
+} res.json(await calendar(res.locals.session, days, req.get('X-Hedgehog-Refresh') === '1')); });
 app.get('/event/:ticker', async (req, res) => { const result = await eventDetail(res.locals.session, req.params.ticker); if (!result) {
     res.status(404).json({ error: 'No linked event found', asOf: null });
     return;
@@ -120,9 +122,9 @@ app.get('/moves', async (req, res) => { const input = req.query.date ?? req.quer
 } const range = req.query.range ?? 'day'; if (!isMoveRange(range)) {
     res.status(400).json({ error: 'range must be day, week, month or quarter', asOf: null });
     return;
-} res.json(await moves(res.locals.session, date, undefined, range)); });
-app.get('/earnings', async (_req, res) => { res.json(await earningsList(res.locals.session)); });
-app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase())); });
+} res.json(await cachedMoves(res.locals.session, date, range, req.get('X-Hedgehog-Refresh') === '1')); });
+app.get('/earnings', async (req, res) => { res.json(await earningsList(res.locals.session, req.get('X-Hedgehog-Refresh') === '1')); });
+app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase(), req.get('X-Hedgehog-Refresh') === '1')); });
 app.get('/holdings-history', async (req,res) => {
     const subject=String(req.query.subject??'all'),symbol=req.query.symbol===undefined?undefined:String(req.query.symbol).trim().toUpperCase();
     if(subject!=='all'&&!HISTORY_SUBJECTS.some(s=>s.id===subject) || symbol!==undefined&&!/^[A-Z][A-Z0-9.\-^=]{0,14}$/.test(symbol)) {res.status(400).json({error:'Choose a supported subject and ticker',asOf:null});return;}
@@ -142,10 +144,10 @@ app.get('/track-record', async (req, res) => {
     if (!FORECAST_HORIZONS.some(h => h.hours === horizon)) { res.status(400).json({error:'Choose a horizon of 1, 24, 168 or 720 hours',asOf:null}); return; }
     res.json(await trackRecord(res.locals.session,horizon));
 });
-app.get('/briefing', async (_req, res) => { res.json(await briefingResponse(res.locals.session)); });
+app.get('/briefing', async (req, res) => { res.json(await cachedBriefingResponse(res.locals.session, req.get('X-Hedgehog-Refresh') === '1')); });
 app.post(['/briefing/reload', '/briefing/refresh'], async (_req, res) => {
     await briefing(res.locals.session, true);
-    res.json(await briefingResponse(res.locals.session));
+    res.json(await cachedBriefingResponse(res.locals.session, true));
 });
 app.get('/briefing/audio', async (req, res) => {
     const saved = await savedBriefing(res.locals.session);

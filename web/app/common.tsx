@@ -73,35 +73,42 @@ export function LinkChip({ type, children, focusable = false }: {
 }
 
 
-import { api } from '../lib/api-client';
+import { api, cacheResponse, getCachedResponse, getCacheOwner } from '../lib/api-client';
 export { api, setSessionKey } from '../lib/api-client';
 
-export function useData<T>(path: string) {
-    const [data, setData] = useState<T | null>(null), [error, setError] = useState('');
+export function useData<T>(path: string, refreshOnMount = false) {
+    const [state, setState] = useState(() => ({ path, data: getCachedResponse<T>(path), error: '' }));
     const controller = useRef<AbortController | null>(null);
     const reload = useCallback(async (reloadPath?: string, refresh = true) => {
         controller.current?.abort();
         const request = new AbortController();
+        const owner = getCacheOwner();
         controller.current = request;
-        setError('');
-        setData(null);
+        // Keep loaded data on screen during an explicit refresh. A changed URL
+        // must use its own snapshot, never the previous ticker/filter's data.
+        setState(previous => ({ path, data: previous.path === path ? previous.data : getCachedResponse<T>(path), error: '' }));
         try {
             const result = await api<T>(reloadPath ?? path, { signal: request.signal, cache: refresh ? 'reload' : undefined, method: reloadPath ? 'POST' : 'GET', body: reloadPath ? '{}' : undefined });
-            if (!request.signal.aborted) setData(result);
+            if (!request.signal.aborted) {
+                if (reloadPath) cacheResponse(path, result, owner);
+                setState({ path, data: result, error: '' });
+                return result;
+            }
         } catch (e) {
             if (!request.signal.aborted) {
                 const message = e instanceof Error ? e.message : 'Unable to reload data';
-                setError(message);
+                setState(previous => ({ ...previous, error: message }));
                 throw e;
             }
         }
     }, [path]);
     useEffect(() => {
-        setData(null);
-        void reload(undefined, false).catch(() => {});
+        const cached = getCachedResponse<T>(path);
+        setState({ path, data: cached, error: '' });
+        if (!cached || refreshOnMount) void reload(undefined, refreshOnMount).catch(() => {});
         return () => controller.current?.abort();
-    }, [reload]);
-    return { data, error, reload };
+    }, [path, reload, refreshOnMount]);
+    return { data: state.path === path ? state.data : getCachedResponse<T>(path), error: state.path === path ? state.error : '', reload };
 }
 
 export function ReloadButton({ onReload, label = 'Reload' }: { onReload: () => Promise<unknown>; label?: string }) {

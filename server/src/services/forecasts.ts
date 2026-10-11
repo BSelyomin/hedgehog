@@ -10,10 +10,10 @@ import type { MeasuredRow } from './matching.ts';
 import { completedPriceDate } from './price-date.ts';
 import { buildForecasts, calculateScenario, validateScenario } from './forecast-model.ts';
 
-export async function loadForecasts(session: string, historyLimit: 2 | 321 = 321): Promise<{
+export async function loadForecasts(session: string, historyLimit: 2 | 321 = 321, snapshot?: Awaited<ReturnType<typeof getHoldings>>): Promise<{
     data: ForecastsResponse; holdings: Holding[]; prices: Map<string, PricePoint[]>; cutoff: string;
 }> {
-    const portfolio = await getHoldings(session), cutoff = completedPriceDate();
+    const portfolio = snapshot ?? await getHoldings(session), cutoff = completedPriceDate(new Date(Date.now()));
     if (!portfolio.holdings.length) return { holdings: [], prices: new Map(), cutoff, data: buildForecasts({ holdings: [], measurements: [], prices: new Map(), cutoff, asOf: null }) };
     const symbols = [...new Set([...portfolio.holdings.filter(isSecurity).map(h => h.symbol), CONTROL,
         ...DRIVERS.filter(d => d.period === 'day').map(d => d.key), ...DRIVERS.flatMap(d => d.levelReference ? [d.levelReference.symbol] : [])])];
@@ -48,7 +48,7 @@ export interface MarketRow {
     ticker: string; event_ticker: string; title: string; event_title: string; close_time: Date;
     tags: string[]; ts: Date | null; yes_bid: number | null; yes_ask: number | null;
 }
-const MAX_QUOTE_AGE_MS = 30 * 60 * 1000;
+export const MAX_QUOTE_AGE_MS = 30 * 60 * 1000;
 export function forecastMarket(row: MarketRow, now = Date.now()): ForecastMarket {
     let probability: number | null = null, spread: number | null = null;
     let probabilityNote = 'No valid recent bid–ask quote. Reload after the poller updates this market.';
@@ -82,8 +82,8 @@ async function marketsForHoldings(holdings: Holding[], marketTicker?: string): P
     const times = markets.flatMap(m => m.asOf ? [Date.parse(m.asOf)] : []);
     return { markets, asOf: times.length ? new Date(Math.max(...times)).toISOString() : null };
 }
-export async function forecastMarkets(session: string): Promise<ForecastMarketsResponse> {
-    return marketsForHoldings((await getHoldings(session)).holdings);
+export async function forecastMarkets(session: string, snapshot?: Awaited<ReturnType<typeof getHoldings>>): Promise<ForecastMarketsResponse> {
+    return marketsForHoldings((snapshot ?? await getHoldings(session)).holdings);
 }
 
 export function validateEventForecast(input: unknown): EventForecastRequest {

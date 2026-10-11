@@ -1,10 +1,12 @@
-import type { EarningsListResponse, EarningsReportMove, EarningsResponse, ExposureEvent } from '../../../shared/types.ts';
+import type { EarningsListResponse, EarningsReportMove, EarningsResponse, ExposureEvent, ExposureResponse } from '../../../shared/types.ts';
 import { query } from '../db.ts';
 import { exposure } from './exposure.ts';
 import { briefingDay } from './briefing-content.ts';
 import { secConfigured } from './sec.ts';
 import { isSecurity } from './asset-links.ts';
 import { featuredMetric, isReportedMetric, isResultsEvent, metricFor, typicalMove, upcomingCall } from './earnings-preview.ts';
+import { getHoldings, portfolioRevision } from './holdings.ts';
+import { timed } from './request-timing.ts';
 export function normalizeLadder(event: ExposureEvent) {
     if (!event.mutuallyExclusive || !event.markets.length || !event.markets.every(m => m.kind === 'bracket' && m.probability !== null))
         return null;
@@ -41,12 +43,45 @@ async function reportHistory(symbol: string): Promise<EarningsReportMove[]> {
 const directEvents = (events: ExposureEvent[], symbol: string) => events.filter(e => e.links.some(l => l.symbol === symbol && l.type === 'Direct'));
 const companyNames = async (symbols: string[]) => new Map((await query<{ symbol: string; name: string }>('SELECT symbol,name FROM companies WHERE symbol=ANY($1)', [symbols])).map(row => [row.symbol, row.name]));
 
+interface EarningsContext {
+    data: Pick<ExposureResponse, 'holdings' | 'totalValue' | 'events' | 'asOf'>;
+    names: Map<string, string>;
+    details: Map<string, Promise<EarningsResponse>>;
+    list: EarningsListResponse;
+}
+const CACHE_MS = 5 * 60_000;
+const MAX_PORTFOLIOS = 32;
+const contexts = new Map<string, { promise: Promise<EarningsContext>; until: number }>();
+
+// Browser refreshes still make authenticated requests. A cheap holdings read
+// checks manual/brokerage changes before reusing the expensive private snapshot.
+async function earningsContext(session: string, refresh: boolean): Promise<EarningsContext> {
+    const portfolio = await timed('holdings', () => getHoldings(session));
+    const key = JSON.stringify([session, portfolioRevision(portfolio), briefingDay(), secConfigured()]);
+    const saved = contexts.get(key);
+    if (!refresh && saved && saved.until > Date.now()) {
+        contexts.delete(key); contexts.set(key, saved);
+        return timed('earnings_cache_hit', () => saved.promise);
+    }
+    const entry: { promise: Promise<EarningsContext>; until: number } = { until: Infinity, promise: timed('earnings_build', async () => {
+        const [exposed, names] = await Promise.all([
+            exposure(session, portfolio), companyNames(portfolio.holdings.filter(isSecurity).map(h => h.symbol))
+        ]);
+        // Earnings needs company results only; don't retain the full exposure map.
+        const data = { holdings: exposed.holdings, totalValue: exposed.totalValue, events: exposed.events.filter(isResultsEvent), asOf: exposed.asOf };
+        entry.until = Date.now() + CACHE_MS;
+        return { data, names, details: new Map(), list: buildEarningsList(data, names) };
+    }) };
+    contexts.delete(key); contexts.set(key, entry);
+    if (contexts.size > MAX_PORTFOLIOS) contexts.delete(contexts.keys().next().value!);
+    void entry.promise.catch(() => { if (contexts.get(key) === entry) contexts.delete(key); });
+    return entry.promise;
+}
+
 // Holdings with an earnings call Kalshi has dated, soonest first. A company without one is left
 // out: without Kalshi's date there is no report to preview.
-export async function earningsList(session: string): Promise<EarningsListResponse> {
-    const data = await exposure(session);
+function buildEarningsList(data: EarningsContext['data'], names: Map<string, string>): EarningsListResponse {
     const securities = data.holdings.filter(isSecurity);
-    const names = await companyNames(securities.map(h => h.symbol));
     const companies = securities.flatMap(holding => {
         const results = directEvents(data.events, holding.symbol).filter(isResultsEvent);
         const call = upcomingCall(results);
@@ -56,8 +91,25 @@ export async function earningsList(session: string): Promise<EarningsListRespons
     return { companies, holdings: securities.length, asOf: data.asOf };
 }
 
-export async function earnings(session: string, symbol: string): Promise<EarningsResponse> {
-    const data = await exposure(session);
+export async function earningsList(session: string, refresh = false): Promise<EarningsListResponse> {
+    return structuredClone((await earningsContext(session, refresh)).list);
+}
+
+export async function earnings(session: string, symbol: string, refresh = false): Promise<EarningsResponse> {
+    const context = await earningsContext(session, refresh);
+    const saved = context.details.get(symbol);
+    if (saved) return structuredClone(await timed('earnings_detail_cache_hit', () => saved));
+    const task = buildEarnings(context, symbol);
+    // Only held securities are cached, so arbitrary ticker reads cannot grow a
+    // portfolio's details map beyond its own holdings.
+    if (context.data.holdings.some(h => h.symbol === symbol && isSecurity(h))) {
+        context.details.set(symbol, task);
+        void task.catch(() => { if (context.details.get(symbol) === task) context.details.delete(symbol); });
+    }
+    return structuredClone(await task);
+}
+
+async function buildEarnings({ data, names }: EarningsContext, symbol: string): Promise<EarningsResponse> {
     // Only markets about reported results belong here; other company markets stay on the other screens.
     const events = directEvents(data.events, symbol).filter(isResultsEvent);
     const holding = data.holdings.find(h => h.symbol === symbol && isSecurity(h));
@@ -68,7 +120,7 @@ export async function earnings(session: string, symbol: string): Promise<Earning
             : 'Past report-day moves unavailable: set SEC_USER_AGENT so report dates can be loaded from SEC EDGAR.';
     const metrics = events.filter(isReportedMetric).map(metricFor);
     return { symbol, events, asOf: data.asOf, ladders: events.flatMap(e => { const ladder = normalizeLadder(e); return ladder ? [ladder] : []; }), history: history.length ? history : null, historyNote,
-        name: (await companyNames([symbol])).get(symbol) ?? null,
+        name: names.get(symbol) ?? (holding ? null : (await companyNames([symbol])).get(symbol) ?? null),
         position: holding ? { valueUsd: holding.valueUsd, share: data.totalValue ? holding.valueUsd / data.totalValue : 0 } : null,
         call: upcomingCall(events), featured: featuredMetric(metrics), metrics,
         typicalMove: holding ? typicalMove(history, holding.valueUsd) : null };

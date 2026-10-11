@@ -96,3 +96,12 @@ it('forwards backend timing metrics so the browser can diagnose a slow Moves req
     assert.equal(result.headers.get('server-timing'), timing);
     assert.equal(result.headers.get('cache-control'), 'no-store');
 });
+
+it('forwards an explicit earnings refresh to the authenticated backend', async () => {
+    globalThis.fetch = async (_url, options) => {
+        assert.equal(new Headers(options?.headers).get('X-Hedgehog-Refresh'), '1');
+        return Response.json({ companies: [], holdings: 0, asOf: null });
+    };
+    const response = await proxyApi(new Request('http://localhost:3000/api/earnings', { headers: { 'X-Hedgehog-Refresh': '1' } }));
+    assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
+});

@@ -1,4 +1,4 @@
-import type { AIForecastAssumption, AIForecastGroupAssumption, ForecastGroupPrediction, ForecastAssessmentResponse, ForecastAssessmentsResponse, ForecastsResponse, Holding, RankedForecastEvent } from '../../../shared/types.ts';
+import type { AIForecastAssumption, AIForecastGroupAssumption, ForecastGroupPrediction, ForecastAssessmentResponse, ForecastAssessmentsResponse, ForecastsResponse, Holding, RankedForecastEvent, RankedForecastsResponse } from '../../../shared/types.ts';
 import { checkedSummary } from '../jobs/summaries.ts';
 import { cachedAI, contentHash, readAI } from './ai-cache.ts';
 import { CortexError, cortexResult, isObject, readCortexResult, snowflakeConfigured, type SourcePassage } from './snowflake.ts';
@@ -336,20 +336,25 @@ async function assessEvent(session: string, event: RankedForecastEvent, data: Fo
     return { status: 'pending', selectedMarketTicker: null, summary: null, generatedAt: null, reason: null, asOf };
 }
 
-export async function forecastAssessment(session: string, ticker: string): Promise<ForecastAssessmentResponse | null> {
-    const events = await rankedForecasts(session);
+export interface ForecastAssessmentContext {
+    events: RankedForecastsResponse;
+    model: Awaited<ReturnType<typeof loadForecasts>>;
+}
+
+export async function forecastAssessment(session: string, ticker: string, context?: ForecastAssessmentContext): Promise<ForecastAssessmentResponse | null> {
+    const events = context?.events ?? await rankedForecasts(session);
     const event = events.events.find(e => e.ticker === ticker || e.sourceEvents?.some(s => s.ticker === ticker));
     if (!event) return null;
-    const { data, holdings } = await loadForecasts(session, 2);
+    const { data, holdings } = context?.model ?? await loadForecasts(session, 2);
     return assessEvent(session, event, data, holdings, events.asOf);
 }
 
 /** Explicit user action only; normal GET/reload never clears a stopped failure. */
-export async function retryForecastAssessment(session: string, ticker: string): Promise<ForecastAssessmentResponse | null> {
-    const events = await rankedForecasts(session);
+export async function retryForecastAssessment(session: string, ticker: string, context?: ForecastAssessmentContext): Promise<ForecastAssessmentResponse | null> {
+    const events = context?.events ?? await rankedForecasts(session);
     const event = events.events.find(e => e.ticker === ticker || e.sourceEvents?.some(s => s.ticker === ticker));
     if (!event) return null;
-    const { data, holdings } = await loadForecasts(session, 2);
+    const { data, holdings } = context?.model ?? await loadForecasts(session, 2);
     const failureIdentity = failureIdentityFor(session, assessmentRequest(event, data, holdings).identity);
     const key = contentHash(failureIdentity);
     if (!running.has(key)) {
@@ -360,11 +365,11 @@ export async function retryForecastAssessment(session: string, ticker: string): 
 }
 
 /** One polling request for joint family forecasts and unsupported individual results. */
-export async function forecastAssessments(session: string): Promise<ForecastAssessmentsResponse> {
-    const events = await rankedForecasts(session);
+export async function forecastAssessments(session: string, context?: ForecastAssessmentContext): Promise<ForecastAssessmentsResponse> {
+    const events = context?.events ?? await rankedForecasts(session);
     const candidates = events.events.filter(event => event.outcomes.length >= 2 || event.outcomes.some(outcome => outcome.result.changeUsd === null));
     if (!candidates.length) return { assessments: [], asOf: events.asOf };
-    const { data, holdings } = await loadForecasts(session, 2);
+    const { data, holdings } = context?.model ?? await loadForecasts(session, 2);
     const assessments: ForecastAssessmentsResponse['assessments'] = [];
     // Sequential scheduling makes the concurrency bound explicit even on cache misses.
     for (const event of candidates) {
