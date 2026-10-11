@@ -47,3 +47,9 @@ it('offers an order, a grade and a history filter above the records',()=>{
  // Nothing is narrowed to begin with, so there is nothing to clear.
  expect(html).not.toContain('Clear sorting and filters');
 });
+
+import {TrackRecordSkeleton} from './screens/track-record';
+it('shows an accessible row skeleton while loading instead of claiming source data is missing',()=>{
+ const html=renderToStaticMarkup(<TrackRecord/>);expect(html).toContain('aria-label="Loading track record"');expect(html).toContain('aria-busy="true"');expect(html).not.toContain('No source data available yet');
+ const skeleton=renderToStaticMarkup(<TrackRecordSkeleton/>);expect(skeleton.match(/class="card rating-row"/g)).toHaveLength(4);expect(skeleton).toContain('aria-hidden="true"');
+});

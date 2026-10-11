@@ -331,6 +331,11 @@ screen narrows it (`web/app/screens/move-scope.ts`).
 - **Getting around.** The screen is long. A bar of jumps stays at its top (`SectionNav` in
   `web/app/common.tsx`; buttons that scroll, because the routes live in the address's hash),
   and every list of events is shown a page at a time (`Pager`), in its section and inside a row.
+- **One view everywhere.** Picking a holding narrows the whole screen to it, the holdings table
+  included: the table lists that holding alone, never the others with one marked.
+- **No move, no row.** A holding with no daily price has no move over any window, so the table
+  names it in a note and lists it only when it is searched for by name or picked (`tableRows`).
+  A security whose move is unavailable keeps its row, because the row says why.
 - **What is missing.** The table has no column for it, since most rows lack nothing. A reason
   every listed holding shares is said once above the table (`sharedReasons`); a row carries a
   note only for what it alone lacks, or when its figures come from other closes than the

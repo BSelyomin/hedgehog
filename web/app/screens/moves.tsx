@@ -7,7 +7,7 @@ import { Info } from '../explain';
 import { describeLeadMove, driverName, driverPhrase } from './sensitivity';
 import { CategoryFilter } from './category-controls';
 import { activeSelection, selectedSymbols, selectionMove, useCategorySelection } from './category-filter';
-import { RANGES, describeChange, driverEvents, eventLines, scopeDrivers, scopeEvents, scopeRows, sharedReasons, signed, type Scoped } from './move-scope';
+import { RANGES, describeChange, driverEvents, eventLines, scopeDrivers, scopeEvents, scopeRows, sharedReasons, signed, tableRows, type Scoped } from './move-scope';
 
 // A session date (YYYY-MM-DD) as a day, whatever the reader's time zone.
 const session = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
@@ -50,7 +50,7 @@ export function Moves() {
             <div className="toggle" role="group" aria-label="Length of the window">{RANGES.map(option => <button key={option.key} aria-pressed={option.key === range} className={option.key === range ? 'active' : ''} onClick={() => setRange(option.key)}>{option.label}</button>)}</div>
             <ReloadButton onReload={() => reload()}/><button disabled={!date} onClick={() => setDate('')}>Latest trading session</button>
         </div>
-        <Status error={error} loading={!data && !error}/><Fresh asOf={data?.asOf ?? null}/>
+        <Status error={error} loading={!data && !error} layout="summary"/>{data && <Fresh asOf={data.asOf}/>}
         {data && <MoveView data={data} exposure={exposure} chosen={exposure ? selectedSymbols(exposure.categories, selection) : null}
             theme={exposure ? activeSelection(exposure.categories, selection).theme : ''} focus={data.holdings.some(holding => holding.symbol === focus) ? focus : ''} setFocus={setFocus}/>}
     </>;
@@ -61,8 +61,9 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
     const [topics, setTopics] = useState(false);
     // The holding whose driver's events are open in its row.
     const [open, setOpen] = useState('');
-    const inCategory = scopeRows(data.holdings, chosen, ''), rows = scopeRows(data.holdings, chosen, focus);
-    const listed = inCategory.filter(holding => holding.symbol.toLowerCase().includes(search.trim().toLowerCase()));
+    // Everything on the screen, the table included, covers the same holdings: the one picked, else the chosen category, else all.
+    const rows = scopeRows(data.holdings, chosen, focus);
+    const { listed, unpriced } = tableRows(rows, search, focus);
     const whole = !focus && !chosen, part = selectionMove(rows);
     // The whole portfolio's figures are the server's, which also checks that every move covers the same sessions.
     const totals = whole ? { ...part, startValue: data.startValue, endValue: data.endValue, actual: data.total, fromMarket: data.fromMarket, beyondMarket: data.beyondMarket } : part;
@@ -71,7 +72,7 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
     const settled = scopeEvents(data.settledEvents, symbols, theme, topics), moved = scopeEvents(data.movedEvents, symbols, theme, topics);
     const through = (key: string): Behind => ({ moved: scopeEvents(data.movedEvents, symbols, theme, false, key), settled: scopeEvents(data.settledEvents, symbols, theme, false, key) });
     // What is missing for every holding is said once, above the table, and not in each row.
-    const shared = sharedReasons(inCategory);
+    const shared = sharedReasons(rows);
     const topicOnly = scopeEvents(data.settledEvents, symbols, theme, true).length + scopeEvents(data.movedEvents, symbols, theme, true).length
         - scopeEvents(data.settledEvents, symbols, theme, false).length - scopeEvents(data.movedEvents, symbols, theme, false).length;
     const market = data.driverChanges.find(change => change.driver === 'SPY');
@@ -112,9 +113,11 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
             <div id="moves-drivers" className="jump-target"><LeadDrivers drivers={whole ? data.drivers : scopeDrivers(rows)} changes={data.driverChanges} missing={data.missingDrivers} subject={focus || undefined} events={through}/></div>
         </>}
         <Card id="moves-holdings"><h2>By holding</h2>
-            <p className="note">Pick a holding to look at it alone: its change, what mattered most for it, and the Kalshi events linked to it.</p>
+            {focus ? <p className="note table-scope">Showing only <strong>{focus}</strong>, the holding you picked. <button className="reset-filters" onClick={() => setFocus('')}>Show {chosen ? 'the chosen holdings' : 'all holdings'}</button></p>
+                : <p className="note">Pick a holding to see only that holding: its row here, its change, what mattered most for it, and the Kalshi events linked to it.</p>}
             <label className="move-search">Search holdings<input type="search" placeholder="Ticker, e.g. AAPL" value={search} onChange={e => setSearch(e.target.value)}/></label>
             <p className="note">Search filters the rows below. Totals above cover {data.unpricedValue > 0 ? `listed securities; ${money(data.unpricedValue)} in cash, bonds held directly and property has no daily price and is left out` : 'your full portfolio'}.</p>
+            {unpriced.length > 0 && <p className="note unpriced-note">Not listed, because {unpriced.length === 1 ? 'it has' : 'they have'} no daily price and so no move: {unpriced.map(holding => holding.symbol).join(', ')}. Search for one by name to see it.</p>}
             {shared.length > 0 && <p className="note shared-reasons">For every holding below: {shared.join(' ')}</p>}
             <div className="scroll"><table className="move-table"><thead><tr>{COLUMNS.map(column => <th key={column.name} scope="col"><ColumnName {...column}/></th>)}</tr></thead><tbody>
                 {listed.map(h => {
@@ -134,7 +137,7 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
                             intro={`${eventLines([{ symbol: h.symbol, type: 'Measured', driver: top.driver, themes: [] }], data.holdings, data.driverChanges, money)[0].text} That is a past association with the driver, not an effect of these events.`}/></td></tr>}
                     </Fragment>;
                 })}
-                {!listed.length && <tr><td colSpan={8}><Empty>No holdings match your search{chosen ? ' in this category' : ''}.</Empty></td></tr>}
+                {!listed.length && <tr><td colSpan={8}><Empty>{search.trim() ? `No holdings match your search${chosen ? ' in this category' : ''}.` : 'None of the holdings in view has a daily price, so there is no move to list.'}</Empty></td></tr>}
             </tbody></table></div>
             <p className="note">From market = measured beta × SPY’s return over the window × the holding’s value at the first close. Beyond market = change − market estimate. Price sources: Yahoo daily closes. Every row is read from the window’s two closes; a row says so underneath when a figure is missing.</p>
             {data.total === null && data.holdings.some(h => !h.assetType || h.assetType === 'security') && <p className="note">The listed-security total needs supported price moves over the same dates for every listed holding. Available individual moves are shown above.</p>}

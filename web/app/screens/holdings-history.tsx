@@ -11,7 +11,7 @@ export function HoldingsHistory({subject,symbols}:{subject:string;symbols:string
     const {data,error}=useData<HoldingsHistoryResponse>(`/holdings-history?subject=${encodeURIComponent(subject)}${chosen?`&symbol=${encodeURIComponent(chosen)}`:''}`);
     const firstComparable=data?.events.findIndex(e=>e.spyMove&&e.holdings.some(h=>h.move))??-1;
     return <><Card><h2>What happened around past events linked to your holdings?</h2><p>This uses the stocks you hold today and their current reviewed links. It does not establish what you owned, or what those relationships looked like, when the event happened.</p><p>Compare the earlier Kalshi quote and final outcome with observed stock moves. SPY is shown over exactly the same dates. These moves are observations, not proof that the event caused them.</p><label>Holding <select value={chosen} onChange={e=>setSymbol(e.target.value)}>{symbols.length!==1&&<option value="">All current holdings</option>}{symbols.map(s=><option key={s}>{s}</option>)}</select></label></Card>
-    <Status error={error} loading={!data&&!error}/><Fresh asOf={data?.asOf??null}/>
+    <Status error={error} loading={!data&&!error} layout="rows"/>{data && <Fresh asOf={data.asOf}/>}
     {data && <>{!data.holdings.length?<Card><Empty>Add holdings first to find related past events.</Empty></Card>:!data.events.length?<Card><Empty>No verified settled events match these holdings and this subject yet.</Empty><p>A portfolio import supplies your holdings, not historical odds or event outcomes. Reviewed links and settled-market history are still required.</p></Card>:<><Overview data={data}/>{data.events.map((event,i)=><HistoricalEvent key={event.eventTicker} event={event} initiallyOpen={i===Math.max(0,firstComparable)}/>)}</>}</>}
     </>;
 }

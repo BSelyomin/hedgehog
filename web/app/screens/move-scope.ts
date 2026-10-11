@@ -22,6 +22,15 @@ export function scopeDrivers(rows: HoldingMove[]): DriverMove[] {
         .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution) || a.driver.localeCompare(b.driver));
 }
 
+// The rows of the holdings table, from the holdings in view. A holding with no daily price (cash,
+// a bond held directly, a property) has no move over any window, so it is listed only when it is
+// asked for: searched for by name, or picked. `unpriced` are the ones left out for that reason.
+export function tableRows(rows: HoldingMove[], search: string, focus: string): { listed: HoldingMove[]; unpriced: HoldingMove[] } {
+    const term = search.trim().toLowerCase(), priced = (row: HoldingMove) => !row.assetType || row.assetType === 'security';
+    const asked = (row: HoldingMove) => term !== '' || row.symbol === focus;
+    return { listed: rows.filter(row => row.symbol.toLowerCase().includes(term) && (priced(row) || asked(row))), unpriced: rows.filter(row => !priced(row) && !asked(row)) };
+}
+
 // The reasons a figure is missing that every listed security in view shares, such as a market
 // split that cannot be shown for a past window. They are said once and not repeated in each row.
 export function sharedReasons(rows: HoldingMove[]): string[] {

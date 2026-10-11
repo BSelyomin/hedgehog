@@ -28,7 +28,7 @@ export function Earnings() {
         <div className="earnings-main">
             <span className="eyebrow">{selected ? `${selected.symbol}${selected.name ? ` · ${selected.name}` : ''}` : 'Company results'}</span>
             <div className="row"><h1>Earnings preview</h1><ReloadButton onReload={async () => { await reload(); setRevision(v => v + 1); }}/></div>
-            <Status error={error} loading={!data && !error}/>
+            <Status error={error} loading={!data && !error} layout="detail"/>
             {data && (selected ? <EarningsDetail key={`${selected.symbol}:${revision}`} symbol={selected.symbol}/>
                 : <Card><Empty>{data.companies.length ? 'No company matches this search. Try a ticker or clear the search.' : 'None of your holdings has an earnings call dated by Kalshi right now. Company markets still appear on the overview and calendar.'}</Empty><Fresh asOf={data.asOf}/></Card>)}
         </div>
@@ -37,7 +37,7 @@ export function Earnings() {
 
 export function EarningsDetail({ symbol }: { symbol: string }) {
     const { data, error } = useData<EarningsResponse>(`/earnings/${encodeURIComponent(symbol)}`);
-    return <><Status error={error} loading={!data && !error}/>{data && <EarningsMarkets key={symbol} data={data}/>}</>;
+    return <><Status error={error} loading={!data && !error} layout="detail"/>{data && <EarningsMarkets key={symbol} data={data}/>}</>;
 }
 
 export function EarningsMarkets({ data }: { data: EarningsResponse }) {

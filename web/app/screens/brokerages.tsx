@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import type { BrokerageConnectResponse, BrokeragesResponse } from '../../../shared/types';
 import { BrokerageActivity } from './brokerage-activity';
 import { useAccount } from '../auth';
-import { api, Card, Fresh, money } from '../common';
+import { api, Card, Fresh, money, Status } from '../common';
 
 export function Brokerages() {
     const { session } = useAccount();
@@ -42,7 +42,7 @@ export function Brokerages() {
         <p>Link accounts to import holdings. <a href="#holdings">Manual entry and CSV uploads</a> remain available.</p>
         {!session?.user ? <Card><h2>Sign in to link accounts</h2><p>Brokerage connections belong to your Hedgehog account.</p><a href="#signin">Sign in</a> · <a href="#signup">Create account</a></Card> : <>
             <Card><h2>{data?.mode === 'live' ? 'Live brokerages' : 'Sandbox brokerages'}</h2>
-                <p>{data?.message ?? 'Loading brokerage configuration…'}</p>
+                <Status error="" loading={!data && !error} layout="compact" label="Loading brokerage configuration"/>{data && <p>{data.message}</p>}
                 {data?.mode === 'sandbox' && <p className="account-notice">Sandbox accounts are simulated. Their source is labeled here and in your holdings.</p>}
                 <div className="actions"><button className="primary" disabled={busy || !data?.configured} onClick={() => void link()}>{data?.mode === 'live' ? 'Connect brokerage' : 'Connect sandbox account'}</button>
                     <button disabled={busy || !data?.configured} onClick={() => void update('/brokerages/sync')}>Sync accounts</button></div>

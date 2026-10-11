@@ -1,5 +1,21 @@
 # Validation and phase status
 
+## Moves table: only what has a move, and only the picked holding (2026-10-11)
+
+All 494 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390
+pixels with the feature-tour portfolio in a temporary guest session, cleared afterwards: no
+browser errors and no sideways page scroll.
+
+- **No move, no row.** The table lists the 13 securities. CORP-2031, HOME, SAVINGS and
+  TNOTE-2036, which have no daily price, are named in one line under the search box and not
+  given rows. Searching "sav" lists SAVINGS; searching "o" lists the three of them that match
+  beside USO and XOM. With the Cash class chosen the table says nothing in view has a daily
+  price.
+- **Picking filters.** Picking USO in the table, or TSLA in the dropdown, leaves that one row,
+  with "Showing only USO, the holding you picked" and a button back to all holdings. Before,
+  every row stayed and the picked one was only marked. HOME, picked, is listed although it has
+  no move, since it was asked for.
+
 ## Track record filters and layout; Moves paging and section bar (2026-10-10)
 
 All 488 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390

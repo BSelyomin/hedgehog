@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { DriverChange, HoldingMove, MoveLink, MovedEvent, MovesResponse, SettledEvent } from '../../shared/types';
 import { money } from './common';
 import { DriverEventList, MoveView } from './screens/moves';
-import { RANGES, describeChange, driverEvents, eventLines, scopeDrivers, scopeEvents, scopeRows, sharedReasons } from './screens/move-scope';
+import { RANGES, describeChange, driverEvents, eventLines, scopeDrivers, scopeEvents, scopeRows, sharedReasons, tableRows } from './screens/move-scope';
 
 const moved = (symbol: string, startValue: number, endValue: number, fromMarket: number, drivers: [string, number][], extra: Partial<HoldingMove> = {}): HoldingMove => {
     const actual = Math.round((endValue - startValue) * 100) / 100;
@@ -87,6 +87,29 @@ describe('what a Moves view covers', () => {
     });
 });
 
+describe('the rows of the holdings table', () => {
+    const symbols = (rows: HoldingMove[], search = '', focus = '') => { const table = tableRows(rows, search, focus); return [table.listed.map(row => row.symbol), table.unpriced.map(row => row.symbol)]; };
+    const home: HoldingMove = { ...holdings[3], symbol: 'HOME', assetType: 'property' };
+    it('leaves out a holding with no daily price until it is searched for by name', () => {
+        expect(symbols(holdings)).toEqual([['XOM', 'USO', 'TLT'], ['SAVINGS']]);
+        expect(symbols([...holdings, home])).toEqual([['XOM', 'USO', 'TLT'], ['SAVINGS', 'HOME']]);
+        expect(symbols(holdings, 'sav')).toEqual([['SAVINGS'], []]);
+        expect(symbols([...holdings, home], ' Home ')).toEqual([['HOME'], []]);
+        // A search that matches securities and unpriced holdings alike shows both.
+        expect(symbols([...holdings, home], 'o')).toEqual([['XOM', 'USO', 'HOME'], []]);
+        expect(symbols(holdings, 'zzz')).toEqual([[], []]);
+    });
+    it('keeps a security whose move is unavailable, since its row says why', () => {
+        const gap: HoldingMove = { ...holdings[2], startValue: null, endValue: null, actual: null, unavailableReasons: ['No completed TLT closing price for 2026-10-09.'] };
+        expect(symbols([holdings[0], gap, holdings[3]])).toEqual([['XOM', 'TLT'], ['SAVINGS']]);
+    });
+    it('lists the picked holding whatever it is, and nothing else once the view is that holding', () => {
+        expect(symbols(scopeRows(holdings, null, 'SAVINGS'), '', 'SAVINGS')).toEqual([['SAVINGS'], []]);
+        expect(symbols(scopeRows(holdings, null, 'USO'), '', 'USO')).toEqual([['USO'], []]);
+        expect(symbols(scopeRows(holdings, new Set(['SAVINGS']), ''))).toEqual([[], ['SAVINGS']]);
+    });
+});
+
 describe('a driver’s own change in words', () => {
     it('gives a price as a percentage and a yield in percentage points', () => {
         const change = (kind: DriverChange['kind'], value: number) => describeChange({ driver: 'X', kind, change: value });
@@ -149,7 +172,7 @@ describe('the Moves screen', () => {
         // The only topic link belongs to an event that is listed anyway.
         expect(html).not.toContain('linked only by a shared topic');
     });
-    it('lists every holding with its value at each close and lets one be picked', () => {
+    it('lists the holdings that have a move, each with its value at both closes', () => {
         const html = view();
         expect(html).toContain('<tr class=""><td><button class="holding-pick" aria-pressed="false">XOM</button></td><td class="amount">1.000</td><td class="amount">$9,708.18</td><td class="amount">$10,000.00</td><td class="amount blue">+$291.82<span class="note"> +3.01%</span></td><td class="amount">$43.74</td><td class="amount">$248.08</td>');
         // The biggest driver comes with the Kalshi events behind it: the one whose odds moved most, and a way to list them all.
@@ -157,8 +180,34 @@ describe('the Moves screen', () => {
         expect(html).toContain('<td class="driver-cell">Stock market (S&amp;P 500) <span class="mono">$43.74</span><span class="driver-event">No Kalshi event linked through it moved or settled in this window.</span></td></tr>');
         // Nothing is missing in any row, so no row carries a note and nothing is repeated down a column.
         expect(html).not.toMatch(/row-note|row-events|For every holding below|Data availability|measured beta available/);
-        expect(html).toContain('<button class="holding-pick" aria-pressed="false">SAVINGS</button><span class="note"> · Cash or savings</span></td><td colSpan="7" class="note">No daily price, so no move over a window. Worth $50,000.00 as entered.</td>');
-        expect(view('XOM')).toContain('<tr class="picked"><td><button class="holding-pick" aria-pressed="true">XOM</button>');
+        // A holding with no daily price has no move: it is named in a note, not given a row.
+        expect(html).not.toContain('>SAVINGS</button>');
+        expect(html).toContain('<p class="note unpriced-note">Not listed, because it has no daily price and so no move: SAVINGS. Search for one by name to see it.</p>');
+        expect(html.match(/class="holding-pick"/g)).toHaveLength(3);
+        expect(html).toContain('Pick a holding to see only that holding');
+    });
+    it('shows only the picked holding in the table, with a way back to the rest', () => {
+        const html = view('XOM');
+        expect(html).toContain('<tr class="picked"><td><button class="holding-pick" aria-pressed="true">XOM</button>');
+        // Picking filters the table; it does not just mark a row among the others.
+        expect(html.match(/class="holding-pick"/g)).toHaveLength(1);
+        expect(html).not.toMatch(/>USO<\/button>|>TLT<\/button>|unpriced-note/);
+        expect(html).toContain('<p class="note table-scope">Showing only <strong>XOM</strong>, the holding you picked. <button class="reset-filters">Show all holdings</button></p>');
+        expect(html).not.toContain('Pick a holding to see only that holding');
+        // With a category chosen, the way back is to that category.
+        expect(view('USO', new Set(['USO', 'TLT']))).toContain('<button class="reset-filters">Show the chosen holdings</button>');
+    });
+    it('lists a holding with no daily price when it is the one picked', () => {
+        const html = view('SAVINGS');
+        expect(html).toContain('<tr class="picked"><td><button class="holding-pick" aria-pressed="true">SAVINGS</button><span class="note"> · Cash or savings</span></td><td colSpan="7" class="note">No daily price, so no move over a window. Worth $50,000.00 as entered.</td></tr>');
+        expect(html.match(/class="holding-pick"/g)).toHaveLength(1);
+        expect(html).not.toContain('unpriced-note');
+    });
+    it('says there is no move to list when nothing in view has a daily price', () => {
+        const html = view('', new Set(['SAVINGS']));
+        expect(html).toContain('None of the holdings in view has a daily price, so there is no move to list.');
+        expect(html).toContain('no daily price and so no move: SAVINGS.');
+        expect(html).not.toContain('class="holding-pick"');
     });
     it('explains every column from an “i” beside its name', () => {
         const html = view();

@@ -12,7 +12,7 @@ export function EventPage({ ticker }: {
     return <>
         {!data && <h1>Event details</h1>}
         <div className="row"><a href="#calendar">Calendar</a><ReloadButton onReload={() => reload()}/></div>
-        <Status error={error} loading={!data && !error}/>
+        <Status error={error} loading={!data && !error} layout="detail"/>
         {data && <EventDetail key={ticker} data={data} requestedTicker={ticker} onReloadReporting={() => reload(`/event/${encodeURIComponent(ticker)}/reload`)}/>}
     </>;
 }

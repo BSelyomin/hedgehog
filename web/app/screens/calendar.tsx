@@ -66,8 +66,8 @@ export function Calendar() {
             </div>
         </Card>
         <p className="note">Events are placed on the date Kalshi expects them to happen; when it gives none, on the market close. Overview counts all future dates. Choose All future dates here to use the same range. Company events have a direct holding link; other events include macro, politics and other categories. Portfolio share always uses your full portfolio.</p>
-        <Status error={error} loading={!data && !error}/><Fresh asOf={data?.asOf ?? null}/>
-        <div className="split calendar-content">
+        <Status error={error} loading={!data && !error} layout="rows"/>{data && <Fresh asOf={data.asOf}/>}
+        {data && <div className="split calendar-content">
             <Card className="calendar-events"><h2 ref={listHeading} tabIndex={-1}>Upcoming events</h2>
                 <div className="calendar-page-settings"><p className="note" role="status">{events.length ? `Events ${firstIndex + 1}–${firstIndex + pageEvents.length} of ${events.length}` : '0 events'}</p>
                     <label>Events per page<select value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select></label>
@@ -81,7 +81,7 @@ export function Calendar() {
                 {data && !events.length && <Empty>No matching events to rank.</Empty>}
                 <p className="note">Dates use Kalshi’s own event time where it gives one, otherwise the market close. Each event says which.</p>
             </Card>
-        </div>
+        </div>}
     </>;
 }
 

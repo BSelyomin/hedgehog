@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import type { BrokerageActivitiesResponse } from '../../../shared/types';
-import { api, dateText } from '../common';
+import { api, dateText, Status } from '../common';
 
 export function BrokerageActivity({ accountId }: { accountId: string }) {
     const [data, setData] = useState<BrokerageActivitiesResponse | null>(null), [open, setOpen] = useState(false);
@@ -17,7 +17,7 @@ export function BrokerageActivity({ accountId }: { accountId: string }) {
     </button>{open && <>
         <p className="note">Historical records from SnapTrade. Trade amounts are cash flows; portfolio exposure uses current positions. Values keep their reported currency. This endpoint supplies no source freshness timestamp.</p>
         {error && <p className="error" role="alert">{error}</p>}
-        {data && <><div className="scroll"><table><thead><tr><th>Date</th><th>Type</th><th>Symbol</th><th>Quantity</th><th>Trade price</th><th>Cash flow</th></tr></thead><tbody>
+        <Status error="" loading={busy} label="Loading brokerage activity"/>{data && !busy && <><div className="scroll"><table><thead><tr><th>Date</th><th>Type</th><th>Symbol</th><th>Quantity</th><th>Trade price</th><th>Cash flow</th></tr></thead><tbody>
             {data.activities.map(activity => <tr key={activity.id}><td>{activity.tradeDate ? dateText(activity.tradeDate) : 'Unavailable'}</td>
                 <td>{activity.type}</td><td className="mono">{activity.symbol ?? 'No security'}</td><td className="mono">{activity.quantity ?? 'Unavailable'}</td>
                 <td className="mono">{activity.price !== null && activity.currency ? `${activity.price} ${activity.currency}` : 'Unavailable'}</td>
