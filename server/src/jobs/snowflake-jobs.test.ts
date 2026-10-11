@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('../db.ts', () => ({ query: mocks.query, pool: {} }));
 vi.mock('../seed.ts', () => ({ seedFile: mocks.seedFile }));
+// These tests exercise citation/number guards. Durable stopping is covered by no-retry.test.ts.
+vi.mock('../services/no-retry.ts', () => ({ runWithoutRetry: async (_task: string, produce: () => Promise<unknown>) => produce() }));
 vi.mock('./prices.ts', () => ({ yahoo: {} }));
 vi.mock('node:fs/promises', () => ({ readFile: mocks.readFile }));
 vi.mock('../services/snowflake.ts', async importOriginal => ({

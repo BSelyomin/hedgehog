@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import type { PoolClient } from 'pg';
 import { pool, query } from '../db.ts';
 import { poll } from './poll.ts';
 import { prices } from './prices.ts';
@@ -9,23 +10,28 @@ import { briefings } from './briefing.ts';
 import { backfill } from './backfill.ts';
 import { syncBrokerages } from '../brokerages/service.ts';
 import { earningsDates } from './earnings-dates.ts';
-const reportDates = () => earningsDates().catch(() => console.warn('Earnings report dates unavailable'));
+const reportDates = earningsDates;
+const stoppedJobs = new Set<string>();
+export const scheduledJobNames = ['poll', 'nightly', 'briefings', 'enrich', 'session-cleanup', 'brokerages', 'price-history', 'earnings-dates', 'bootstrap'] as const;
 export async function runJob(name: string, job: () => Promise<void>) {
-    const client = await pool.connect();
-    const lock = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) locked', [`hedgehog:${name}`])).rows[0].locked;
-    if (!lock) {
-        client.release();
-        return;
-    }
+    if (stoppedJobs.has(name)) return;
+    let client: PoolClient | null = null, locked = false;
     try {
+        if ((await query('SELECT name FROM job_state WHERE name=$1', [`stopped-job:${name}`])).length) { stoppedJobs.add(name); return; }
+        client = await pool.connect();
+        locked = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) locked', [`hedgehog:${name}`])).rows[0].locked;
+        if (!locked) return;
         await job();
     }
     catch {
-        console.warn('Job failed; will retry:', name);
+        stoppedJobs.add(name);
+        try { await query("INSERT INTO job_state(name,cursor) VALUES($1,'failed') ON CONFLICT(name) DO UPDATE SET cursor='failed',updated_at=now()", [`stopped-job:${name}`]); }
+        catch { /* Database failure cannot be persisted, but stays stopped in this process. */ }
+        console.warn('Job stopped after failure; automatic retries disabled:', name);
     }
     finally {
-        await client.query('SELECT pg_advisory_unlock(hashtext($1))', [`hedgehog:${name}`]);
-        client.release();
+        try { if (locked) await client!.query('SELECT pg_advisory_unlock(hashtext($1))', [`hedgehog:${name}`]); }
+        finally { client?.release(); }
     }
 }
 export function scheduler() {

@@ -65,26 +65,18 @@ export async function snaptrade(method: 'GET' | 'POST' | 'DELETE', endpoint: str
         throw new BrokerageError('Invalid transaction pagination', 400);
     const config = requiredConfig();
     const path = `/api/v1${endpoint}`;
-    for (let attempt = 0; attempt < (method === 'GET' ? 3 : 1); attempt++) {
-        const params = new URLSearchParams({ clientId: config.clientId, timestamp: String(Math.floor(Date.now() / 1000)), ...credentials });
-        if (pagination) { params.set('offset', String(pagination.offset)); params.set('limit', String(pagination.limit)); }
-        const query = params.toString(), content = body ?? null;
-        let response: Response;
-        try {
-            response = await fetch(`https://api.snaptrade.com${path}?${query}`, {
-                method, headers: { 'Content-Type': 'application/json', Signature: signature(path, query, content, config.consumerKey) },
-                body: body ? canonical(body) : undefined, signal: AbortSignal.timeout(30_000), redirect: 'error',
-            });
-        } catch { throw new BrokerageError('SnapTrade could not be reached. Try again later.'); }
-        if (method === 'GET' && (response.status === 429 || response.status >= 500) && attempt < 2) {
-            await response.body?.cancel();
-            await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
-            continue;
-        }
-        // Never surface provider bodies or request URLs: they may contain secrets.
-        if (!response.ok) throw new BrokerageError(response.status === 429 ? 'SnapTrade rate limit reached. Try again later.' : 'SnapTrade rejected the request. Check API key setup or reconnect the brokerage.');
-        if (method === 'DELETE') { await response.body?.cancel(); return null; }
-        try { return await response.json(); } catch { throw new BrokerageError('SnapTrade returned invalid data. Previous holdings were preserved.'); }
-    }
-    throw new BrokerageError('SnapTrade is temporarily unavailable.');
+    const params = new URLSearchParams({ clientId: config.clientId, timestamp: String(Math.floor(Date.now() / 1000)), ...credentials });
+    if (pagination) { params.set('offset', String(pagination.offset)); params.set('limit', String(pagination.limit)); }
+    const query = params.toString(), content = body ?? null;
+    let response: Response;
+    try {
+        response = await fetch(`https://api.snaptrade.com${path}?${query}`, {
+            method, headers: { 'Content-Type': 'application/json', Signature: signature(path, query, content, config.consumerKey) },
+            body: body ? canonical(body) : undefined, signal: AbortSignal.timeout(30_000), redirect: 'error',
+        });
+    } catch { throw new BrokerageError('SnapTrade could not be reached. Try again later.'); }
+    // Never surface provider bodies or request URLs: they may contain secrets.
+    if (!response.ok) throw new BrokerageError(response.status === 429 ? 'SnapTrade rate limit reached. Try again later.' : 'SnapTrade rejected the request. Check API key setup or reconnect the brokerage.');
+    if (method === 'DELETE') { await response.body?.cancel(); return null; }
+    try { return await response.json(); } catch { throw new BrokerageError('SnapTrade returned invalid data. Previous holdings were preserved.'); }
 }

@@ -315,9 +315,45 @@ proxy, and network time as well. Timings and counts contain no SQL, holdings,
 credentials, or user IDs. These headers measure your actual deployment; earlier
 embedded-database benchmarks did not include your network or pool contention.
 
+## Request failures and manual recovery
+
+Kalshi and SnapTrade perform one HTTP attempt per request. Cortex has no provider retry
+loop, and ElevenLabs uses `maxRetries: 0`. Failed forecasts persist a stopped status in
+PostgreSQL; ordinary reloads, quote changes and backend restarts do not retry them. Pending
+forecast polling only checks work already started. Click **Retry estimate** for one explicit
+attempt after correcting the problem. Rebuild both services to apply these changes:
+
+```sh
+docker compose up -d --build backend frontend
+```
+
+`unsupported_summary_number` means AI explanation text contains a numeric token absent
+from the supplied facts and accepted assumptions. Rounded figures or unit conversions can
+also cause this strict check to fail. The explanation stays hidden, but independently
+validated driver estimates and effects calculated from reliable measurements remain available.
+This does not make AI assumptions measured facts or confidence a calibrated probability.
+
+Background failures are retained in `job_state`; later cron runs skip them. Successful
+scheduled refreshes still run. After fixing a failed source, explicitly run its data job;
+this clears the job's per-item failure markers. For a stopped aggregate schedule, acknowledge
+its marker separately, then restart the backend. For example:
+
+```sh
+docker compose exec backend npm run job -- prices
+docker compose exec backend npm run job -- measure
+docker compose exec backend npm run job -- resume-job price-history
+docker compose restart backend
+```
+
+Other schedule names include `poll`, `nightly`, `enrich`, `bootstrap`, `briefings`,
+`brokerages`, `earnings-dates` and `session-cleanup`. A manual brokerage Sync is one attempt;
+the automatic account sync remains stopped until its job is explicitly acknowledged.
+Read-only database mode no longer polls for recovery: restore database writes, then restart
+the backend. Compose uses `restart: "no"`; restart stopped containers explicitly.
+
 ## Morning briefing
 
-Scheduled briefings run from 8 a.m. America/New_York, with independent hourly retries at :15 and a catch-up after price loading. Explicit Reload briefing can prepare a missing snapshot before 8 a.m. Content-based cache locks coalesce concurrent voice requests per session and holdings snapshot using the separate AI connection pool. Successful audio is reused across dates and market changes; failures remain eligible for retry. The snapshot records its original New York date and the audio endpoint checks its cache version.
+Scheduled briefings run from 8 a.m. America/New_York, with checks at :15 and after price loading for new snapshots. Failed automatic work stays stopped; those checks do not retry it. Explicit Reload briefing permits one manual attempt and can prepare a missing snapshot before 8 a.m. Content-based cache locks coalesce concurrent voice requests per session and holdings snapshot using the separate AI connection pool. Successful audio is reused across dates and market changes. The snapshot records its original New York date and the audio endpoint checks its cache version.
 
 The move uses the latest stored completed SPY session (or a holding session if SPY is missing); it never treats an intraday candle as a completed session. Its date is spoken explicitly, and missing holding prices or beta estimates remain unavailable. The main linked event closing this week is selected by portfolio reach. If none close this week, the nearest upcoming event is included instead. Single-outcome bid–ask midpoint probabilities are spoken only with quotes at most 15 minutes old. Multi-outcome events keep their distributions on the event page. Historical odds changes are explicitly dated and do not imply causation.
 

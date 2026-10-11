@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import type { BrokerageAccount, BrokeragesResponse, BrokerageActivitiesResponse } from '../../../shared/types.ts';
 import { pool, query, iso } from '../db.ts';
+import { runWithoutRetry } from '../services/no-retry.ts';
 import { BrokerageError, configuration, mode, encryptSecret, decryptSecret, snaptrade } from './client.ts';
 import type { Credentials } from './client.ts';
 import { object, uuid, parsePositions, positionsToHoldings } from './positions.ts';
@@ -73,7 +74,7 @@ export async function connect(userId: string, reconnect?: string) {
         return { portalUrl: portal.toString(), asOf: new Date().toISOString() };
     });
 }
-export async function sync(userId: string): Promise<BrokeragesResponse> {
+export async function sync(userId: string, automatic = false): Promise<BrokeragesResponse> {
     await locked(userId, async client => {
         const auth = await credentials(client, userId, false);
         if (!auth) return;
@@ -102,9 +103,10 @@ export async function sync(userId: string): Promise<BrokeragesResponse> {
             let error: string | null = ready ? null : 'Connection disabled, holdings unavailable, or initial sync pending. Excluded from exposure.';
             if (ready) {
                 try {
-                    snapshot = parsePositions(await snaptrade('GET', `/accounts/${id}/positions/all`, auth));
-                    positionsToHoldings(snapshot.positions);
-                    if (!snapshot.asOf) error = 'Source timestamp unavailable. Excluded from exposure.';
+                    const load = async () => parsePositions(await snaptrade('GET', `/accounts/${id}/positions/all`, auth));
+                    snapshot = automatic ? await runWithoutRetry(`brokerages:positions:${userId}:${id}`, load) ?? null : await load();
+                    if (snapshot) positionsToHoldings(snapshot.positions);
+                    if (!snapshot?.asOf) error = 'Source timestamp unavailable or automatic sync stopped. Excluded from exposure.';
                 } catch { error = 'Positions could not be synced. Previous data retained and excluded until sync succeeds.'; }
             }
             const digits = typeof row.number === 'string' ? row.number.replace(/\s/g, '').slice(-4) : '';
@@ -186,7 +188,7 @@ export async function syncBrokerages() {
     if (!configuration().configured) return;
     const users = await query<{ user_id: string }>('SELECT user_id FROM snaptrade_users WHERE mode=$1 AND client_hash=$2', [mode(), configuration().clientHash]);
     for (const user of users) {
-        try { await sync(user.user_id); }
+        try { await runWithoutRetry(`brokerages:${user.user_id}`, () => sync(user.user_id, true)); }
         catch { console.warn('Brokerage sync unavailable for one user; previous snapshot retained'); }
     }
 }

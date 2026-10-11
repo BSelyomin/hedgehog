@@ -31,6 +31,7 @@ it('refreshes stored price history, bootstraps new holdings, and excludes incomp
     assert.equal(requested[0].symbol, 'SPY');
     assert.equal(requested[0].period1.getTime(), Date.parse(cutoff) - 7 * 86400000);
     assert.ok(requested.find(r => r.symbol === 'NEW')!.period1.getTime() < Date.parse(cutoff) - 9 * 365 * 86400000);
+    assert.ok(requested.some(r => r.symbol === '^GSPC'), 'S&P result scenarios need the index level, separately from SPY');
     assert.ok(written.length > 0);
     written.forEach(args => { assert.deepEqual(args[1], [cutoff]); assert.deepEqual(args[2], [100]); });
 });

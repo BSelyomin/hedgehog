@@ -1,4 +1,10 @@
-import { cachedAI } from './ai-cache.ts';
+import { cachedAI, readAI } from './ai-cache.ts';
+import { randomUUID } from 'node:crypto';
+/** Safe messages only: never include provider bodies, credentials or portfolio inputs. */
+export class CortexError extends Error {
+    readonly retryable: boolean;
+    constructor(message: string, retryable = false) { super(message); this.retryable = retryable; }
+}
 // Snowflake Cortex REST APIs. Contracts and setup: SOURCES.md and DEPLOY.md.
 export function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -32,6 +38,9 @@ async function post(path: string, body: unknown): Promise<unknown> {
     if (!snowflakeConfigured())
         throw new Error('Set SNOWFLAKE_ACCOUNT_URL, SNOWFLAKE_PAT and SNOWFLAKE_CORTEX_MODEL');
     const url = accountUrl() + path;
+    const requestId = randomUUID(), started = Date.now();
+    // Log an allowlisted response projection, never raw content or HTTP headers.
+    console.info('[Cortex] request_started', { requestId, endpoint: path });
     let response: Response;
     try {
         response = await fetch(url, {
@@ -48,14 +57,26 @@ async function post(path: string, body: unknown): Promise<unknown> {
         });
     } catch {
         // Never surface provider responses, tokens, prompts or transport errors in logs.
-        throw new Error('Snowflake request failed or timed out');
+        console.warn('[Cortex] request_failed', { requestId, elapsedMs: Date.now() - started, reason: 'transport_or_timeout' });
+        throw new CortexError('Snowflake request failed or timed out. Check backend connectivity.', true);
     }
+    console.info('[Cortex] response_received', { requestId, status: response.status, elapsedMs: Date.now() - started });
     if (!response.ok)
-        throw new Error(`Snowflake request failed (HTTP ${response.status})`);
+        throw new CortexError(`Snowflake request failed (HTTP ${response.status}). ${response.status === 401 || response.status === 403
+            ? 'Check the PAT and Cortex role permissions.' : 'Check model availability and backend configuration.'}`, response.status === 429 || response.status >= 500);
     try {
-        return await response.json();
+        const data: unknown = await response.json();
+        const choice = isObject(data) && Array.isArray(data.choices) ? data.choices[0] : undefined;
+        const usage = isObject(data) && isObject(data.usage) ? data.usage : {};
+        const tokenCount = (n: unknown) => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 ? n : null;
+        console.info('[Cortex] response_metadata', { requestId,
+            finishReason: isObject(choice) && typeof choice.finish_reason === 'string' && ['', 'stop', 'length', 'content_filter'].includes(choice.finish_reason) ? choice.finish_reason : 'unknown',
+            promptTokens: tokenCount(usage.prompt_tokens), completionTokens: tokenCount(usage.completion_tokens),
+            contentCharacters: isObject(choice) && isObject(choice.message) && typeof choice.message.content === 'string' ? choice.message.content.length : null });
+        return data;
     } catch {
-        throw new Error('Snowflake returned invalid JSON');
+        console.warn('[Cortex] response_invalid', { requestId, reason: 'invalid_json' });
+        throw new CortexError('Snowflake returned invalid JSON');
     }
 }
 
@@ -65,13 +86,20 @@ export async function cortexJson(instructions: string, input: unknown, schema: R
     return (await cortexResult(instructions, input, schema)).value.result;
 }
 
+function cortexIdentity(instructions: string, schema: Record<string, unknown>, identity: unknown) {
+    return { account: accountUrl(), model: process.env.SNOWFLAKE_CORTEX_MODEL?.trim(), instructions, schema, input: identity };
+}
+/** Read completed background inference without waiting for the provider's advisory lock. */
+export function readCortexResult(instructions: string, schema: Record<string, unknown>, identity: unknown) {
+    return readAI<{ result: unknown; input: unknown }>('cortex-v1', cortexIdentity(instructions, schema, identity));
+}
+
 // Summary identities omit live quotes, but retain the exact original input for
 // number checking on cache hits. Never validate cached prose against new odds.
 export async function cortexResult(instructions: string, input: unknown, schema: Record<string, unknown>, identity: unknown = input, accept?: (result: unknown) => boolean) {
     if (!snowflakeConfigured())
         throw new Error('Set SNOWFLAKE_ACCOUNT_URL, SNOWFLAKE_PAT and SNOWFLAKE_CORTEX_MODEL');
-    const account = accountUrl();
-    return cachedAI('cortex-v1', { account, model: process.env.SNOWFLAKE_CORTEX_MODEL?.trim(), instructions, schema, input: identity }, async () => {
+    return cachedAI('cortex-v1', cortexIdentity(instructions, schema, identity), async () => {
         const response = await post('/api/v2/cortex/v1/chat/completions', {
             model: process.env.SNOWFLAKE_CORTEX_MODEL?.trim(),
             stream: false,
@@ -91,16 +119,14 @@ export async function cortexResult(instructions: string, input: unknown, schema:
             typeof tokens === 'number' && Number.isInteger(tokens) && tokens > 0 && tokens < maxCompletionTokens;
         if (!isObject(choice) || (choice.finish_reason !== 'stop' && !emptyReasonBelowLimit) || !isObject(choice.message) ||
             choice.message.refusal || typeof choice.message.content !== 'string') {
-            throw new Error('Snowflake returned an incomplete or invalid completion');
+            throw new CortexError('Snowflake returned an incomplete or invalid completion. The response may have reached its output limit.');
         }
-        try {
-            const result: unknown = JSON.parse(choice.message.content);
-            if (!matchesSchema(result, schema)) throw new Error('Invalid schema');
-            if (accept && !accept(result)) throw new Error('Completion failed content checks');
-            return { result, input };
-        } catch {
-            throw new Error('Snowflake completion was not valid JSON or did not match its schema');
-        }
+        let result: unknown;
+        try { result = JSON.parse(choice.message.content); }
+        catch { throw new CortexError('Snowflake completion was not valid JSON'); }
+        if (!matchesSchema(result, schema)) throw new CortexError('Snowflake completion did not match the requested schema');
+        if (accept && !accept(result)) throw new CortexError('Snowflake estimate failed driver, confidence, evidence or source/number validation.');
+        return { result, input };
     });
 }
 

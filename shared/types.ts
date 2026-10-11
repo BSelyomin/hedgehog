@@ -417,3 +417,185 @@ export interface HealthResponse extends Freshness {
     /** The database is accepting reads only: stored data is shown, odds are not updating and nothing can be saved. */
     readOnly: boolean;
 }
+
+export interface ForecastRange { low: number; high: number }
+export interface ForecastExclusion { symbol: string; valueUsd: number; reason: string }
+export interface ValueForecast {
+    horizon: 'next-trading-day';
+    method: 'rolling-mean' | 'no-change' | null;
+    priceDate: string | null;
+    coveredValue: number;
+    excluded: ForecastExclusion[];
+    predictedValue: number | null;
+    changeUsd: number | null;
+    /** Point estimate plus the empirical 10th/90th percentiles of held-out errors. */
+    estimated80Range: ForecastRange | null;
+    observations: number;
+    validation: { days: number; rmseUsd: number; noChangeRmseUsd: number } | null;
+    notes: string[];
+}
+export interface ForecastDriver {
+    key: string;
+    label: string;
+    /** User enters percent returns, or percentage-point yield changes. */
+    unit: 'percent' | 'percentage-points';
+    coveredValue: number;
+    holdings: { symbol: string; valueUsd: number; sensitivity: Sensitivity; lead: DriverRank | null }[];
+    excluded: ForecastExclusion[];
+    historicalChangeRange: ForecastRange | null;
+}
+export interface ForecastsResponse extends Freshness {
+    totalValue: number;
+    baseline: ValueForecast;
+    drivers: ForecastDriver[];
+}
+export interface ScenarioRequest { driver: string; change: number }
+export interface ScenarioForecast extends Freshness {
+    driver: string;
+    change: number;
+    coveredValue: number;
+    predictedValue: number | null;
+    changeUsd: number | null;
+    /** Envelope of coefficient bounds; NOT a joint confidence or prediction interval. */
+    sensitivityBounds: ForecastRange | null;
+    holdings: { symbol: string; valueUsd: number; predictedValue: number; changeUsd: number; sensitivity: Sensitivity }[];
+    excluded: ForecastExclusion[];
+    notes: string[];
+}
+export interface ForecastMarket extends Freshness {
+    ticker: string;
+    eventTicker: string;
+    title: string;
+    eventTitle: string;
+    closeTime: string;
+    probability: number | null;
+    spread: number | null;
+    drivers: string[];
+    probabilityNote: string;
+}
+export interface ForecastMarketsResponse extends Freshness { markets: ForecastMarket[] }
+export interface EventForecastRequest { marketTicker: string; driver: string; yesChange: number; noChange: number }
+export interface EventForecastResponse extends Freshness {
+    market: ForecastMarket;
+    yes: ScenarioForecast;
+    no: ScenarioForecast;
+    expectedValue: number | null;
+    expectedChangeUsd: number | null;
+    notes: string[];
+}
+
+export interface ForecastResultSummary {
+    marketTicker: string;
+    label: string;
+    driver: string | null;
+    targetLevel: number | null;
+    reference: { value: number; date: string; url: string; unit?: 'percent' | 'points'; label?: string } | null;
+    coveredValue: number;
+    changeUsd: number | null;
+    /** Includes other holdings at their CURRENT values, an explicit scenario assumption. */
+    portfolioValueAssumingOthersFlat: number | null;
+    gainingStocks: string[];
+    losingStocks: string[];
+    reason: string | null;
+    unavailableReason?: 'outcome-mapping' | 'missing-strike' | 'missing-reference' | 'scenario-range' | 'no-measurement';
+    basis?: 'market-level' | 'user-assumption' | 'ai-assumption';
+    assumption?: ScenarioRequest;
+    /** Snowflake's self-rating, 0–100. Uncalibrated; never an event probability. */
+    confidence?: number;
+    /** Reproducible inputs to the measured dollar calculation, never AI coefficients. */
+    evidence?: { driver: string; change: number; unit: 'percent' | 'percentage-points';
+        observations: number; measuredAt: string; referenceUrl: string | null };
+}
+export interface RankedForecastOutcome extends ForecastMarket {
+    result: ForecastResultSummary;
+    /** Stored contract terms, retained for joint comparison without parsing titles. */
+    seriesTicker?: string;
+    strike?: { type: string | null; floor: number | null; cap: number | null };
+    /** Reviewed portfolio symbols for THIS contract, before grouping. */
+    linkedSymbols?: string[];
+}
+export interface RankedForecastEvent {
+    ticker: string;
+    title: string;
+    category: string;
+    eventTime: string;
+    eventTimeSource: ExposureEvent['eventTimeSource'];
+    closeTime: string;
+    linkedValue: number;
+    share: number;
+    /** Sum of |b| × typical daily driver change × value; NOT an event-return forecast. */
+    dailySensitivityUsd: number | null;
+    driver: string | null;
+    driverLabel: string | null;
+    measuredSymbols: string[];
+    unmeasuredSymbols: string[];
+    outcomes: RankedForecastOutcome[];
+    preferredMarketTicker: string | null;
+    /** One underlying across multiple resolution times shares one entry. */
+    groupKey?: string;
+    sourceEvents?: { ticker: string; seriesTicker: string; title: string; url: string; closeTime?: string }[];
+    timeRange?: { from: string; to: string };
+    prices?: { symbol: string; value: number; date: string; url: string }[];
+}
+export interface RankedForecastsResponse extends Freshness {
+    totalValue: number;
+    candidateEvents: number;
+    events: RankedForecastEvent[];
+    groupedEvents?: number;
+    notes: string[];
+}
+export interface StockResultPrediction {
+    symbol: string;
+    currentValue: number;
+    predictedValue: number;
+    changeUsd: number;
+    returnEstimate: number;
+    direction: 'up' | 'down' | 'unchanged';
+    sensitivity: Sensitivity;
+    lead: DriverRank | null;
+}
+export interface ForecastResultResponse extends Freshness {
+    market: ForecastMarket;
+    totalValue: number;
+    result: ForecastResultSummary;
+    scenario: ScenarioForecast | null;
+    stocks: StockResultPrediction[];
+    notes: string[];
+    /** Only drivers with reliable measurements for reviewed event-linked holdings. */
+    scenarioDrivers?: Pick<ForecastDriver, 'key' | 'label' | 'unit' | 'coveredValue'>[];
+}
+export interface ForecastAssessmentResponse extends Freshness {
+    status: 'pending' | 'ready' | 'unavailable';
+    selectedMarketTicker: string | null;
+    summary: Summary | null;
+    generatedAt: string | null;
+    reason: string | null;
+    assumptions?: AIForecastAssumption[];
+    /** Valid quantitative estimates can remain ready while rejected AI prose is hidden. */
+    explanationStatus?: 'ready' | 'hidden';
+    /** Legacy field; forecast assessments now stop after failure and never emit a retry time. */
+    retryAt?: string;
+    /** Current measured coefficients/holding values applied to cached AI assumptions. */
+    predictions?: ForecastResultResponse[];
+    /** One AI driver assumption informed by the whole family, not a sum of scenarios. */
+    jointPrediction?: ForecastGroupPrediction;
+}
+export interface AIForecastGroupAssumption extends ScenarioRequest {
+    horizonMarketTicker: string;
+    evidenceMarketTickers: string[];
+    confidence: number;
+}
+export interface ForecastGroupPrediction extends Pick<ForecastResultResponse, 'totalValue' | 'result' | 'scenario' | 'stocks' | 'notes' | 'asOf'> {
+    horizon: { marketTicker: string; closeTime: string };
+    evidenceMarketTickers: string[];
+    contextContracts: number;
+    contextTimes: number;
+}
+export interface AIForecastAssumption extends ScenarioRequest {
+    marketTicker: string;
+    /** Integer 0–100 model self-rating; not calibrated against realized outcomes. */
+    confidence: number;
+}
+export interface ForecastAssessmentsResponse extends Freshness {
+    assessments: { eventTicker: string; assessment: ForecastAssessmentResponse }[];
+}

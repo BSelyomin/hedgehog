@@ -1,6 +1,7 @@
 import { query } from '../db.ts';
 import { kalshi, quote } from '../services/kalshi.ts';
 import type { Candle, HistoricalCandle, KalshiMarket } from '../services/kalshi.ts';
+import { runWithoutRetry } from '../services/no-retry.ts';
 export function normalizeHistoricalCandles(candles: HistoricalCandle[]): Candle[] {
     return candles.map(c => ({ end_period_ts: c.end_period_ts, yes_bid: { close_dollars: c.yes_bid?.close ?? null }, yes_ask: { close_dollars: c.yes_ask?.close ?? null } }));
 }
@@ -56,7 +57,9 @@ export async function backfill() {
                 try {
                     const target = Math.floor(Date.parse(m.close_time) / 1000) - 86400;
                     const params = { start_ts: String(target - 60), end_ts: String(target), period_interval: '1' };
-                    const odds = oddsBeforeClose(await loadCandles(s.series_ticker, m.ticker, params, historical), m.close_time);
+                    const candles = await runWithoutRetry(`backfill:${historical ? 'archive:' : ''}${m.ticker}`, () => loadCandles(s.series_ticker, m.ticker, params, historical));
+                    if (!candles) { failed = true; continue; }
+                    const odds = oddsBeforeClose(candles, m.close_time);
                     if (!odds) {
                         console.warn('No exact 24-hour bid/ask history', m.ticker);
                         continue;
@@ -65,11 +68,11 @@ export async function backfill() {
                 }
                 catch {
                     failed = true;
-                    console.warn('Backfill retry needed', m.ticker);
+                    console.warn('Backfill stopped after failure; automatic retries disabled', m.ticker);
                 }
             }
             if (failed)
-                break; // Retain this page for retries; inserts are idempotent.
+                throw new Error('Backfill stopped after failure; rerun explicitly after fixing the source');
             const next = page.cursor ?? '';
             if (next && next === cursor)
                 throw new Error('Repeated cursor');

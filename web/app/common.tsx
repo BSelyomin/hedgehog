@@ -42,13 +42,13 @@ export { api, setSessionKey } from '../lib/api-client';
 export function useData<T>(path: string) {
     const [data, setData] = useState<T | null>(null), [error, setError] = useState('');
     const controller = useRef<AbortController | null>(null);
-    const reload = useCallback(async (reloadPath?: string) => {
+    const reload = useCallback(async (reloadPath?: string, refresh = true) => {
         controller.current?.abort();
         const request = new AbortController();
         controller.current = request;
         setError('');
         try {
-            const result = await api<T>(reloadPath ?? path, { signal: request.signal, method: reloadPath ? 'POST' : 'GET', body: reloadPath ? '{}' : undefined });
+            const result = await api<T>(reloadPath ?? path, { signal: request.signal, cache: refresh ? 'reload' : undefined, method: reloadPath ? 'POST' : 'GET', body: reloadPath ? '{}' : undefined });
             if (!request.signal.aborted) setData(result);
         } catch (e) {
             if (!request.signal.aborted) {
@@ -60,7 +60,7 @@ export function useData<T>(path: string) {
     }, [path]);
     useEffect(() => {
         setData(null);
-        void reload().catch(() => {});
+        void reload(undefined, false).catch(() => {});
         return () => controller.current?.abort();
     }, [reload]);
     return { data, error, reload };

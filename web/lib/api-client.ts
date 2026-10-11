@@ -1,5 +1,9 @@
 let sessionKey: string | null = null;
-export function setSessionKey(value: string) { sessionKey = value; }
+const forecastResponses = new Map<string, { value: unknown; until: number }>();
+const forecastRequests = new Map<string, Promise<unknown>>();
+let forecastRevision = 0;
+function clearForecastResponses() { forecastRevision++; forecastResponses.clear(); forecastRequests.clear(); }
+export function setSessionKey(value: string) { if (sessionKey !== value) clearForecastResponses(); sessionKey = value; }
 
 /** Parse responses defensively: a failed proxy may return text/HTML instead of our JSON contract. */
 export async function readApiResponse<T>(response: Response, path: string): Promise<T> {
@@ -21,6 +25,33 @@ export async function readApiResponse<T>(response: Response, path: string): Prom
     return data as T;
 }
 export async function api<T>(path: string, options?: RequestInit, timeoutMs = options?.method && options.method !== 'GET' ? 90000 : 30000): Promise<T> {
+    const method = options?.method ?? 'GET';
+    if (method !== 'GET' || !path.startsWith('/forecasts')) {
+        const value = await requestAPI<T>(path, options, timeoutMs);
+        if (method !== 'GET') clearForecastResponses();
+        return value;
+    }
+    const cached = forecastResponses.get(path);
+    if (options?.cache !== 'reload' && cached && cached.until > Date.now()) return structuredClone(cached.value) as T;
+    let request = forecastRequests.get(path);
+    if (!request) {
+        const revision = forecastRevision;
+        // Consumers may unmount independently; the shared request retains its own
+        // timeout while useData ignores replies to its aborted consumer signal.
+        request = requestAPI<unknown>(path, { ...options, signal: undefined }, timeoutMs).then(value => {
+            const data = value as { status?: string; assessments?: { assessment: { status: string } }[] };
+            const pending = data.status === 'pending' || data.assessments?.some(item => item.assessment.status === 'pending');
+            if (!pending && revision === forecastRevision) forecastResponses.set(path, { value: structuredClone(value), until: Date.now() + 60000 });
+            return value;
+        });
+        forecastRequests.set(path, request);
+        const current = request;
+        void request.finally(() => { if (forecastRequests.get(path) === current) forecastRequests.delete(path); }).catch(() => {});
+    }
+    return structuredClone(await request) as T;
+}
+
+async function requestAPI<T>(path: string, options: RequestInit | undefined, timeoutMs: number): Promise<T> {
     const headers = new Headers(options?.headers);
     headers.set('Content-Type', 'application/json');
     headers.set('X-Hedgehog-Request', '1');

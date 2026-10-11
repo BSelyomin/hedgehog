@@ -7,12 +7,13 @@ import {EventPage} from './screens/event';
 import {Moves} from './screens/moves';
 import {Earnings} from './screens/earnings';
 import {TrackRecord} from './screens/track-record';
+import {Forecasts} from './screens/forecasts';
 import Hedgehog from './hedgehog';
 import {SignInForm} from './screens/account';
 import {Brokerages} from './screens/brokerages';
 import {AccountProvider} from './auth';
 it('renders every screen without fabricated market data',()=>{
- for(const screen of [<AddHoldings/>,<Overview/>,<Calendar/>,<EventPage ticker="unconfigured"/>,<Moves/>,<Earnings/>,<TrackRecord/>]){
+ for(const screen of [<AddHoldings/>,<Overview/>,<Calendar/>,<EventPage ticker="unconfigured"/>,<Moves/>,<Earnings/>,<TrackRecord/>,<Forecasts/>]){
   const html=renderToStaticMarkup(screen);
   expect(html).toContain('<h1>');
   expect(html).not.toContain('Sample data');
@@ -45,7 +46,7 @@ it('renders accessible account forms and explains guest portfolio ownership',()=
 });
 
 it('offers reload on pages that display cached analytics', () => {
- for (const screen of [<Overview/>, <Calendar/>, <EventPage ticker="OIL"/>, <Moves/>, <Earnings/>, <TrackRecord/>]) {
+ for (const screen of [<Overview/>, <Calendar/>, <EventPage ticker="OIL"/>, <Moves/>, <Earnings/>, <TrackRecord/>, <Forecasts/>]) {
   expect(renderToStaticMarkup(screen)).toContain('>Reload</button>');
  }
 });

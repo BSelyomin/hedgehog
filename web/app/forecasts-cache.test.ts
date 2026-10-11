@@ -1,0 +1,51 @@
+import { it, afterEach } from 'vitest';
+import assert from 'node:assert/strict';
+import { api, setSessionKey } from '../lib/api-client';
+
+const originalFetch = globalThis.fetch;
+afterEach(() => { globalThis.fetch = originalFetch; setSessionKey('reset-after-cache-test'); });
+
+it('coalesces forecast requests, caches completed responses and reloads explicitly without sharing mutable snapshots', async () => {
+    setSessionKey('cache-reader'); let calls = 0;
+    globalThis.fetch = async () => { calls++; return Response.json({ events: ['stored'], asOf: null }); };
+    const [a, b] = await Promise.all([api<{ events: string[] }>('/forecasts/ranked-events'), api<{ events: string[] }>('/forecasts/ranked-events')]);
+    assert.equal(calls, 1); a.events.push('mutation'); assert.deepEqual(b.events, ['stored']);
+    assert.deepEqual((await api<{ events: string[] }>('/forecasts/ranked-events')).events, ['stored']); assert.equal(calls, 1);
+    await api('/forecasts/ranked-events', { cache: 'reload' }); assert.equal(calls, 2);
+});
+
+it('does not cache pending assessments or transport errors; terminal unavailable results are cached', async () => {
+    setSessionKey('pending-reader'); let calls = 0;
+    globalThis.fetch = async () => { calls++; return Response.json({ assessments: [{ assessment: { status: calls <= 2 ? 'pending' : 'unavailable' } }], asOf: null }); };
+    for (let i = 0; i < 4; i++) await api('/forecasts/assessments');
+    assert.equal(calls, 3);
+    globalThis.fetch = async () => { calls++; throw new Error('network offline'); };
+    await assert.rejects(api('/forecasts/assessments', { cache: 'reload' }), /network offline/);
+    await assert.rejects(api('/forecasts/assessments', { cache: 'reload' }), /network offline/);
+    assert.equal(calls, 5);
+});
+
+it('invalidates forecast responses after holding mutations and account changes', async () => {
+    setSessionKey('first-owner'); let calls = 0;
+    globalThis.fetch = async () => { calls++; return Response.json({ totalValue: calls, asOf: null }); };
+    await api('/forecasts'); await api('/forecasts'); assert.equal(calls, 1);
+    await api('/holdings', { method: 'POST', body: '{}' });
+    await api('/forecasts'); assert.equal(calls, 3);
+    setSessionKey('second-owner'); await api('/forecasts'); assert.equal(calls, 4);
+});
+
+it('never saves an old in-flight portfolio reply after holdings change', async () => {
+    setSessionKey('in-flight-owner'); let release!: (response: Response) => void, calls = 0;
+    globalThis.fetch = async (_url, options) => {
+        calls++;
+        if (!options?.method || options.method === 'GET') {
+            if (calls === 1) return new Promise<Response>(resolve => { release = resolve; });
+            return Response.json({ totalValue: 2000, asOf: null });
+        }
+        return Response.json({ saved: true, asOf: null });
+    };
+    const stale = api('/forecasts');
+    await api('/holdings', { method: 'POST', body: '{}' });
+    release(Response.json({ totalValue: 1000, asOf: null })); await stale;
+    assert.equal((await api<{ totalValue: number }>('/forecasts')).totalValue, 2000); assert.equal(calls, 3);
+});

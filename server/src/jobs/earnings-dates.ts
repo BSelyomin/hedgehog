@@ -1,6 +1,7 @@
 import { query } from '../db.ts';
 import { cikFor, companyFor, filingUrl, resultsFilings, sec, secConfigured } from '../services/sec.ts';
 import type { FilingPage, ResultsFiling, SecCompany, Submissions } from '../services/sec.ts';
+import { runWithoutRetry } from '../services/no-retry.ts';
 
 const WANTED = 8, KEPT = 12, YEARS = 3;
 // SEC allows ten requests a second; stay well under it.
@@ -45,7 +46,8 @@ export async function earningsDates() {
             if (typeof name === 'string' && name.trim())
                 await query('INSERT INTO companies(symbol,name) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET name=excluded.name,loaded_at=now()', [symbol, name.trim()]);
             await pause();
-            const filings = await loadResultsFilings(cik, cutoff.toISOString().slice(0, 10));
+            const filings = await runWithoutRetry(`earnings-dates:${symbol}`, () => loadResultsFilings(cik, cutoff.toISOString().slice(0, 10)));
+            if (!filings) continue;
             for (const filing of filings)
                 await query(`INSERT INTO earnings_reports(symbol,accession,filing_date,report_date,source_url) VALUES($1,$2,$3,$4,$5)
                     ON CONFLICT(symbol,accession) DO UPDATE SET filing_date=excluded.filing_date,report_date=excluded.report_date,source_url=excluded.source_url,loaded_at=now()`,
