@@ -1,44 +1,90 @@
 'use client';
 import { useState } from 'react';
-import type { TrackRecordResponse, CategoryRecord, ExposureResponse, HistorySubject } from '../../../shared/types';
-import { percent, number, dateText, useData, Card, Fresh, Status, Empty, href, Progress, LinkChip, linkLabel, ReloadButton } from '../common';
-const historyDate = (s:string|null) => s ? new Date(s).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : 'unavailable';
-
-export function TrackRecord() {
-    const {data,error,reload}=useData<TrackRecordResponse>('/track-record');
-    const {data:portfolio,reload:reloadPortfolio}=useData<ExposureResponse>('/exposure');
-    const [selected,setSelected]=useState('all');
-    const subject=data?.subjects.find(s=>s.id===selected) ?? data?.subjects[0];
-    const category=subject?.record;
-    const event=portfolio?.events.filter(e=>subject?.id!=='all' && subject?.seriesTickers.includes(e.seriesTicker??'')).sort((a,b)=>Date.parse(a.closeTime)-Date.parse(b.closeTime))[0];
-    return <><div className="row"><h1>How much evidence supports these odds?</h1><ReloadButton onReload={() => Promise.all([reload(), reloadPortfolio()])}/></div><p>See how earlier Kalshi predictions compared with real outcomes, before you put weight on today's odds.</p>
-    <Status error={error} loading={!data&&!error}/><Fresh asOf={data?.asOf??null}/>
-    {data && <><div className="toolbar"><label>What are you following? <select value={subject?.id??'all'} onChange={e=>setSelected(e.target.value)}>{data.subjects.map(s=><option key={s.id} value={s.id}>{s.title}{!s.record?' — no verified history yet':''}</option>)}</select></label></div>
-    {subject?.id==='all' && <p className="note">Choose a subject above to find evidence for the odds you're watching and see its connection to your holdings. All history gives you the full sample.</p>}
-    <p className="note">Subject views use only historical series with reviewed matching tags. All history includes every verified observation; the broader Kalshi categories remain in the details.</p>
-    {!category && <Card><h2>No verified {subject?.title.toLowerCase()} history yet</h2><Empty>We have no usable settled outcomes and earlier quotes for this subject yet.</Empty><p>Choose another subject or All history to inspect available evidence. Your holdings CSV cannot supply historical odds or outcomes.</p></Card>}
-    {category && <CategoryEvidence category={category} minSettled={data.minSettled} subject={subject}/>}
-    {subject?.id!=='all' && <Card><h2>What this evidence helps you judge</h2>{event ? <>
-    <span className="eyebrow">What you're watching</span><h3>{event.title}</h3><p className="note">Market closes {dateText(event.closeTime)}.</p>
-    <h3>Why it's connected</h3>{event.links.slice(0,3).map(l=><p key={l.symbol}><LinkChip type={l.type}/> <strong>{l.symbol}</strong> · {l.evidence}</p>)}{event.links.length>3 && <details><summary>See the remaining holding connections</summary>{event.links.slice(3).map(l=><p key={l.symbol}><strong>{l.symbol}</strong> · {linkLabel(l.type)}: {l.evidence}</p>)}</details>}
-    <h3>What the history adds</h3><p>{category?`The ${subject.title.toLowerCase()} sample above checks whether earlier probabilities matched outcomes in series with the same reviewed subject tags.`:'We do not yet have verified history for this subject. Its current odds have no historical comparison here.'} It helps you assess the support behind these odds, without estimating what this event would do to your stocks.</p><a href={href('event',event.ticker)}>Review this event →</a>
-    </> : <p>No current reviewed {subject?.title.toLowerCase()} event is linked to your holdings. You can still inspect the forecasting history above.</p>}</Card>}
-    <details><summary>Original Kalshi categories and data coverage</summary><Card><p>{data.totalMarkets} verified markets across {data.categories.length} Kalshi categories. History is collected from {data.reviewedSeries} reviewed market series.</p><p>Categories in this view: {subject?.kalshiCategories.join(', ')||'No verified history'}.</p><div className="scroll"><table><thead><tr><th>Kalshi category</th><th>Markets checked</th><th>Average gap</th><th>History used in trust</th></tr></thead><tbody>{data.categories.map(c=><tr key={c.category}><td>{c.category}</td><td>{c.count}</td><td>{number(c.avgMiss)} pts</td><td>{c.eligibleForTrust?'Yes':'Not enough history'}</td></tr>)}</tbody></table></div><p className="note">Trust scoring still uses these original category statistics. Subject comparisons do not change the trust formula.</p></Card></details>
-    </>}
-    <p className="note">Historical results help you judge the evidence. They do not guarantee the next outcome. Trust also considers the quote's spread, activity and open interest.</p></>;
+import type { TrackGrade, TrackRatingItem, TrackRatingsResponse, TrackSort } from '../../../shared/types';
+import { FORECAST_HORIZONS, TRACK_SORTS } from '../../../shared/types';
+import { useData, Card, Fresh, Status, Empty, percent, money, LinkChip, ReloadButton } from '../common';
+export function filterLinkedHoldings(holdings:TrackRatingItem['linkedHoldings'],search:string) {
+    const term=search.trim().toLowerCase();
+    return holdings.filter(h=>!term||h.symbol.toLowerCase().includes(term)||h.name?.toLowerCase().includes(term));
 }
-export function CategoryEvidence({category:c,minSettled,subject}:{category:CategoryRecord;minSettled:number;subject?:HistorySubject}) {
-    return <><Card><span className="eyebrow">{c.category} · Historical evidence</span><h2>{c.eligibleForTrust?'Enough history to examine the odds':'An early sample — use caution'}</h2>
-    <p>We checked <strong>{c.count} settled markets</strong>. Across probability groups, predictions and actual outcomes differed by about <strong>{number(c.avgMiss)} percentage points</strong> on average.</p>
-    {subject && <p>{subject.eventCount} distinct events identified{subject.unknownEventMarkets>0?`; event identity is still missing for ${subject.unknownEventMarkets} markets`:''}. Multiple contracts can belong to one event, so the market count does not mean independent observations.</p>}
-    <p>{subject ? 'These subject results provide historical context. They do not replace the category statistics used in trust scoring.' : c.eligibleForTrust?'This sample meets the minimum for use in trust scoring. That is a coverage threshold, not a promise that the next prediction is right.':`This is an early sample, below the ${minSettled}-market threshold for trust scoring.`}</p>
-    <p className="note">Markets closed between {historyDate(c.firstClose)} and {historyDate(c.lastClose)}. We use the bid–ask midpoint from 24 hours before each close.</p></Card>
-    <Card><h2>When the odds said “around 70%”</h2>{c.headline70 ? <><div className="stats"><div><span className="muted">Predicted chance</span><strong className="number">65–75%</strong><p className="note">The range of earlier quotes</p></div><div><span className="muted">Actually happened</span><strong className="number">{percent(c.headline70.observedRate)}</strong><Progress value={c.headline70.observedRate}/><p className="note">The share that resolved Yes</p></div></div><p><strong>{c.headline70.count<minSettled?`Only ${c.headline70.count} markets — limited evidence.`:`Based on ${c.headline70.count} markets.`}</strong> A small group can change substantially as more results arrive.</p><p>This comparison checks whether probabilities matched outcomes. It does not turn a new 70% prediction into a guaranteed result.</p></> : <p>No verified markets were quoted between 65% and 75%. There is no comparison for this range yet.</p>}</Card>
-    <Card><h2>See what was predicted and what happened</h2><p className="note">The latest verified examples. Earlier odds were recorded 24 hours before close.</p><div className="scroll"><table><thead><tr><th>Question</th><th>Earlier chance of Yes</th><th>What happened</th><th>Closed</th></tr></thead><tbody>{c.examples.slice(0,4).map(e=><tr key={e.ticker}><td>{e.title}</td><td>{percent(e.probability)}</td><td>{e.outcome===1?'Yes — it happened':'No — it did not happen'}</td><td>{historyDate(e.closeTime)}</td></tr>)}</tbody></table></div></Card>
-    <details><summary>Explore the details: chart, probability groups and Brier score</summary><div className="split history-details"><Card><h2>Calibration at a glance</h2><p className="note">Across: predicted chance. Up: how often Yes happened. Dots near the diagonal show closer agreement.</p><CalibrationChart category={c}/><details><summary>How to read the dots</summary><p>Each dot represents a group of markets with similar probabilities. A dot at 70% across and 50% up means those markets predicted about 70%, but only half resolved Yes.</p><p>Below the line, Yes happened less often than predicted; above it, more often. Small samples can move dots substantially. Counts are markets, not independent events; related contracts may share an underlying event.</p></details></Card><Card><h2>Probability groups</h2><div className="scroll probability-scroll" tabIndex={0} role="region" aria-label="Scrollable probability groups"><table><thead><tr><th>Earlier odds</th><th>Markets</th><th>Mean prediction</th><th>Actually happened</th></tr></thead><tbody>{c.buckets.map(b=><tr key={b.low}><td>{Math.round(b.low*100)}–{Math.round(b.high*100)}%</td><td>{b.count}</td><td>{percent(b.meanProb)}</td><td>{percent(b.observedRate)}</td></tr>)}</tbody></table></div><p className="note">Groups with no markets have no estimate.</p><details className="brier-explanation"><summary>Brier score: {number(c.brier,3)}</summary><p>The average squared gap between each probability and its outcome. Lower is better. Always predicting 50% scores 0.25; that is a reference, not a claim about this category's performance.</p></details></Card></div>
-    <Card><h2>Inspect the original observations</h2><div className="scroll"><table><thead><tr><th>Market</th><th>Earlier odds</th><th>Result</th><th>Quote time</th><th>Close time</th></tr></thead><tbody>{c.examples.map(e=><tr key={e.ticker}><td>{e.title}<p className="note">{e.ticker}</p></td><td>{percent(e.probability)}</td><td>{e.outcome===1?'Yes':'No'}</td><td>{dateText(e.oddsTime)}</td><td>{dateText(e.closeTime)}</td></tr>)}</tbody></table></div><p className="note">Up to twelve recent observations. Missing question titles use the market ticker.</p></Card></details></>;
+// The holdings a record is linked to. Opened, it runs the full width of the card, a tile for each
+// holding, so nothing is squeezed into the card's last column.
+export function HoldingDisclosure({name,holdings}:{name:string;holdings:TrackRatingItem['linkedHoldings']}) {
+    const [search,setSearch]=useState('');
+    const visible=filterLinkedHoldings(holdings,search);
+    return <details className="rating-disclosure"><summary>Related to {holdings.length} of your holdings</summary>
+        <div className="rating-holdings-head">
+            <label className="rating-holding-search">Search holdings<input aria-label={`Search holdings for ${name}`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Ticker or name"/></label>
+            <p className="note" role="status">{visible.length} of {holdings.length} holdings · Portfolio amounts are the values you entered.</p>
+        </div>
+        {visible.length?<ul className="rating-holding-list" aria-label={`${name} linked holdings`}>{visible.map(h=><li key={h.symbol}>
+            <div className="rating-holding-top"><strong>{h.symbol}</strong><LinkChip type={h.type}/></div>
+            {h.name&&<p className="note">{h.name}</p>}
+            <p className="rating-holding-value">{h.valueUsd!=null?<><strong className="mono">{money(h.valueUsd)}</strong>{h.share!=null&&<span> · {percent(h.share)} of portfolio</span>}</>:'Portfolio amount unavailable'}</p>
+            <p className="note">{h.evidence}</p>
+        </li>)}</ul>:<p className="note">No holdings match your search.</p>}
+    </details>;
 }
-
-export function CalibrationChart({ category }: {
-    category: CategoryRecord;
-}) { return <svg className="chart calibration-chart" viewBox="0 0 420 420" role="img" aria-label={`${category.category}: predicted odds versus observed outcomes`}><line x1="40" y1="375" x2="390" y2="25" stroke="#647084" strokeDasharray="7 7"/>{[0, .5, 1].map(p => <g key={p}><line x1="40" y1={375 - p * 350} x2="390" y2={375 - p * 350} stroke="#2A313C"/><text x="0" y={380 - p * 350} fill="#A3ADBA" fontSize="15">{percent(p)}</text><text x={32 + p * 350} y="405" fill="#A3ADBA" fontSize="15">{percent(p)}</text></g>)}{category.buckets.filter(b => b.count && b.meanProb !== null && b.observedRate !== null).map(b => <circle key={b.low} cx={40 + b.meanProb! * 350} cy={375 - b.observedRate! * 350} r="6" fill="#5AA2FF"><title>{percent(b.meanProb)} predicted, {percent(b.observedRate)} observed; {b.count} markets</title></circle>)}</svg>; }
+// A fund is itself the holding, and a benchmark is tracked by one, so "related to your holdings"
+// says nothing there. This states the position plainly.
+export function FundPosition({item}:{item:TrackRatingItem}) {
+    const held=item.linkedHoldings[0],benchmark=item.kind==='benchmark';
+    if(!held)return <p className="note">{benchmark?'You hold no fund that tracks this index.':'Not among your saved holdings.'}</p>;
+    return <p className="note rating-position">{benchmark?<>Tracked by <strong>{held.symbol}</strong>, which you hold</>:'You hold this fund'}
+        {held.valueUsd!=null?<>: <strong className="mono">{money(held.valueUsd)}</strong>{held.share!=null&&<> · {percent(held.share)} of portfolio</>}.</>:'.'}
+        {' '}{benchmark?'The record rates questions about the index, not the fund’s share price.':'The record covers only questions about this fund itself, never broad rate or inflation questions.'}</p>;
+}
+export function RatingCard({item}:{item:TrackRatingItem}) {
+    const r=item.rating,fund=item.kind==='fund'||item.kind==='benchmark';
+    return <Card className="rating-row"><div className="rating-identity"><h2>{item.symbol?`${item.symbol} · ${item.name}`:item.name}</h2>
+        {item.relatedThemes?.length ? <p className="note">Linked themes: {item.relatedThemes.join(' · ')}</p> : null}
+        {item.scope?<p className="note">{item.scope}</p>:!fund&&item.symbol&&<p className="note">Company-specific questions, including earnings-call mentions</p>}
+        </div><div className={`rating-result${r.accuracy!==null?' has-score':''}`}><p className="big mono">{r.accuracy===null?'—':percent(r.accuracy)}</p>
+        <p><strong>{r.grade?`${r.grade} · `:''}{r.label}</strong></p></div><div className="rating-context">
+        <p className="note">{r.evaluated?`${r.matched} of ${r.evaluated} questions matched the favored outcome · ${r.eventCount} event IDs`:r.missing?`${r.missing} settled questions checked; historical quotes are missing at this timeframe.`:r.tied?'Available quotes had no favored outcome (50/50).':item.kind==='fund'?'No usable fund-specific or benchmark history collected at this timeframe.':item.symbol?'No company-specific history collected at this timeframe.':'No usable earlier quotes and final outcomes collected at this timeframe.'}</p>
+        {r.accuracy!==null&&!r.grade&&<p className="note">An observed percentage, with too little history to assign a grade.</p>}
+        {fund?<FundPosition item={item}/>:!item.linkedHoldings.length&&!item.relatedThemes?.length&&<p className="note">No reviewed connection to your current holdings.</p>}
+        </div>
+        {!fund&&item.linkedHoldings.length>0&&<HoldingDisclosure name={item.name} holdings={item.linkedHoldings}/>}
+        </Card>;
+}
+const GRADES:{key:TrackGrade;label:string}[]=[{key:'A',label:'A · 90% or more'},{key:'B',label:'B · 75% to 89.9%'},{key:'C',label:'C · 50% to 74.9%'},{key:'D',label:'D · below 50%'},{key:'none',label:'No grade yet'}];
+export function TrackRecord({initialView='assets'}:{initialView?:string}={}) {
+    const [view,setView]=useState(['companies','funds'].includes(initialView)?initialView:'assets');
+    const [fundPage,setFundPage]=useState(1);
+    const [horizon,setHorizon]=useState(24),[page,setPage]=useState(1),[search,setSearch]=useState(''),[draft,setDraft]=useState('');
+    // How the records are ordered and which are kept. The server applies both before it pages the lists.
+    const [sort,setSort]=useState<TrackSort>('history'),[grade,setGrade]=useState<TrackGrade|''>(''),[scored,setScored]=useState(false);
+    const filtered=sort!=='history'||grade!==''||scored;
+    const first=()=>{setPage(1);setFundPage(1);};
+    const {data,error,reload}=useData<TrackRatingsResponse>(`/track-record/ratings?horizon=${horizon}&page=${page}&fundPage=${fundPage}&search=${encodeURIComponent(search)}&sort=${sort}&grade=${grade}&scored=${scored?1:0}`);
+    const list=data?(view==='assets'?data.themes:view==='companies'?data.companies:data.funds):[];
+    return <><div className="row"><h1>How often did Kalshi get it right?</h1><ReloadButton onReload={reload}/></div>
+        <p>See how earlier Kalshi predictions compared with real outcomes, before you put weight on today's odds.</p>
+        <div className="toolbar"><label>Prediction timeframe<select value={horizon} onChange={e=>{setHorizon(Number(e.target.value));first();}}>{FORECAST_HORIZONS.map(h=><option key={h.hours} value={h.hours}>{h.label} before trading close</option>)}</select></label></div>
+        <p className="note">We compare the outcome favored by the earlier odds with Kalshi’s final Yes or No result. Trading close and settlement are separate times.</p>
+        <div className="toggle history-tabs" role="tablist" aria-label="Track record views" onKeyDown={e=>{
+            if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+            e.preventDefault();const tabs=['assets','companies','funds'],index=tabs.indexOf(view);const next=e.key==='Home'?'assets':e.key==='End'?'funds':tabs[(index+(e.key==='ArrowRight'?1:2))%3];setView(next);document.getElementById(`rating-${next}`)?.focus();
+        }}>{['assets','companies','funds'].map(id=><button key={id} id={`rating-${id}`} role="tab" tabIndex={view===id?0:-1} aria-selected={view===id} aria-controls="rating-panel" className={view===id?'active':''} onClick={()=>setView(id)}>{id==='assets'?'Asset holdings':id==='companies'?'Companies':'ETFs & index funds'}</button>)}</div>
+        <div className="toolbar rating-filters" role="group" aria-label="Sort and filter the records">
+            <label>Sort by<select aria-label="Sort by" value={sort} onChange={e=>{setSort(e.target.value as TrackSort);first();}}>{TRACK_SORTS.map(option=><option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
+            <label>Grade<select aria-label="Grade" value={grade} onChange={e=>{setGrade(e.target.value as TrackGrade|'');first();}}><option value="">Any grade</option>{GRADES.map(option=><option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
+            <label className="rating-check"><input type="checkbox" checked={scored} onChange={e=>{setScored(e.target.checked);first();}}/> Only records with history</label>
+            {filtered&&<button className="reset-filters" onClick={()=>{setSort('history');setGrade('');setScored(false);first();}}>Clear sorting and filters</button>}
+        </div>
+        {view==='companies'&&<form className="toolbar" onSubmit={e=>{e.preventDefault();setSearch(draft.trim());setPage(1);}}><label>Look up a company<input value={draft} maxLength={80} onChange={e=>setDraft(e.target.value)} placeholder="Company name or ticker"/></label><button type="submit">Search</button>{search&&<button type="button" onClick={()=>{setSearch('');setDraft('');setPage(1);}}>My linked companies</button>}</form>}
+        <Status error={error} loading={!data&&!error}/><Fresh asOf={data?.asOf??null}/>
+        {data&&<div id="rating-panel" role="tabpanel" aria-labelledby={`rating-${view}`}>
+            <p>{view==='funds'?'Evaluate funds and benchmarks as single records. S&P 500 predictions are used for SPY’s benchmark; constituent companies are not expanded.':view==='assets'?'Compare the record of each market theme. Expand a row to see its reviewed connection to your holdings.':search?`Company search results for “${search}”.`:'Your company holdings and companies with reviewed portfolio links. Linked themes provide context; percentages score company-specific questions.'}</p>
+            <div className="rating-list">{list.map(item=><RatingCard key={item.id} item={item}/>)}</div>
+            {!list.length&&<Empty>{grade!==''||scored?'No record matches these filters. Clear them to see every record.':view==='companies'?(search?'No matching verified company in the current catalog.':'No linked companies yet. Add holdings or look up a company.'):'No records to show yet.'}</Empty>}
+            {view==='companies'&&data.totalCompanies>data.pageSize&&<nav className="toolbar" aria-label="Company pages"><button disabled={data.page===1} onClick={()=>setPage(data.page-1)}>Previous</button><span>Page {data.page} of {Math.ceil(data.totalCompanies/data.pageSize)}</span><button disabled={data.page*data.pageSize>=data.totalCompanies} onClick={()=>setPage(data.page+1)}>Next</button></nav>}
+            {view==='funds'&&data.totalFunds>data.pageSize&&<nav className="toolbar" aria-label="Fund pages"><button disabled={data.fundPage===1} onClick={()=>setFundPage(data.fundPage-1)}>Previous</button><span>Page {data.fundPage} of {Math.ceil(data.totalFunds/data.pageSize)}</span><button disabled={data.fundPage*data.pageSize>=data.totalFunds} onClick={()=>setFundPage(data.fundPage+1)}>Next</button></nav>}
+            {view==='companies'&&<p className="note">Funds and indexes{data.fundSymbols.length?` (${data.fundSymbols.join(', ')})`:''} have a separate ETFs &amp; index funds tab. Their constituent companies are not automatically expanded into this list.</p>}
+            {view==='funds'&&<p className="note">SPY’s benchmark mapping comes from <a href="https://www.ssga.com/us/en/individual/etfs/state-street-spdr-sp-500-etf-trust-spy" target="_blank" rel="noreferrer">State Street’s fund information</a>. A benchmark record measures the index questions, with the same historical scoring rules. Funds without verified matching questions stay unscored.</p>}
+        </div>}
+        <details><summary>What this percentage means</summary><p>Accuracy is the share of scored questions whose favored Yes or No outcome happened. The midpoint of the historical bid and ask decides the favored side; exact 50% quotes are excluded. Missing quotes and quotes at or after a known outcome are excluded rather than estimated.</p><p>At 24 hours the quote is the one standing at that moment: the last one Kalshi published before it, at most seven days earlier. At the other timeframes a quote must fall within the minute before the target, so far fewer questions are scored there. Coverage is limited to collected, reviewed series. Outcome-release timestamps are incomplete, so a close-relative quote is not guaranteed to precede the public release. A grade requires at least 30 scored questions across 10 event IDs. Several questions can concern the same release, so they are not independent tests.</p><p>A: 90% or more · B: 75–89.9% · C: 50–74.9% · D: below 50%. These describe this historical sample, not future reliability or investment returns. A large number of easy threshold questions can inflate accuracy.</p></details>
+        <details><summary>How this differs from the trust score</summary><p>This page measures whether the historically favored outcome happened. The existing trust score combines today’s spread, trading activity and open interest with the original category’s 24-hour calibration history. Calibration compares stated probabilities with how often outcomes occur. These are different measures; changing this page’s timeframe does not change trust scores.</p></details>
+    </>;
+}

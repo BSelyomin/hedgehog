@@ -1,0 +1,48 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+const mocks=vi.hoisted(()=>({query:vi.fn(),kalshi:vi.fn()}));
+vi.mock('../db.ts',()=>({query:mocks.query}));
+vi.mock('../services/kalshi.ts',async original=>({...await original<typeof import('../services/kalshi.ts')>(),kalshi:mocks.kalshi}));
+import { backfillHorizons as backfill } from './backfill.ts';
+const market={ticker:'M',event_ticker:'E',title:'Synthetic test question',status:'finalized',result:'yes',close_time:'2026-10-10T12:30:00Z'};
+beforeEach(()=>{
+ mocks.query.mockReset().mockImplementation(async(sql:string)=>sql.includes('SELECT DISTINCT e.series_ticker')?[{series_ticker:'S',category:'Test'}]:[]);
+ mocks.kalshi.mockReset().mockImplementation(async(path:string,params:Record<string,string>)=>{
+  if(path.endsWith('/candlesticks')) {
+   const hours=(Date.parse(market.close_time)/1000-Number(params.end_ts))/3600;
+   if(hours!==168) return {candlesticks:[]};
+   return {candlesticks:[{end_period_ts:Number(params.end_ts),yes_bid:{close_dollars:'.4'},yes_ask:{close_dollars:'.6'}}]};
+  }
+  return {markets:[market],cursor:''};
+ });
+});
+it('stores a real seven-day candle even when 24-hour and 30-day quotes are absent, with separate exclusions',async()=>{
+ await backfill({series:['S'],maxMarkets:1});
+ const stored=mocks.query.mock.calls.filter(([sql])=>sql.includes('INSERT INTO forecast_observations'));
+ expect(stored).toHaveLength(1);expect(stored[0][1].slice(0,2)).toEqual(['M',168]);expect(stored[0][1].slice(6,8)).toEqual([.4,.6]);
+ expect(mocks.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO settled_markets'))).toBe(false);
+ const skipped=mocks.query.mock.calls.filter(([sql])=>sql.includes('INSERT INTO backfill_skips'));
+ expect(skipped.map(([,values])=>values[5]).sort((a,b)=>Number(a)-Number(b))).toEqual([1,24,720]);
+ expect(skipped.every(([,values])=>values[3]==='no_quote')).toBe(true);
+});
+it('does not ask Kalshi for a quote from before a market was listed',async()=>{
+ // Listed five days before its close: it existed at the 1-hour and 24-hour marks, not at the 7- and 30-day ones.
+ const listed={...market,open_time:'2026-10-05T12:30:00Z'};
+ mocks.kalshi.mockImplementation(async(path:string)=>path.endsWith('/candlesticks')?{candlesticks:[]}:{markets:[listed],cursor:''});
+ await backfill({series:['S'],maxMarkets:1});
+ const asked=new Set(mocks.kalshi.mock.calls.filter(([path])=>String(path).endsWith('/candlesticks')).map(([,params])=>(Date.parse(listed.close_time)/1000-Number(params.end_ts))/3600));
+ expect([...asked].sort((a,b)=>Number(a)-Number(b))).toEqual([1,24]);
+ // All four are still noted as unscored, so coverage is reported and not silently smaller.
+ const skipped=mocks.query.mock.calls.filter(([sql])=>sql.includes('INSERT INTO backfill_skips'));
+ expect(skipped.map(([,values])=>values[5]).sort((a,b)=>Number(a)-Number(b))).toEqual([1,24,168,720]);
+ expect(skipped.every(([,values])=>values[3]==='no_quote')).toBe(true);
+});
+it('does not advance a failed page or record an API outage as a missing quote',async()=>{
+ mocks.kalshi.mockImplementation(async(path:string)=>{
+  if(path.endsWith('/candlesticks')) throw new Error('Kalshi retry limit');
+  return {markets:[market],cursor:'NEXT'};
+ });
+ await expect(backfill({series:['S'],maxMarkets:1})).rejects.toThrow('Backfill horizons stopped after failure');
+ expect(mocks.query.mock.calls.some(([sql,values])=>sql.includes('INSERT INTO job_state') && String(values[0]).startsWith('backfill:horizons-v1:'))).toBe(false);
+ expect(mocks.query.mock.calls.some(([sql,values])=>sql.includes('INSERT INTO job_state') && String(values[0]).startsWith('stopped-task:backfill-horizons:'))).toBe(true);
+ expect(mocks.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO backfill_skips'))).toBe(false);
+});

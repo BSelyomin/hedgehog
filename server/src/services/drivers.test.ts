@@ -5,7 +5,7 @@ import { driverContribution, rankMoves, sumByDriver } from '../math/move.ts';
 import { oddsChanges } from './moves.ts';
 import type { ExposureEvent } from '../../../shared/types.ts';
 import { measureLink } from '../jobs/measure.ts';
-import { drivers, matchHolding, rankDrivers, strongestPerFamily } from './matching.ts';
+import { drivers, matchHolding, materialRows, rankDrivers, strongestPerFamily } from './matching.ts';
 import type { MeasuredRow } from './matching.ts';
 import { DRIVERS } from '../config/drivers.ts';
 
@@ -81,11 +81,48 @@ describe('which driver matters most', () => {
         expect(rankDrivers('XOM', rows)).toEqual([{ driver: 'SPY', typicalEffect: .009 }, { driver: 'CL=F', typicalEffect: .007 }]);
         expect(rankDrivers('TLT', [row('TLT', 'SPY', .085, null)])).toEqual([]);
     });
-    it('tells an oil link on a bond fund that rates matter more, and an oil link on an oil stock its own size', () => {
-        const bond = matchHolding({ symbol: 'TLT', valueUsd: 100 }, ['oil'], ['oil'], rows);
-        expect(bond?.sensitivity).toMatchObject({ driver: 'CL=F', typicalEffect: .0002 });
-        expect(bond?.lead).toEqual({ driver: 'DGS10', typicalEffect: .0085 });
+    it('tells a link on a lesser driver what matters more', () => {
+        // Rates are the bond fund's biggest driver; the 2-year yield is a lesser one, but well above the floor.
+        const lesser = matchHolding({ symbol: 'TLT', valueUsd: 100 }, ['fed-rates'], ['fed-rates'], rows);
+        expect(lesser?.type).toBe('Measured');
+        expect(lesser?.sensitivity).toMatchObject({ driver: 'DGS2', typicalEffect: .0052 });
+        expect(lesser?.lead).toEqual({ driver: 'DGS10', typicalEffect: .0085 });
         expect(matchHolding({ symbol: 'XOM', valueUsd: 100 }, ['oil'], ['oil'], rows)?.lead?.driver).toBe('SPY');
+    });
+    it('draws no link from a measurement that is faint next to the holding’s biggest driver', () => {
+        // Oil moves the bond fund about 2% as much as the 10-year yield does: reliable, and far under a tenth.
+        const faint = matchHolding({ symbol: 'TLT', valueUsd: 100 }, ['oil'], ['oil'], rows);
+        expect(faint).toMatchObject({ type: 'Related', sensitivity: null, lead: { driver: 'DGS10', typicalEffect: .0085 } });
+        expect(faint?.evidence).toBe('Measured against CL=F, but small: a typical move in it moves TLT about 2.4% as much as a typical move in DGS10. Under the 10% floor for a link, so no move estimate is shown.');
+        // The stock market at about 11% clears the floor, as the 2-year yield at 61% does.
+        expect(materialRows('TLT', rows).map(r => r.driver).sort()).toEqual(['DGS10', 'DGS2', 'MORTGAGE30US', 'SPY']);
+        expect(matchHolding({ symbol: 'TLT', valueUsd: 100 }, ['sp500'], ['sp500'], rows)).toMatchObject({ type: 'Measured', lead: { driver: 'DGS10' } });
+        // With several topics on one event, a faint one does not stop a sizeable one from linking.
+        expect(matchHolding({ symbol: 'TLT', valueUsd: 100 }, ['oil', 'fed-rates'], ['oil', 'fed-rates'], rows)).toMatchObject({ type: 'Measured', sensitivity: { driver: 'DGS2' } });
+    });
+    it('sets the floor at a tenth of the biggest driver, and keeps what it cannot size', () => {
+        const sized = (effect: number | null) => [row('JPM', 'SPY', .9, .01), row('JPM', 'CL=F', .02, effect)];
+        expect(materialRows('JPM', sized(.0009)).map(r => r.driver)).toEqual(['SPY']);
+        expect(materialRows('JPM', sized(.0011)).map(r => r.driver)).toEqual(['SPY', 'CL=F']);
+        // An airline's oil link, at 11% and 13% of what the stock market does to it, is kept.
+        expect(matchHolding({ symbol: 'DAL', valueUsd: 100 }, ['oil'], ['oil'], [row('DAL', 'SPY', 1.44, .0144), row('DAL', 'CL=F', -.06, .00176)])).toMatchObject({ type: 'Measured', sensitivity: { driver: 'CL=F' }, lead: { driver: 'SPY' } });
+        // A row stored before sizes were kept cannot be judged, so it still links.
+        expect(materialRows('JPM', sized(null)).map(r => r.driver)).toEqual(['SPY', 'CL=F']);
+        expect(materialRows('JPM', [row('JPM', 'CL=F', .02, .0001)]).map(r => r.driver)).toEqual(['CL=F']);
+        expect(materialRows('JPM', [row('JPM', 'SPY', .9, .01, { reliable: false }), row('JPM', 'CL=F', .02, .0001)]).map(r => r.driver)).toEqual(['CL=F']);
+    });
+    it('links a weekly driver only for a holding tied to that kind of driver day to day', () => {
+        // Mortgage rates are measured weekly and cannot be put on the daily scale.
+        const airline = [row('UAL', 'SPY', 1.6, .016), row('UAL', 'DGS2', .02, .0014), row('UAL', 'MORTGAGE30US', .03, .0085)];
+        const builder = [row('ITB', 'SPY', 1.1, .011), row('ITB', 'DGS10', -.05, .004), row('ITB', 'MORTGAGE30US', -.02, .0031)];
+        expect(materialRows('UAL', airline).map(r => r.driver)).toEqual(['SPY']);
+        expect(materialRows('ITB', builder).map(r => r.driver)).toEqual(['SPY', 'DGS10', 'MORTGAGE30US']);
+        const faint = matchHolding({ symbol: 'UAL', valueUsd: 100 }, ['mortgage-rates'], ['mortgage-rates'], airline);
+        expect(faint?.type).toBe('Related');
+        expect(faint?.evidence).toBe('Measured against MORTGAGE30US, but small: UAL has no sizeable link to that kind of driver day to day; SPY matters most to it. Under the 10% floor for a link, so no move estimate is shown.');
+        expect(matchHolding({ symbol: 'ITB', valueUsd: 100 }, ['mortgage-rates'], ['mortgage-rates'], builder)?.type).toBe('Measured');
+        // Nothing daily to compare against: the weekly link stands.
+        expect(matchHolding({ symbol: 'NEW', valueUsd: 100 }, ['mortgage-rates'], ['mortgage-rates'], [row('NEW', 'MORTGAGE30US', .03, .008)])?.type).toBe('Measured');
     });
     it('compares one yield per holding on a given day, the one that typically matters most', () => {
         const tlt = rows.filter(r => r.symbol === 'TLT' && r.driver !== 'SPY' && r.driver !== 'MORTGAGE30US');

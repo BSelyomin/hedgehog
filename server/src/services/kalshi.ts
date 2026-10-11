@@ -6,9 +6,15 @@ export interface KalshiMarket {
     subtitle?: string;
     yes_sub_title?: string;
     close_time: string;
+    open_time?: string;
     occurrence_datetime?: string;
     expected_expiration_time?: string;
     status: string;
+    settlement_ts?: string;
+    is_provisional?: boolean;
+    market_type?: string;
+    mve_collection_ticker?: string;
+    mve_selected_legs?: unknown[];
     result?: string;
     yes_bid_dollars?: string;
     yes_ask_dollars?: string;
@@ -111,6 +117,14 @@ export function eventTime(now: number, closeTime: Date, occurrence: Date | null,
             return { time, source };
     return { time: closeTime, source: 'close' };
 }
+// A book with no bid and no offer is not a quote: 0 and 1 would average to a 50% that nobody
+// posted. The poller still stores such a reading, so that readers know the book is empty now
+// and do not fall back on an older quote; every reader then treats it as no probability.
+export const emptyBook = (bid: number | null | undefined, ask: number | null | undefined) => bid != null && ask != null && bid <= 0 && ask >= 1;
+// The same test in SQL, for queries over odds_snapshots.
+export const QUOTED = 'NOT (yes_bid<=0 AND yes_ask>=1)';
+// The bid-ask spread of a stored reading, or null when it holds no usable quote.
+export const quotedSpread = (bid: number | null | undefined, ask: number | null | undefined) => bid == null || ask == null || emptyBook(bid, ask) ? null : ask - bid;
 export function quote(bid: unknown, ask: unknown) {
     const b = numberField(bid), a = numberField(ask);
     if (b === null || a === null || b < 0 || a > 1 || b > a)

@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { preparePollPage } from './poll-storage.ts';
 import { oddsBeforeClose, normalizeHistoricalCandles } from './backfill.ts';
-import { eventTime, isRangeLadder, marketKind } from '../services/kalshi.ts';
+import { emptyBook, eventTime, isRangeLadder, marketKind, quotedSpread } from '../services/kalshi.ts';
 import type { KalshiEvent } from '../services/kalshi.ts';
 import { trustScore } from '../config/trust.ts';
 import { matchHolding } from '../services/matching.ts';
@@ -21,6 +21,11 @@ it('keeps valid markets when one market is invalid and retains fractional activi
     const timed = preparePollPage([{ ...event, strike_date: '2026-12-31T21:00:00Z', markets: [{ ...market, occurrence_datetime: '2026-10-29T21:00:00Z', expected_expiration_time: 'soon' }] }], new Date());
     expect(timed.events[0].strike_date).toBe('2026-12-31T21:00:00Z');
     expect(timed.markets[0]).toMatchObject({ occurrence_time: '2026-10-29T21:00:00Z', expected_expiration_time: null });
+    // The listing time is where a market's candlestick history starts. It is stored last,
+    // matching the column added last to the markets table.
+    expect(page.markets[0].open_time).toBeNull();
+    expect(preparePollPage([{ ...event, markets: [{ ...market, open_time: '2025-10-13T14:00:00Z' }] }], new Date()).markets[0].open_time).toBe('2025-10-13T14:00:00Z');
+    expect(Object.keys(page.markets[0]).at(-1)).toBe('open_time');
     const crossed = preparePollPage([{ ...event, markets: [{ ...market, yes_bid_dollars: '.80' }] }], new Date());
     expect(crossed.markets).toHaveLength(1);
     expect(crossed.quotes).toHaveLength(0);
@@ -30,7 +35,8 @@ it('reads archive dollar prices without confusing them with live cent fields', (
     const candles = normalizeHistoricalCandles([{ end_period_ts: ts, yes_bid: { close: '.37' }, yes_ask: { close: '.39' } }]);
     expect(oddsBeforeClose(candles, close)?.probability).toBeCloseTo(.38);
     expect(oddsBeforeClose([{ ...candles[0], end_period_ts: ts + 60 }], close)).toBeNull();
-    expect(oddsBeforeClose([{ ...candles[0], end_period_ts: ts - 120 }], close)).toBeNull();
+    // A quote published two minutes before the mark was still standing at it (see backfill-job.test.ts).
+    expect(oddsBeforeClose([{ ...candles[0], end_period_ts: ts - 120 }], close)).toEqual({ probability: expect.closeTo(.38, 10), ts: ts - 120 });
     expect(oddsBeforeClose(normalizeHistoricalCandles([{ end_period_ts: ts, yes_bid: { close: null }, yes_ask: { close: '.39' } }]), close)).toBeNull();
 });
 it('classifies call-mention markets by Kalshi category and range ladders including their end caps', () => {
@@ -58,6 +64,18 @@ it('dates an event by the most specific upcoming Kalshi time and falls back to t
     expect(eventTime(now, close, new Date('invalid'), null, null).source).toBe('close');
     // A data release after trading stops is still the event date.
     expect(eventTime(now, at('2026-11-07T03:29:00Z'), at('2026-11-14T05:00:00Z'), null, null).source).toBe('occurrence');
+});
+it('does not read a probability from an empty order book', () => {
+    expect([emptyBook(0, 1), emptyBook(0, .99), emptyBook(.01, 1), emptyBook(.4, .6), emptyBook(null, 1), emptyBook(0, null)]).toEqual([true, false, false, false, false, false]);
+    expect(quotedSpread(0, 1)).toBeNull();
+    expect(quotedSpread(null, .5)).toBeNull();
+    expect(quotedSpread(.4, .46)).toBeCloseTo(.06, 12);
+    expect(quotedSpread(0, .06)).toBe(.06);
+    // The track record reads the odds a day before close; an empty book there gives no reading.
+    const close = '2026-10-20T12:00:00Z', mark = Date.parse(close) / 1000 - 86400;
+    const candle = (bid: string, ask: string) => [{ end_period_ts: mark, yes_bid: { close_dollars: bid }, yes_ask: { close_dollars: ask } }];
+    expect(oddsBeforeClose(candle('0.0000', '1.0000'), close)).toBeNull();
+    expect(oddsBeforeClose(candle('0.6000', '0.6400'), close)).toEqual({ probability: .62, ts: mark });
 });
 it('can award medium and high trust; no history is rescaled, not scored as zero', () => {
     expect(trustScore(1, 100000, 1000000, null, 0).band).toBe('High');

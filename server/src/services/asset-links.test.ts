@@ -4,6 +4,7 @@ import { modifiedDuration, yearsUntil } from '../math/fixed-income.ts';
 import { ASSET_TAGS, assetLink } from './asset-links.ts';
 import { validateHoldings } from './holdings.ts';
 import { buildBriefing } from './briefing-content.ts';
+import { noCategories } from './categories.ts';
 import type { ExposureResponse, MovesResponse } from '../../../shared/types.ts';
 
 const now = Date.parse('2026-10-10T00:00:00Z');
@@ -114,8 +115,8 @@ describe('holding validation by type', () => {
 });
 
 describe('briefing wording with unpriced holdings', () => {
-    const portfolio = { holdings: [], totalValue: 0, byHolding: [], events: [], asOf: null } as ExposureResponse;
-    const move = (unpricedValue: number) => ({ date: '2026-10-09', requestedDate: null, notes: [], total: -12.5, fromMarket: -10, beyondMarket: -2.5, oddsMoves: [], spyReturn: 0, holdings: [], drivers: [], missingDrivers: [], unpricedValue, asOf: null }) as MovesResponse;
+    const portfolio = { holdings: [], totalValue: 0, byHolding: [], events: [], categories: noCategories, asOf: null } as ExposureResponse;
+    const move = (unpricedValue: number) => ({ date: '2026-10-09', requestedDate: null, notes: [], total: -12.5, fromMarket: -10, beyondMarket: -2.5, range: 'day', startDate: '2026-10-08', startValue: null, endValue: null, oddsWindow: null, settledEvents: [], driverChanges: [], movedEvents: [], spyReturn: 0, holdings: [], drivers: [], missingDrivers: [], unpricedValue, asOf: null }) as MovesResponse;
     it('says the daily move covers listed holdings when cash, bonds or property are left out', () => {
         expect(buildBriefing(portfolio, move(250000), new Date(now))).toContain('Your listed holdings ended the October 9, 2026 session down 12.50 dollars.');
         expect(buildBriefing(portfolio, move(0), new Date(now))).toContain('Your portfolio ended the October 9, 2026 session down 12.50 dollars.');

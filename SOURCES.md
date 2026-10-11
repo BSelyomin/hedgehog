@@ -51,6 +51,56 @@ On 2026-10-09, `HEDGEHOG.REPORTING.EVENT_SOURCES` was provisioned with 21 dated 
 - Kalshi lists no company revenue or earnings-per-share markets. Company results markets are
   ladders of "above X" levels on operating metrics (232 open) and earnings-call word markets.
 
+# Settled markets for the track record (October 10, 2026)
+
+- `GET /markets?status=settled&series_ticker=…` and `GET /historical/markets?series_ticker=…`
+  both accept `limit=1000` and return `ticker`, `event_ticker`, `title`, `open_time`,
+  `close_time` and `result`. Most settled markets are in the archive: CPI had 25 on the live
+  listing and 483 archived, the Fed series 11 and 402.
+- The batch candlestick endpoint returns nothing for an archived market; those are read one at
+  a time from `GET /historical/markets/{ticker}/candlesticks`, which accepts
+  `period_interval=60` and names its prices `yes_bid.close` and `yes_ask.close`.
+- Reading the odds 24 hours before close: of 36 live-listed CPI and Fed markets, a one-minute
+  candlestick existed at the exact mark for 6; the last hourly candlestick within the week
+  before the mark existed for all 36, with a median age of 1.4 to 2.9 hours and at most 20.9.
+- Daily markets ("gas prices tomorrow", 3,697 settled in one series) open about 16 hours
+  before they close, so they have no quote 24 hours before close.
+
+# Security profiles for asset classes (October 10, 2026)
+
+- Yahoo `quoteSummary` was called for about 150 tickers and the replies inspected.
+  `quoteType.quoteType` was EQUITY, ETF, MUTUALFUND, MONEYMARKET, CRYPTOCURRENCY or INDEX, and
+  NONE for a symbol that is not a security. `assetProfile.sector` and `.industry` are present for
+  companies; `fundProfile.categoryName` for ETFs and most mutual funds (null for one, FCNTX).
+- Every fund category in `server/seed/fund_classes.json` is a name one of those replies
+  contained, except the two prefix entries: `Target-Date *` (observed as Target-Date 2055) and
+  `Allocation--*` (observed as Allocation--50% to 70% Equity). Categories seen and deliberately
+  left unmapped: Trading--Leveraged Equity, Trading--Inverse Equity, Trading--Miscellaneous,
+  Single Currency, Systematic Trend, Preferred Stock and Convertibles.
+- yahoo-finance2 3.15.4 rejects every mutual fund's `fundProfile` against its own schema and
+  prints a debug line per field while doing so. The profile job therefore reads replies without
+  schema validation, checks each field it uses is text, and mutes `console.log` for the one
+  fund-profile call.
+
+# Candlesticks for the odds chart (October 10, 2026)
+
+- [Batch candlesticks](https://docs.kalshi.com/api-reference/market/batch-get-market-candlesticks):
+  `GET /markets/candlesticks` with `market_tickers` (at most 100), `start_ts`, `end_ts` and
+  `period_interval` in minutes; at most 10,000 candlesticks per reply across all markets. The
+  reply is `markets[]` of `market_ticker` and `candlesticks[]`, each with `end_period_ts` (the
+  inclusive end of the period) and `yes_bid` / `yes_ask` objects holding `close_dollars`.
+- Live replies for five stored markets: daily periods end at midnight New York (04:00 UTC in
+  summer), only finished periods are returned, and `price` is empty when nothing traded.
+  Candlesticks are not published for every period: one Fed market listed 362 days earlier had
+  293 daily candlesticks, with gaps of up to 12 days.
+- What a missing candlestick means was checked against our own five-minute readings for 200
+  markets over 22 hours. Of 744 closely watched hours with no hourly candlestick, the quote
+  was unchanged in 741. Where a candlestick was published and we had a reading within five
+  minutes of the hour's end, its closing bid and ask equalled that reading in 199 of 214 hours.
+  The chart therefore holds each reading until the next one rather than sloping between them.
+- Nested markets in the events listing carry `open_time`, which is stored as the start of a
+  market's history.
+
 # Additional coverage validation (October 9, 2026)
 
 - [Kalshi historical data](https://docs.kalshi.com/getting_started/historical_data): older

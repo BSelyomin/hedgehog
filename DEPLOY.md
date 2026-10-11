@@ -92,6 +92,41 @@ link to (about 7,000 markets), in daily chunks that are compressed after a day a
 eight. A trigger on `odds_snapshots` applies the same rule to any backend writing to the
 database, including one running older code.
 
+The event chart's longer ranges and the Moves screen read `odds_candles`: Kalshi's hourly closes
+for the past twelve days and its daily closes since each market was listed, one midpoint and
+its bid–ask spread per period, for the same linkable markets while they are open. A backend
+running code from before 2026-10-10 stores candlesticks without the spread and drops hourly
+ones after eight days; the current job fetches a market again when it finds readings without a
+spread, but the pruned days come back only as time passes. The candlestick job fills it after the first poll at
+startup, then hourly and after midnight New York. To run it by hand:
+
+```powershell
+docker compose exec backend npm run job -- odds-candles
+```
+
+Asset classes come from `security_profiles`, one small row per held ticker from Yahoo. The
+profiles job runs with the hourly price job and looks a ticker up when it is first held and
+again after thirty days. To classify newly added tickers at once:
+
+```powershell
+docker compose exec backend npm run job -- profiles
+```
+
+### If odds stop updating
+
+Each scheduled job runs under a database lock so that only one backend sharing the database
+runs it. A backend running code from before 2026-10-10 that dies mid-job can leave its session
+open, and the lock with it, for about an hour; current code ends such a session within two
+minutes. To see who holds a job and when it last did anything:
+
+```sql
+SELECT a.pid, a.state, a.backend_start, a.state_change, left(a.query, 60)
+FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid WHERE l.locktype = 'advisory';
+```
+
+A holder whose `state_change` is minutes old while nothing is being stored is dead;
+`SELECT pg_terminate_backend(<pid>);` frees the job.
+
 When the database is read-only the backend still starts. It serves stored data, skips migrations
 and scheduled jobs, reports `readOnly: true` from `/health` (the app shows a notice), and answers
 any attempt to save with a plain message. It checks every minute and applies migrations and starts
@@ -105,8 +140,8 @@ SET default_transaction_read_only = off;
 TRUNCATE odds_snapshots;
 ```
 
-That removes the stored odds history (the one-week charts and day-over-day odds moves start
-again); current odds return with the next poll. Holdings, accounts, tags, prices, measurements
+That removes the stored five-minute odds history (the detail in the one-day chart and
+day-over-day odds moves start again; Kalshi's hourly and daily closes in `odds_candles` remain); current odds return with the next poll. Holdings, accounts, tags, prices, measurements
 and the track record are not touched.
 
 ## Asset types and drivers
@@ -250,7 +285,9 @@ instance; it is not an offline browser copy of the portfolio.
 Moves opens with `GET /moves`, selecting the latest stored completed SPY session
 (or latest holding session if SPY history is absent). The UI shows the actual date
 and each holding's source close dates. Choosing a date calls `GET /moves?date=YYYY-MM-DD`
-and never substitutes another date. Use **Latest trading session** to return to the
+and never substitutes another date. `range=day|week|month|quarter` sets how far back the
+window opens: on the last session at or before that date. A close more than 30 days older
+than the date wanted is not used. Use **Latest trading session** to return to the
 automatic view; Reload reads the newest stored results.
 
 Price loading and measurement now run on startup and hourly, independently of AI
@@ -282,10 +319,11 @@ SnapTrade mode or convert simulated positions into live accounts.
 
 ### Timing a slow Moves request in your browser
 
-Moves now has a dedicated query path: it reads the holdings, two relevant closes
-per symbol, stored sensitivities, reviewed tags, and only markets with a supported
-3+ point odds move. It no longer builds the exposure map, calculates trust scores,
-reads all settled markets, or scans the entire prices table for freshness. On the
+Moves now has a dedicated query path: it reads the holdings, the closes at the two
+ends of the window per symbol, stored sensitivities, reviewed tags, markets with a
+supported 3+ point odds move, and the markets that settled inside the window. It does
+not build the exposure map, calculate trust scores, read settled markets outside the
+window, or scan the entire prices table for freshness. On the
 profiled signed-in account, SQL calls fell from 13 to 7. Independent holding reads
 and price/measurement/tag reads run concurrently; the default session and its
 closing prices are resolved in one query.
@@ -304,7 +342,8 @@ and select the `/api/moves` request. Under Response Headers, inspect `Server-Tim
 - `holdings`: manual and brokerage holdings reads, performed concurrently.
 - `prices`: default-date selection and recent closing-price reads.
 - `measurements` / `tags`: sensitivity and stock-tag reads, concurrent with prices.
-- `odds`: finding linked markets with supported 24-hour odds changes.
+- `odds`: finding linked markets whose odds moved between the window's two closes.
+- `settled`: reading the linked markets that settled inside the window.
 - `sql_count`: number of database queries; `sql_total` is cumulative query time,
   including waits. Parallel queries overlap, so do not add the durations together
   or compare `sql_total` to wall-clock request time as if they were equivalent.
@@ -401,7 +440,8 @@ docker compose exec backend npm run job -- review-tags
 the six macro series approved during setup. Run `approve-tag SERIES_TICKER TAG` only after
 reviewing the specific proposed pair, then run `backfill` to build category track records.
 Backfill reads both live and archived markets, normalizes their distinct candlestick fields,
-and accepts only bid/ask observations at the 24-hour cutoff (within one minute before it).
+and reads the quote standing at the 24-hour cutoff: the last hourly close at or before it, at
+most seven days old.
 Unavailable or unsupported history is omitted rather than replaced with last-trade prices.
 
 ## Track-record evidence and portfolio CSV
@@ -417,6 +457,26 @@ The track-record main view explains the sample and compares around-70% quotes wi
 The track-record selector offers All history, Inflation, Interest rates, Company events and Stock market. Subject samples use exact series identities and reviewed tags; unknown or unclassified observations remain in All history. The original category aggregation and trust-score formula are unchanged. Subjects use the same calibration/Brier functions over their own matching observations. A focused current event explains the recorded Direct/Measured/Related holding evidence and opens the existing event page.
 
 Migration 004 adds nullable series/event/title identity to settled observations. It recovers known local catalog metadata without altering quotes or outcomes. New backfill rows retain those identifiers. Run `docker compose exec backend npm run job -- history-metadata` to recover missing identity from public live/archive market responses and their event metadata. Unavailable identities remain explicit; no ticker parsing or guessed subject labels are used. Distinct-event counts describe identified events, not statistically independent observations.
+
+## Past events linked to current holdings
+
+Track record retains **Forecast accuracy** and adds **Past events linked to my holdings**. The second tab uses the authenticated/guest portfolio and current reviewed Direct/Measured/Related links to find settled events, grouped by Kalshi event ID. It shows at most twelve recent events, supports subject and holding filters, and retains each contract's earlier bid–ask midpoint, quote time and final Yes/No outcome. An event-page link opens this tab directly. It does not reconstruct historical holdings or use current dollar values to report historical profit/loss.
+
+Migration 005 stores verified event release times separately from market close times. `server/seed/event_releases.json` starts with eight observed CPI/core/YoY event identifiers covering the June, July and August 2026 reports. Dates/times come from the official BLS archive release headers, linked in each record. Seed insertion is idempotent and preserves existing release records. Expand this catalog only with independently verified event identity, actual publication time and original source URL.
+
+Price comparisons currently support the 25 sample U.S. securities in `price_window_symbols.json`, with verified pre-open releases. They compare the previous weekday's close with the release day's close, aligned to SPY. Both benchmark closes and both stock closes must exist. Weekend gaps are handled; exchange holidays, intraday/after-hours releases, missing closes and same-day incomplete candles are omitted pending a verified exchange calendar. Unsupported symbols show no move. These are raw daily closing-price changes from Yahoo, not total returns or causally attributed event effects. Multiple Kalshi events may describe the same release.
+
+GET `/holdings-history?subject=inflation&symbol=TLT` accepts only supported subject IDs and an optional ticker, and resolves ownership exclusively from session middleware. A quote after the verified release is marked as not a prior forecast. Missing release times never fall back to Kalshi close times. The underlying forecast-accuracy calculations and trust scores are unchanged.
+
+## Track Record themes and forecast horizons
+
+By Market and By Holding group reviewed series into Company markets, Oil, Fed rates, Inflation, Treasury yields, Stock market, Mortgage rates and Credit. Portfolio relevance filters which whole theme records appear, using the current holdings matcher, including asset-specific rules. It does not score stock returns or reconstruct historical ownership. The main view prioritizes themes with actual records. Reviewed themes without records are collapsed; themes without reviewed series or scored observations are not promoted as working coverage. By Holding filters current stocks, ETFs and funds without changing the whole-theme statistics.
+
+The horizon selector accepts 1, 24, 168 or 720 hours before trading close (`GET /track-record?horizon=168`). Migration `013_one_hour_forecasts.sql` adds the one-hour horizon. Migration `012_forecast_horizons.sql` stores independent bid/ask observations for each horizon and makes missing-quote exclusions horizon-specific. It does not copy legacy probabilities into longer horizons. Quotes must end at or before the target and no more than 60 seconds before its whole-second timestamp. A known official release time takes precedence over Kalshi occurrence metadata when excluding already-known outcomes. Missing release timing remains explicit.
+
+After migrations, run `docker compose exec backend npm run job -- backfill-horizons KXCPI KXCPIYOY KXCPICORE` for a scoped inflation backfill, or omit the series arguments to process every reviewed series. The job also runs nightly. It requests history separately for each horizon, retains a failed page for retry, and does not classify API outages as missing quotes. Large catalogs can take a long time; no historical probability is interpolated or borrowed from another horizon.
+
+The existing category-based trust score and optional holdings price comparisons continue to use the legacy 24-hour record. Theme/horizon selection changes the displayed evaluation only. Contract counts and Kalshi event IDs are shown separately from sourced release counts; event IDs and themes may overlap. Calibration, Brier and intervals are descriptive, not guarantees or causality claims.
 
 ## Combined holdings after merging asset support
 

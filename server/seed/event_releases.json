@@ -1,0 +1,50 @@
+[
+  {
+    "eventTicker": "KXCPI-26AUG",
+    "title": "CPI \u00b7 August 2026",
+    "releasedAt": "2026-09-11T12:30:00Z",
+    "sourceUrl": "https://www.bls.gov/news.release/archives/cpi_09112026.htm"
+  },
+  {
+    "eventTicker": "KXCPIYOY-26AUG",
+    "title": "CPI year-over-year \u00b7 August 2026",
+    "releasedAt": "2026-09-11T12:30:00Z",
+    "sourceUrl": "https://www.bls.gov/news.release/archives/cpi_09112026.htm"
+  },
+  {
+    "eventTicker": "KXCPI-26JUL",
+    "title": "CPI \u00b7 July 2026",
+    "releasedAt": "2026-08-12T12:30:00Z",
+    "sourceUrl": "https://www.bls.gov/news.release/archives/cpi_08122026.htm"
+  },
+  {
+    "eventTicker": "KXCPIYOY-26JUL",
+    "title": "CPI year-over-year \u00b7 July 2026",
+    "releasedAt": "2026-08-12T12:30:00Z",
+    "sourceUrl": "https://www.bls.gov/news.release/archives/cpi_08122026.htm"
+  },
+  {
+    "eventTicker": "KXCPICORE-26JUL",
+    "title": "Core CPI \u00b7 July 2026",
+    "releasedAt": "2026-08-12T12:30:00Z",
+    "sourceUrl": "https://www.bls.gov/news.release/archives/cpi_08122026.htm"
+  },
+  {
+    "eventTicker": "KXCPI-26JUN",
+    "title": "CPI \u00b7 June 2026",
+    "releasedAt": "2026-07-14T12:30:00Z",
+    "sourceUrl": "https://www.bls.gov/news.release/archives/cpi_07142026.htm"
+  },
+  {
+    "eventTicker": "KXCPIYOY-26JUN",
+    "title": "CPI year-over-year \u00b7 June 2026",
+    "releasedAt": "2026-07-14T12:30:00Z",
+    "sourceUrl": "https://www.bls.gov/news.release/archives/cpi_07142026.htm"
+  },
+  {
+    "eventTicker": "KXCPICORE-26JUN",
+    "title": "Core CPI \u00b7 June 2026",
+    "releasedAt": "2026-07-14T12:30:00Z",
+    "sourceUrl": "https://www.bls.gov/news.release/archives/cpi_07142026.htm"
+  }
+]

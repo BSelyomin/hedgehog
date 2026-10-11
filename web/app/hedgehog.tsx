@@ -46,7 +46,7 @@ function Shell() {
         case 'moves': screen = <Moves/>; break;
         case 'forecasts': screen = <Forecasts/>; break;
         case 'earnings': screen = <Earnings/>; break;
-        case 'track-record': screen = <TrackRecord/>; break;
+        case 'track-record': screen = <TrackRecord initialView={id}/>; break;
         default: screen = <AddHoldings user={session?.user}/>;
     }
     return <>

@@ -1,3 +1,4 @@
+import { trackRatings } from './services/track-ratings.ts';
 import { briefing, briefingResponse, savedBriefing } from './jobs/briefing.ts';
 import { summaries } from './jobs/summaries.ts';
 import express from 'express';
@@ -8,13 +9,19 @@ import { loadSession, protectWrites } from './auth/session.ts';
 import { query } from './db.ts';
 import { getHoldings, saveHoldings, validateHoldings } from './services/holdings.ts';
 import { exposure, calendar, eventDetail } from './services/exposure.ts';
+import { isOddsRange, oddsHistory } from './services/odds-history.ts';
 import { moves } from './services/moves.ts';
+import { isMoveRange } from './services/move-data.ts';
 import { earnings, earningsList } from './services/earnings.ts';
+import { holdingsHistory } from './services/holdings-history.ts';
+import { HISTORY_SUBJECTS } from './services/history-subjects.ts';
 import { trackRecord } from './services/track-record.ts';
 import { forecasts, forecastMarkets, scenarioForecast, eventForecast, validateEventForecast } from './services/forecasts.ts';
 import { validateScenario } from './services/forecast-model.ts';
 import { rankedForecasts, forecastResult } from './services/ranked-forecasts.ts';
 import { forecastAssessment, forecastAssessments, retryForecastAssessment } from './services/forecast-assessment.ts';
+import { FORECAST_HORIZONS, TRACK_GRADES, TRACK_SORTS } from '../../shared/types.ts';
+import type { TrackGrade } from '../../shared/types.ts';
 // What a failed request tells the browser. Postgres reports 25006 when a write reaches a
 // database that is accepting reads only, for example because its storage is full.
 export function errorResponse(error: unknown): { status: number; error: string } {
@@ -99,13 +106,42 @@ app.get('/event/:ticker', async (req, res) => { const result = await eventDetail
     res.status(404).json({ error: 'No linked event found', asOf: null });
     return;
 } res.json(result); });
+// One market's odds over a range, for the event chart. Odds are public data, so any stored market can be read.
+app.get('/odds/:ticker', async (req, res) => { const range = req.query.range ?? 'week'; if (!isOddsRange(range)) {
+    res.status(400).json({ error: 'range must be day, week, month or all', asOf: null });
+    return;
+} const result = await oddsHistory(req.params.ticker, range); if (!result) {
+    res.status(404).json({ error: 'Market not found', asOf: null });
+    return;
+} res.json(result); });
 app.get('/moves', async (req, res) => { const input = req.query.date ?? req.query.day; const date = input === undefined ? undefined : String(input); if (date !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date)) {
     res.status(400).json({ error: 'Use a valid YYYY-MM-DD date', asOf: null });
     return;
-} res.json(await moves(res.locals.session, date)); });
+} const range = req.query.range ?? 'day'; if (!isMoveRange(range)) {
+    res.status(400).json({ error: 'range must be day, week, month or quarter', asOf: null });
+    return;
+} res.json(await moves(res.locals.session, date, undefined, range)); });
 app.get('/earnings', async (_req, res) => { res.json(await earningsList(res.locals.session)); });
 app.get('/earnings/:symbol', async (req, res) => { res.json(await earnings(res.locals.session, req.params.symbol.toUpperCase())); });
-app.get('/track-record', async (_req, res) => { res.json(await trackRecord(res.locals.session)); });
+app.get('/holdings-history', async (req,res) => {
+    const subject=String(req.query.subject??'all'),symbol=req.query.symbol===undefined?undefined:String(req.query.symbol).trim().toUpperCase();
+    if(subject!=='all'&&!HISTORY_SUBJECTS.some(s=>s.id===subject) || symbol!==undefined&&!/^[A-Z][A-Z0-9.\-^=]{0,14}$/.test(symbol)) {res.status(400).json({error:'Choose a supported subject and ticker',asOf:null});return;}
+    res.json(await holdingsHistory(res.locals.session,subject,symbol));
+});
+app.get('/track-record/ratings', async (req,res) => {
+    const horizon=Number(req.query.horizon??24),page=Number(req.query.page??1),fundPage=Number(req.query.fundPage??1),search=req.query.search??'';
+    const sort=TRACK_SORTS.find(s=>s.key===(req.query.sort??'history'))?.key,grade=req.query.grade??'',scored=req.query.scored??'0';
+    if(![1,24,168,720].includes(horizon)||!Number.isSafeInteger(page)||page<1||!Number.isSafeInteger(fundPage)||fundPage<1||typeof search!=='string'||search.length>80
+        ||!sort||(grade!==''&&!TRACK_GRADES.some(g=>g===grade))||(scored!=='0'&&scored!=='1')) {
+        res.status(400).json({error:'Invalid history filters'});return;
+    }
+    res.json(await trackRatings(res.locals.session,horizon,page,search,fundPage,{sort,grade:grade as TrackGrade|'',scored:scored==='1'}));
+});
+app.get('/track-record', async (req, res) => {
+    const horizon = req.query.horizon === undefined ? 24 : Number(req.query.horizon);
+    if (!FORECAST_HORIZONS.some(h => h.hours === horizon)) { res.status(400).json({error:'Choose a horizon of 1, 24, 168 or 720 hours',asOf:null}); return; }
+    res.json(await trackRecord(res.locals.session,horizon));
+});
 app.get('/briefing', async (_req, res) => { res.json(await briefingResponse(res.locals.session)); });
 app.post(['/briefing/reload', '/briefing/refresh'], async (_req, res) => {
     await briefing(res.locals.session, true);

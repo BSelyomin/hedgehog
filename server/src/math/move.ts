@@ -3,6 +3,11 @@ export function splitMove(actual: number, b: number, spyReturn: number, value: n
     const marketCents = Math.round(b * spyReturn * value * 100);
     return { actual: actualCents / 100, fromMarket: marketCents / 100, beyondMarket: (actualCents - marketCents) / 100 };
 }
+// What a holding was worth at an earlier close, holding today's amount throughout: the value
+// entered is read as its worth at the latest stored close and scaled by the price, in whole cents.
+export function valueAt(valueUsd: number, close: number, latestClose: number) {
+    return Math.round(valueUsd * close / latestClose * 100) / 100;
+}
 // One driver's estimated part of a holding's move: sensitivity x the driver's change x the holding's value.
 export function driverContribution(b: number, change: number, value: number) {
     return Math.round(b * change * value * 100) / 100;

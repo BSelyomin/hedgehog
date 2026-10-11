@@ -145,10 +145,16 @@ export interface DriverRank {
     driver: string;
     typicalEffect: number;
 }
-/** One driver's estimated part of a holding's or the portfolio's move on a day, in dollars. */
+/** One driver's estimated part of a holding's or the portfolio's move over a window, in dollars. */
 export interface DriverMove {
     driver: string;
     contribution: number;
+}
+/** How far a driver itself moved over a window: a return for prices, percentage points for yields. */
+export interface DriverChange {
+    driver: string;
+    kind: 'return' | 'difference';
+    change: number;
 }
 export interface HoldingLink extends Holding {
     type: LinkType;
@@ -158,6 +164,8 @@ export interface HoldingLink extends Holding {
     lead?: DriverRank | null;
     /** Present on Calculated links. */
     calculation?: Calculation | null;
+    /** The themes this link holds through (see Categories). Empty for an unmeasured topic link. */
+    themes?: string[];
 }
 export interface Trust {
     total: number | null;
@@ -196,10 +204,48 @@ export interface ExposureEvent {
     links: HoldingLink[];
     markets: Market[];
     mutuallyExclusive: boolean;
+    /** Every theme one of its links holds through. */
+    themes?: string[];
+}
+/** What a holding is. Each holding has exactly one class. */
+export type AssetClass = 'stocks' | 'bonds' | 'cash' | 'property' | 'commodities' | 'crypto' | 'mixed' | 'unclassified';
+export interface HoldingCategory {
+    symbol: string;
+    valueUsd: number;
+    assetClass: AssetClass;
+    /** What the class rests on: a company's sector or a fund's category from Yahoo, or the type the user entered. Null when unknown. */
+    detail: string | null;
+    /** Themes with an open event linked to this holding by a Direct, Calculated or Measured link. */
+    themes: string[];
+}
+export interface CategoryGroup {
+    key: string;
+    label: string;
+    /** Holdings in the group, largest first. Each is counted once. */
+    symbols: string[];
+    valueUsd: number;
+    /** valueUsd as a share of the whole portfolio. Theme groups overlap, so their shares do not add up to 100%. */
+    share: number;
+    /** Open events linked to a holding in the group; for a theme, through that theme. Unmeasured topic links are not counted. */
+    events: number;
+    /** The soonest of those events. */
+    next: Pick<ExposureEvent, 'ticker' | 'title' | 'eventTime' | 'eventTimeSource'> | null;
+    /** Theme groups: the holdings the theme matters most to, largest first. A holding linked by a Calculated link, or a security whose most important measured driver stands behind the theme. */
+    lead: string[];
+}
+/** The portfolio grouped two ways, for the category cards and the filters every screen shares. */
+export interface Categories {
+    totalValue: number;
+    holdings: HoldingCategory[];
+    /** What you own. Every holding is in exactly one. */
+    assetClasses: CategoryGroup[];
+    /** What kind of event is linked to it. A holding can be in several. */
+    themes: CategoryGroup[];
 }
 export interface ExposureResponse extends Freshness {
     holdings: Holding[];
     totalValue: number;
+    categories: Categories;
     byHolding: {
         symbol: string;
         events: {
@@ -215,11 +261,24 @@ export interface ExposureResponse extends Freshness {
 export interface CalendarResponse extends Freshness {
     days: number;
     events: ExposureEvent[];
+    categories: Categories;
 }
-export interface OddsPoint {
+/** How far back the event chart looks. */
+export type OddsRange = 'day' | 'week' | 'month' | 'all';
+/** A bid–ask midpoint at one moment: a reading Hedgehog stored or the close of a Kalshi candlestick. */
+export interface OddsReading {
     ts: string;
-    ticker: string;
     probability: number;
+}
+export interface OddsHistoryResponse extends Freshness {
+    ticker: string;
+    range: OddsRange;
+    /** Start of the range. For 'all' it is when Kalshi listed the market, or the first reading if that is unknown. */
+    from: string | null;
+    to: string;
+    /** When Kalshi opened the market, if known. */
+    listed: string | null;
+    points: OddsReading[];
 }
 export interface Summary {
     /** Original AI snapshot time, independent of current Kalshi quotes. */
@@ -232,7 +291,6 @@ export interface Summary {
 }
 export interface EventResponse extends Freshness {
     event: ExposureEvent;
-    history: OddsPoint[];
     summary: Summary | null;
 }
 export interface CalibrationBucket {
@@ -249,6 +307,10 @@ export interface SettledExample {
     outcome: number;
     closeTime: string;
     oddsTime: string;
+    eventTicker?: string | null;
+    release?: { at: string; sourceUrl: string } | null;
+    bid?: number | null;
+    ask?: number | null;
 }
 export interface CategoryRecord {
     category: string;
@@ -261,9 +323,20 @@ export interface CategoryRecord {
     eligibleForTrust: boolean;
     relevantHoldings: string[];
     examples: SettledExample[];
+    // Settled markets in this sample that could not be scored, by reason.
+    coverage: {scored: number; noQuote: number; outcomeKnown: number};
+    // Distinct Kalshi events behind `count`; contracts in one event are not independent.
+    eventCount: number;
+    knownReleaseCount?: number;
+    marketsWithRelease?: number;
+    // Brier score of always predicting this sample's own Yes rate; the score to beat.
+    baseRateBrier: number;
     headline70: {
         count: number;
-        observedRate: number;
+        // null when too few markets to report a rate.
+        observedRate: number | null;
+        low: number | null;
+        high: number | null;
     } | null;
 }
 export interface HistorySubject {
@@ -274,46 +347,160 @@ export interface HistorySubject {
     eventCount: number;
     unknownEventMarkets: number;
     kalshiCategories: string[];
+    linkedHoldings?: { symbol: string; type: LinkType; evidence: string }[];
+    coverage?: CategoryRecord['coverage'];
 }
 export interface TrackRecordResponse extends Freshness {
+    horizonHours?: number;
     subjects: HistorySubject[];
     categories: CategoryRecord[];
     totalMarkets: number;
     reviewedSeries: number;
     relevantCategories: {category: string; holdings: string[]}[];
     minSettled: number;
+    // Trust-score weights and bands, read from server config so this page cannot drift from the formula.
+    trustScoring: {spread: number; activity: number; depth: number; trackRecord: number; high: number; medium: number};
 }
+export const FORECAST_HORIZONS = [
+    { hours: 720, label: '30 days' },
+    { hours: 168, label: '7 days' },
+    { hours: 24, label: '24 hours' },
+    { hours: 1, label: '1 hour' },
+] as const;
+/** How the Track record page can order its records. Applied before the lists are paged. */
+export const TRACK_SORTS = [
+    { key: 'history', label: 'Most questions scored' },
+    { key: 'accuracy-high', label: 'Highest accuracy' },
+    { key: 'accuracy-low', label: 'Lowest accuracy' },
+    { key: 'name', label: 'Name, A to Z' },
+] as const;
+export type TrackSort = typeof TRACK_SORTS[number]['key'];
+/** A grade to keep; 'none' keeps the records with too little history to be graded. */
+export const TRACK_GRADES = ['A', 'B', 'C', 'D', 'none'] as const;
+export type TrackGrade = typeof TRACK_GRADES[number];
+export interface HistoricalRating {
+    accuracy: number | null;
+    grade: 'A' | 'B' | 'C' | 'D' | null;
+    label: string;
+    matched: number;
+    evaluated: number;
+    eventCount: number;
+    missing: number;
+    tied: number;
+    excluded: number;
+}
+export interface TrackRatingItem {
+ relatedThemes?: string[];
+    scope?: string;
+    kind?: 'company' | 'fund' | 'benchmark';
+    id: string;
+    name: string;
+    symbol?: string;
+    rating: HistoricalRating;
+    linkedHoldings: {symbol:string;type:LinkType;evidence:string;name?:string|null;valueUsd?:number|null;share?:number|null}[];
+}
+export interface TrackRatingsResponse extends Freshness {
+    horizonHours: number;
+    themes: TrackRatingItem[];
+    companies: TrackRatingItem[];
+    funds: TrackRatingItem[];
+    fundPage: number;
+    totalFunds: number;
+    page: number;
+    pageSize: number;
+    totalCompanies: number;
+    fundSymbols: string[];
+}
+/** How far back a Moves window opens from its last close. */
+export type MoveRange = 'day' | 'week' | 'month' | 'quarter';
 export interface HoldingMove extends Holding {
     unavailableReasons: string[];
+    /** What the holding was worth at the window's first and last close, holding today's amount throughout. */
+    startValue: number | null;
+    endValue: number | null;
+    /** endValue − startValue. */
     actual: number | null;
     beta: number | null;
     fromMarket: number | null;
     beyondMarket: number | null;
     sourceDate: string | null;
     previousDate: string | null;
-    /** Each measured driver's estimated part of the day's move, largest first. They overlap and do not add up to the move. */
+    /** Each measured driver's estimated part of the window's move, largest first. They overlap and do not add up to the move. */
     drivers: DriverMove[];
 }
+/** A holding's link to an event on the Moves screen, without the evidence the event page carries. */
+export interface MoveLink {
+    symbol: string;
+    type: LinkType;
+    /** For a Measured link, the driver under which the holding's estimate for the window is listed. */
+    driver: string | null;
+    /** The themes this link holds through (see Categories). Empty for an unmeasured topic link. */
+    themes: string[];
+}
+/** One market's odds at the two ends of a window. Each is a reading from a source, with its time. */
 export interface OddsMove {
     ticker: string;
     title: string;
+    from: number;
+    to: number;
+    fromTime: string;
+    toTime: string;
     changePoints: number;
-    links: HoldingLink[];
+}
+/** An event with at least one market whose odds moved three points or more over the window. */
+export interface MovedEvent {
+    ticker: string;
+    title: string;
+    links: MoveLink[];
+    /** The markets that moved most, biggest first; `moved` counts all that moved. */
+    markets: OddsMove[];
+    moved: number;
+}
+export interface SettledMarket {
+    ticker: string;
+    title: string;
+    outcome: 0 | 1;
+    /** Kalshi's odds 24 hours before the market closed (see Track record). */
+    probabilityBefore: number;
+    closeTime: string;
+}
+/** An event whose markets closed inside the window and have settled. */
+export interface SettledEvent {
+    ticker: string;
+    /** Kalshi's event title when we hold it; otherwise the markets' own questions say what it was. */
+    title: string | null;
+    closeTime: string;
+    links: MoveLink[];
+    /** The markets furthest from what Kalshi expected, first; `settled` and `yes` count all of them. */
+    markets: SettledMarket[];
+    settled: number;
+    yes: number;
 }
 export interface MovesResponse extends Freshness {
-    /** Effective price session; an explicit request never falls back to another date. */
+    /** Effective price session, the window's last close; an explicit request never falls back to another date. */
     date: string;
     requestedDate: string | null;
+    range: MoveRange;
+    /** Session of the window's first close; null when no earlier close is stored. */
+    startDate: string | null;
     notes: string[];
     spyReturn: number | null;
     holdings: HoldingMove[];
+    /** Listed securities at the window's first and last close, and the difference. */
+    startValue: number | null;
+    endValue: number | null;
     total: number | null;
     fromMarket: number | null;
     beyondMarket: number | null;
-    oddsMoves: OddsMove[];
-    /** Driver estimates summed over holdings, largest first; the first is what mattered most that day. */
+    /** The instants Kalshi's odds are compared at: 4:00 pm New York on the two sessions. */
+    oddsWindow: { from: string; to: string } | null;
+    movedEvents: MovedEvent[];
+    settledEvents: SettledEvent[];
+    /** Driver estimates summed over holdings, largest first; the first is what mattered most over the window. */
     drivers: DriverMove[];
-    /** Daily drivers with no published change for this date yet, so they could not be compared. */
+    /** How far each compared driver itself moved over the window. */
+    driverChanges: DriverChange[];
+    /** Daily drivers with no published reading at both ends of the window, so they could not be compared. */
     missingDrivers: string[];
     /** Value of holdings with no daily price (cash, bonds held directly, property); the totals leave them out. */
     unpricedValue: number;
@@ -598,4 +785,40 @@ export interface AIForecastAssumption extends ScenarioRequest {
 }
 export interface ForecastAssessmentsResponse extends Freshness {
     assessments: { eventTicker: string; assessment: ForecastAssessmentResponse }[];
+}
+
+export interface HistoricalPriceMove {
+    beforeDate: string;
+    afterDate: string;
+    beforeClose: number;
+    afterClose: number;
+    change: number;
+}
+export interface HoldingEventHistory {
+    eventTicker: string;
+    seriesTicker: string;
+    title: string;
+    subjects: string[];
+    release: {at: string;sourceUrl: string} | null;
+    windowNote: string | null;
+    spyMove: HistoricalPriceMove | null;
+    predictions: {ticker: string;title: string;probability: number;outcome: number;quoteAt: string;closeAt: string;predatesRelease: boolean | null}[];
+    outcome: {
+        contracts: number;
+        yes: number;
+        // The contract whose earlier midpoint was furthest from what happened; null when only quotes taken at or after the release exist.
+        biggestMiss: {title: string;probability: number;outcome: number} | null;
+    };
+    holdings: {symbol: string;type: LinkType;evidence: string;measuredAt: string | null;moveNote: string | null;move: HistoricalPriceMove | null;
+        // Holding change minus SPY change over the same dates, as a plain difference in return.
+        vsSpy: number | null}[];
+}
+export interface HoldingsHistoryResponse extends Freshness {
+    holdings: string[];
+    totalLinkedEvents: number;
+    displayedEvents: number;
+    // Displayed events with a verified release time and at least one holding price comparison.
+    comparableEvents: number;
+    currentHoldings: true;
+    events: HoldingEventHistory[];
 }
