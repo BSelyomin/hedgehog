@@ -334,8 +334,10 @@ screen narrows it (`web/app/screens/move-scope.ts`).
 - **One view everywhere.** Picking a holding narrows the whole screen to it, the holdings table
   included: the table lists that holding alone, never the others with one marked.
 - **No move, no row.** A holding with no daily price has no move over any window, so the table
-  names it in a note and lists it only when it is searched for by name or picked (`tableRows`).
-  A security whose move is unavailable keeps its row, because the row says why.
+  names it in a note and gives it a row only when it is searched for by its own name: all of it,
+  or at least its first three characters (`tableRows`). A letter that happens to be in its name
+  does not count, and neither does picking it, since the screen says above the table that it
+  has no move. A security whose move is unavailable keeps its row, because the row says why.
 - **What is missing.** The table has no column for it, since most rows lack nothing. A reason
   every listed holding shares is said once above the table (`sharedReasons`); a row carries a
   note only for what it alone lacks, or when its figures come from other closes than the
@@ -409,8 +411,8 @@ Seven screens, matching the designs in `/design` (screenshots or exports from th
 
 1. Add holdings
 2. Exposure map (category cards in one row that scrolls sideways, then events × holdings with
-   every linked holding shown in its event's row, plus a
-   "By holding" view)
+   every linked holding shown in its event's row, each cell giving the holding's value as
+   entered and its share of the portfolio, plus a "By holding" view)
 3. Event calendar (next two weeks by Kalshi event date, filter All / Company / Other)
 4. Event page (odds distribution, odds chart over 1 day / 1 week / 1 month / all time, trust
    score breakdown, linked holdings + evidence)

@@ -23,12 +23,16 @@ export function scopeDrivers(rows: HoldingMove[]): DriverMove[] {
 }
 
 // The rows of the holdings table, from the holdings in view. A holding with no daily price (cash,
-// a bond held directly, a property) has no move over any window, so it is listed only when it is
-// asked for: searched for by name, or picked. `unpriced` are the ones left out for that reason.
-export function tableRows(rows: HoldingMove[], search: string, focus: string): { listed: HoldingMove[]; unpriced: HoldingMove[] } {
+// a bond held directly, a property) has no move over any window, so it gets a row only when it
+// is searched for by its own name: the whole name, or at least its first three characters. A
+// letter that happens to occur in its name does not count, and neither does picking it, since
+// the screen already says above the table that it has no move. `unpriced` are the ones left
+// out for that reason, among those the search would otherwise have matched.
+export function tableRows(rows: HoldingMove[], search: string): { listed: HoldingMove[]; unpriced: HoldingMove[] } {
     const term = search.trim().toLowerCase(), priced = (row: HoldingMove) => !row.assetType || row.assetType === 'security';
-    const asked = (row: HoldingMove) => term !== '' || row.symbol === focus;
-    return { listed: rows.filter(row => row.symbol.toLowerCase().includes(term) && (priced(row) || asked(row))), unpriced: rows.filter(row => !priced(row) && !asked(row)) };
+    const matches = (row: HoldingMove) => row.symbol.toLowerCase().includes(term);
+    const named = (row: HoldingMove) => { const name = row.symbol.toLowerCase(); return term !== '' && (name === term || (term.length >= 3 && name.startsWith(term))); };
+    return { listed: rows.filter(row => priced(row) ? matches(row) : named(row)), unpriced: rows.filter(row => !priced(row) && !named(row) && matches(row)) };
 }
 
 // The reasons a figure is missing that every listed security in view shares, such as a market

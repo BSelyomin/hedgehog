@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ExposureTable, filterExposure, filterExposureHoldings, eventHoldings, defaultExposureFilters } from './screens/exposure-table';
+import { ExposureTable, filterExposure, filterExposureHoldings, eventHoldings, holdingShare, defaultExposureFilters } from './screens/exposure-table';
 import type { ExposureEvent, ExposureResponse, LinkType } from '../../shared/types';
 const event = (title: string, share: number, symbol: string, type: LinkType): ExposureEvent => ({
     ticker: title, title, share, linkedValue: share * 1000, closeTime: '2026-10-20T12:00:00Z', eventTime: '2026-10-20T12:00:00Z', eventTimeSource: 'close', category: 'Economics', mutuallyExclusive: true,
@@ -60,6 +60,21 @@ it('shows every linked holding in the row, with the holdings the event matters m
     expect(html).toContain('aria-label="11 holdings for Oil, strongest links first"');
     expect(html.indexOf('aria-label="USO: Oil')).toBeLessThan(html.indexOf('aria-label="DAL: Oil'));
 });
+it('says in each holding’s cell what it is worth and its share of the portfolio', () => {
+    const data: ExposureResponse = { events, holdings, categories, byHolding: [], totalValue: 40000, asOf: null };
+    const html = renderToStaticMarkup(<ExposureTable data={data}/>);
+    const held = holdings.find(holding => events[0].links.some(link => link.symbol === holding.symbol && link.type !== 'Related'))!;
+    const share = `${(held.valueUsd / 40000 * 100).toFixed(1)}%`, value = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(held.valueUsd);
+    expect(html).toContain(`<strong>${held.symbol}</strong><span class="holding-value">${value} · ${share}</span>`);
+    // The same two figures are in the cell's name for screen readers and in its tooltip.
+    expect(html).toMatch(new RegExp(`aria-label="${held.symbol}: [^"]*, ${value.replace(/[$.]/g, '\\$&')}, ${share.replace('.', '\\.')} of portfolio"`));
+    expect(holdingShare({ symbol: 'A', valueUsd: 2500 }, 10000)).toBe(.25);
+    // No total, no share: the cell shows the value alone.
+    expect(holdingShare({ symbol: 'A', valueUsd: 2500 }, 0)).toBeNull();
+    const untotalled = renderToStaticMarkup(<ExposureTable data={{ ...data, totalValue: 0 }}/>);
+    expect(untotalled).toContain(`<strong>${held.symbol}</strong><span class="holding-value">${value}</span>`);
+    expect(untotalled).not.toContain('of portfolio"');
+});
 it('sorts by full-portfolio reach without mutating or recalculating source data', () => {
     const sorted = filterExposure(events, { ...defaultExposureFilters, sort: 'reach-asc' });
     expect(sorted.map(e => e.share)).toEqual([.3, .6]);
@@ -79,8 +94,8 @@ it('renders compact event rows with outcome controls and accessible holding valu
     expect(html).toContain('60.0%');
     expect(html.match(/scope="col"/g)).toHaveLength(4);
     expect(html.split('<thead>')[1].split('</thead>')[0]).not.toContain('AAPL');
-    expect(html).toContain('aria-label="DAL: Oil, Related, $600.00"');
-    expect(html).toContain('aria-label="AAPL: Apple, Direct, $300.00"');
+    expect(html).toContain('aria-label="DAL: Oil, Related, $600.00, 60.0% of portfolio"');
+    expect(html).toContain('aria-label="AAPL: Apple, Direct, $300.00, 30.0% of portfolio"');
     expect(html).not.toContain('aria-label="JPM: Jobs, Related, $100.00"');
     expect(html).not.toContain('no supported link');
     expect(html).not.toContain('cell blank');
@@ -89,8 +104,8 @@ it('renders compact event rows with outcome controls and accessible holding valu
     // The tiles wrap; nothing tells the reader to scroll sideways for the rest.
     expect(html).not.toContain('scroll to see more');
     expect(html).not.toContain('scroll horizontally');
-    expect(html).toContain('<strong>DAL</strong><span class="holding-value">$600.00</span>');
-    expect(html).toContain('<strong>AAPL</strong><span class="holding-value">$300.00</span>');
+    expect(html).toContain('<strong>DAL</strong><span class="holding-value">$600.00 · 60.0%</span>');
+    expect(html).toContain('<strong>AAPL</strong><span class="holding-value">$300.00 · 30.0%</span>');
     expect(html).toContain('aria-label="Show details for Oil"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain('class="exposure-detail-row" hidden=""');

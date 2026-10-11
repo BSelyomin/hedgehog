@@ -9,6 +9,7 @@
 | Overview | Category value and share | Sum of the values of the holdings in the group, each counted once / total holding value. Asset classes add up to 100%; event themes overlap and do not |
 | Overview | Category basis (sector, fund category) | security_profiles from Yahoo quoteSummary: assetProfile.sector, fundProfile.categoryName; or the asset type the user entered |
 | Overview | Category linked events and next event | Open events with a Direct, Calculated or Measured link to a holding in the group (for a theme, through that theme). Next is the soonest reached by a Direct or Calculated link or through a holding's most important measured driver; with none, the soonest linked event |
+| Overview | A holding's cell in an event's row | Entered holding value, and that value / total entered portfolio value |
 | Overview / Calendar / Moves | Category filter summary | Count and summed value of the chosen holdings / total holding value |
 | Moves | Figures for a category or one holding | Sum, in whole cents, of the rows in view: value at each close, change, from market, beyond market, and each driver's estimate. Withheld when a security in view lacks the figure |
 | Overview / Calendar | Event and market counts | Database events and markets after reviewed-tag matching |

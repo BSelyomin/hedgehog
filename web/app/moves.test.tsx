@@ -88,24 +88,38 @@ describe('what a Moves view covers', () => {
 });
 
 describe('the rows of the holdings table', () => {
-    const symbols = (rows: HoldingMove[], search = '', focus = '') => { const table = tableRows(rows, search, focus); return [table.listed.map(row => row.symbol), table.unpriced.map(row => row.symbol)]; };
+    const symbols = (rows: HoldingMove[], search = '') => { const table = tableRows(rows, search); return [table.listed.map(row => row.symbol), table.unpriced.map(row => row.symbol)]; };
     const home: HoldingMove = { ...holdings[3], symbol: 'HOME', assetType: 'property' };
-    it('leaves out a holding with no daily price until it is searched for by name', () => {
+    it('gives a holding with no daily price no row', () => {
         expect(symbols(holdings)).toEqual([['XOM', 'USO', 'TLT'], ['SAVINGS']]);
         expect(symbols([...holdings, home])).toEqual([['XOM', 'USO', 'TLT'], ['SAVINGS', 'HOME']]);
-        expect(symbols(holdings, 'sav')).toEqual([['SAVINGS'], []]);
-        expect(symbols([...holdings, home], ' Home ')).toEqual([['HOME'], []]);
-        // A search that matches securities and unpriced holdings alike shows both.
-        expect(symbols([...holdings, home], 'o')).toEqual([['XOM', 'USO', 'HOME'], []]);
+    });
+    it('does not bring one back for a letter that happens to be in its name', () => {
+        // Looking for USO or SPY with "s" must not turn up SAVINGS.
+        expect(symbols(holdings, 's')).toEqual([['USO'], ['SAVINGS']]);
+        expect(symbols(holdings, 'a')).toEqual([[], ['SAVINGS']]);
+        expect(symbols(holdings, 'sa')).toEqual([[], ['SAVINGS']]);
+        expect(symbols([...holdings, home], 'o')).toEqual([['XOM', 'USO'], ['HOME']]);
+        // Three letters from the middle of the name are not its name either.
+        expect(symbols(holdings, 'ing')).toEqual([[], ['SAVINGS']]);
         expect(symbols(holdings, 'zzz')).toEqual([[], []]);
+    });
+    it('lists one when it is searched for by its own name, in full or by its first three letters', () => {
+        expect(symbols(holdings, 'sav')).toEqual([['SAVINGS'], []]);
+        expect(symbols(holdings, ' Savings ')).toEqual([['SAVINGS'], []]);
+        expect(symbols([...holdings, home], 'HOME')).toEqual([['HOME'], []]);
+        // A short name is asked for by typing all of it.
+        const cd: HoldingMove = { ...holdings[3], symbol: 'CD', assetType: 'treasury' };
+        expect(symbols([...holdings, cd], 'c')).toEqual([[], ['CD']]);
+        expect(symbols([...holdings, cd], 'cd')).toEqual([['CD'], []]);
     });
     it('keeps a security whose move is unavailable, since its row says why', () => {
         const gap: HoldingMove = { ...holdings[2], startValue: null, endValue: null, actual: null, unavailableReasons: ['No completed TLT closing price for 2026-10-09.'] };
         expect(symbols([holdings[0], gap, holdings[3]])).toEqual([['XOM', 'TLT'], ['SAVINGS']]);
     });
-    it('lists the picked holding whatever it is, and nothing else once the view is that holding', () => {
-        expect(symbols(scopeRows(holdings, null, 'SAVINGS'), '', 'SAVINGS')).toEqual([['SAVINGS'], []]);
-        expect(symbols(scopeRows(holdings, null, 'USO'), '', 'USO')).toEqual([['USO'], []]);
+    it('gives a picked holding with no daily price no row either', () => {
+        expect(symbols(scopeRows(holdings, null, 'SAVINGS'))).toEqual([[], ['SAVINGS']]);
+        expect(symbols(scopeRows(holdings, null, 'USO'))).toEqual([['USO'], []]);
         expect(symbols(scopeRows(holdings, new Set(['SAVINGS']), ''))).toEqual([[], ['SAVINGS']]);
     });
 });
@@ -182,7 +196,7 @@ describe('the Moves screen', () => {
         expect(html).not.toMatch(/row-note|row-events|For every holding below|Data availability|measured beta available/);
         // A holding with no daily price has no move: it is named in a note, not given a row.
         expect(html).not.toContain('>SAVINGS</button>');
-        expect(html).toContain('<p class="note unpriced-note">Not listed, because it has no daily price and so no move: SAVINGS. Search for one by name to see it.</p>');
+        expect(html).toContain('<p class="note unpriced-note">Not listed, because it has no daily price and so no move: SAVINGS. To see one anyway, search for its name (at least its first three letters).</p>');
         expect(html.match(/class="holding-pick"/g)).toHaveLength(3);
         expect(html).toContain('Pick a holding to see only that holding');
     });
@@ -197,11 +211,14 @@ describe('the Moves screen', () => {
         // With a category chosen, the way back is to that category.
         expect(view('USO', new Set(['USO', 'TLT']))).toContain('<button class="reset-filters">Show the chosen holdings</button>');
     });
-    it('lists a holding with no daily price when it is the one picked', () => {
+    it('gives a picked holding with no daily price no row, and says so above the table and in it', () => {
         const html = view('SAVINGS');
-        expect(html).toContain('<tr class="picked"><td><button class="holding-pick" aria-pressed="true">SAVINGS</button><span class="note"> · Cash or savings</span></td><td colSpan="7" class="note">No daily price, so no move over a window. Worth $50,000.00 as entered.</td></tr>');
-        expect(html.match(/class="holding-pick"/g)).toHaveLength(1);
-        expect(html).not.toContain('unpriced-note');
+        // The screen says once, above, that it has no move and what it is worth.
+        expect(html).toContain('SAVINGS has no daily price, so it has no move over a window. It is worth $50,000.00 as entered.');
+        expect(html).not.toContain('class="holding-pick"');
+        expect(html).not.toContain('No daily price, so no move over a window. Worth');
+        expect(html).toContain('None of the holdings in view has a daily price, so there is no move to list.');
+        expect(html).toContain('<p class="note table-scope">Showing only <strong>SAVINGS</strong>, the holding you picked. <button class="reset-filters">Show all holdings</button></p>');
     });
     it('says there is no move to list when nothing in view has a daily price', () => {
         const html = view('', new Set(['SAVINGS']));

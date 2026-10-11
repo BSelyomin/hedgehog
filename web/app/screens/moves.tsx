@@ -63,7 +63,7 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
     const [open, setOpen] = useState('');
     // Everything on the screen, the table included, covers the same holdings: the one picked, else the chosen category, else all.
     const rows = scopeRows(data.holdings, chosen, focus);
-    const { listed, unpriced } = tableRows(rows, search, focus);
+    const { listed, unpriced } = tableRows(rows, search);
     const whole = !focus && !chosen, part = selectionMove(rows);
     // The whole portfolio's figures are the server's, which also checks that every move covers the same sessions.
     const totals = whole ? { ...part, startValue: data.startValue, endValue: data.endValue, actual: data.total, fromMarket: data.fromMarket, beyondMarket: data.beyondMarket } : part;
@@ -117,7 +117,7 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
                 : <p className="note">Pick a holding to see only that holding: its row here, its change, what mattered most for it, and the Kalshi events linked to it.</p>}
             <label className="move-search">Search holdings<input type="search" placeholder="Ticker, e.g. AAPL" value={search} onChange={e => setSearch(e.target.value)}/></label>
             <p className="note">Search filters the rows below. Totals above cover {data.unpricedValue > 0 ? `listed securities; ${money(data.unpricedValue)} in cash, bonds held directly and property has no daily price and is left out` : 'your full portfolio'}.</p>
-            {unpriced.length > 0 && <p className="note unpriced-note">Not listed, because {unpriced.length === 1 ? 'it has' : 'they have'} no daily price and so no move: {unpriced.map(holding => holding.symbol).join(', ')}. Search for one by name to see it.</p>}
+            {unpriced.length > 0 && <p className="note unpriced-note">Not listed, because {unpriced.length === 1 ? 'it has' : 'they have'} no daily price and so no move: {unpriced.map(holding => holding.symbol).join(', ')}. To see one anyway, search for its name (at least its first three letters).</p>}
             {shared.length > 0 && <p className="note shared-reasons">For every holding below: {shared.join(' ')}</p>}
             <div className="scroll"><table className="move-table"><thead><tr>{COLUMNS.map(column => <th key={column.name} scope="col"><ColumnName {...column}/></th>)}</tr></thead><tbody>
                 {listed.map(h => {
@@ -137,7 +137,7 @@ export function MoveView({ data, exposure, chosen, theme, focus, setFocus }: { d
                             intro={`${eventLines([{ symbol: h.symbol, type: 'Measured', driver: top.driver, themes: [] }], data.holdings, data.driverChanges, money)[0].text} That is a past association with the driver, not an effect of these events.`}/></td></tr>}
                     </Fragment>;
                 })}
-                {!listed.length && <tr><td colSpan={8}><Empty>{search.trim() ? `No holdings match your search${chosen ? ' in this category' : ''}.` : 'None of the holdings in view has a daily price, so there is no move to list.'}</Empty></td></tr>}
+                {!listed.length && <tr><td colSpan={8}><Empty>{unpriced.length === rows.length && rows.length > 0 ? 'None of the holdings in view has a daily price, so there is no move to list.' : `No holdings match your search${chosen ? ' in this category' : ''}.`}</Empty></td></tr>}
             </tbody></table></div>
             <p className="note">From market = measured beta × SPY’s return over the window × the holding’s value at the first close. Beyond market = change − market estimate. Price sources: Yahoo daily closes. Every row is read from the window’s two closes; a row says so underneath when a figure is missing.</p>
             {data.total === null && data.holdings.some(h => !h.assetType || h.assetType === 'security') && <p className="note">The listed-security total needs supported price moves over the same dates for every listed holding. Available individual moves are shown above.</p>}

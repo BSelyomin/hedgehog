@@ -1,5 +1,23 @@
 # Validation and phase status
 
+## Overview cells show value and share; a letter is not a search for a holding (2026-10-11)
+
+All 497 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390
+pixels with the feature-tour portfolio in a temporary guest session, cleared afterwards: no
+browser errors and no sideways page scroll.
+
+- **Overview.** Each of the 2,523 holding cells in the events table shows the holding's value as
+  entered and its share of the $425,000 portfolio, such as "GLD, $5,000.00 · 1.2%" and "HOME,
+  $300,000.00 · 70.6%". Every share equals the value over the total to one decimal. The cell's
+  tooltip, its name for screen readers, the expanded row and the "By holding" headings carry the
+  same figures. The table still fits its region at 1440 pixels.
+- **Moves.** SAVINGS still appeared whenever the search box held any letter in its name: typing
+  "s" to find SPY listed it. A holding with no daily price now gets a row only for its own
+  name. "s", "a", "sa" and "o" list securities alone and name the hidden ones in the note; "sav",
+  "savings", "hom" and "tno" list SAVINGS, HOME and TNOTE-2036; "2036" does not. Picking SAVINGS
+  no longer gives it a row either: the screen says above the table that it has no move and
+  what it is worth.
+
 ## Moves table: only what has a move, and only the picked holding (2026-10-11)
 
 All 494 tests and both TypeScript checks pass. Checked in a headless browser at 1440 and 390
